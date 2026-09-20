@@ -1,0 +1,41 @@
+{
+  "name": "Sell Digital Assets API",
+  "shortName": "Sell Digital Assets",
+  "title": "Sell Digital Assets API",
+  "tagline": "System Status & Observability Dashboard",
+  "description": "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
+  "logo": {
+    "url": "/logo.png",
+    "alt": "Sell Digital Assets Logo",
+    "width": 48,
+    "height": 48
+  },
+  "favicon": {
+    "url": "/logo.png",
+    "type": "image/png"
+  },
+  "contact": {
+    "email": "support@selldigitalassets.com",
+    "phone": "+1 (555) 234-5678",
+    "supportUrl": "https://selldigitalassets.com/support"
+  },
+  "address": {
+    "street": "100 Market Street, Suite 400",
+    "city": "San Francisco",
+    "state": "CA",
+    "postalCode": "94105",
+    "country": "United States",
+    "formatted": "100 Market Street, Suite 400, San Francisco, CA 94105, USA"
+  },
+  "links": {
+    "website": "https://selldigitalassets.com",
+    "docs": "/api/health",
+    "status": "/",
+    "github": "https://github.com/majid-superior/sell-digital-assets-api"
+  },
+  "copyright": {
+    "year": 2026,
+    "holder": "Sell Digital Assets Inc.",
+    "text": "Sell Digital Assets • Digital Assets Marketplace"
+  }
+}
