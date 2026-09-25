@@ -24,9 +24,10 @@ const doc = {
     },
   ],
   tags: [
+    { name: "Health", description: "API and database observability endpoints" },
+    { name: "Company Branding", description: "Company branding, legal details, and platform settings" },
     { name: "Authentication", description: "User registration, authentication and JWT refresh tokens" },
     { name: "Users", description: "User account management and role-based access" },
-    { name: "Health", description: "API and database observability endpoints" },
   ],
   components: {
     securitySchemes: {
@@ -93,6 +94,7 @@ const routes = [
   "./src/app.ts",
   "./src/modules/auth/auth.routes.ts",
   "./src/modules/users/users.routes.ts",
+  "./src/modules/company/company.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -162,6 +164,24 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
       } else if (normalizedPath === "/api/users/{id}" && methods.get) {
         methods.get.summary = "Get user by ID";
         methods.get.description = "Retrieves user record by UUID";
+      }
+    } else if (normalizedPath.startsWith("/api/company")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Company Branding"];
+      }
+      if (methods.get) {
+        methods.get.summary = "Get company details & platform branding";
+        methods.get.description = "Retrieves public company details, branding, and platform settings";
+      }
+      if (methods.put) {
+        methods.put.summary = "Update company details (Admin only)";
+        methods.put.description = "Updates company profile, branding, URLs, addresses, and platform settings";
+        methods.put.security = [{ bearerAuth: [] }];
+      }
+      if (methods.patch) {
+        methods.patch.summary = "Partially update company details (Admin only)";
+        methods.patch.description = "Partially updates company configuration";
+        methods.patch.security = [{ bearerAuth: [] }];
       }
     } else if (normalizedPath === "/api/health") {
       for (const method of Object.values<any>(methods)) {

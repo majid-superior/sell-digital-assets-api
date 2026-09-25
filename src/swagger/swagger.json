@@ -13,16 +13,20 @@
   ],
   "tags": [
     {
+      "name": "Health",
+      "description": "API and database observability endpoints"
+    },
+    {
+      "name": "Company Branding",
+      "description": "Company branding, legal details, and platform settings"
+    },
+    {
       "name": "Authentication",
       "description": "User registration, authentication and JWT refresh tokens"
     },
     {
       "name": "Users",
       "description": "User account management and role-based access"
-    },
-    {
-      "name": "Health",
-      "description": "API and database observability endpoints"
     }
   ],
   "paths": {
@@ -252,6 +256,72 @@
           }
         ],
         "summary": "Get user by ID"
+      }
+    },
+    "/api/company": {
+      "get": {
+        "description": "Retrieves public company details, branding, and platform settings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Company Branding"
+        ],
+        "summary": "Get company details & platform branding"
+      },
+      "put": {
+        "description": "Updates company profile, branding, URLs, addresses, and platform settings",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Company Branding"
+        ],
+        "summary": "Update company details (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "description": "Partially updates company configuration",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Company Branding"
+        ],
+        "summary": "Partially update company details (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     }
   },

@@ -34,12 +34,9 @@ export function renderIndexPage(data: SystemStatus): string {
     })();
   </script>
 
-  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
-  <!-- Unified Master Stylesheet -->
+  <!-- Theme Styles & Self-Hosted Fonts from @majid-superior/sell-digital-assets-theme -->
+  <link rel="stylesheet" href="/theme/fonts.css">
+  <link rel="stylesheet" href="/theme/theme.css">
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/theme.js" defer></script>
 </head>

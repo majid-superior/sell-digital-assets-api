@@ -29,7 +29,7 @@ export function renderDatabaseCard(database: SystemStatus["database"]): string {
         <div class="metrics-list">
           <div class="metric-row">
             <span class="metric-label">Connection</span>
-            <span class="metric-value" style="color: ${isDbConnected ? 'var(--color-secondary)' : 'var(--color-error)'}">
+            <span class="metric-value" style="color: var(${isDbConnected ? '--color-secondary' : '--color-error'});">
               ${isDbConnected ? 'Active Connection' : 'Disconnected'}
             </span>
           </div>

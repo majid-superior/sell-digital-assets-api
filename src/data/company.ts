@@ -1,4 +1,13 @@
-import companyData from "./company.json" with { type: "json" };
+import { companyRepository } from "../database/repositories/company.repository.js";
+import type { CompanyEntity } from "../database/types.js";
+import { COLOR_HEX_MAP, TOKENS } from "@majid-superior/sell-digital-assets-theme";
+
+export { COLOR_HEX_MAP, TOKENS };
+
+export interface CompanyTheme {
+  tokens: typeof TOKENS;
+  palette: typeof COLOR_HEX_MAP;
+}
 
 export interface CompanyLogo {
   url: string;
@@ -52,7 +61,151 @@ export interface CompanyInfo {
   address: CompanyAddress;
   links: CompanyLinks;
   copyright: CompanyCopyright;
+  raw?: CompanyEntity;
+  theme: CompanyTheme;
 }
 
-export const company: CompanyInfo = companyData as CompanyInfo;
+const defaultCompany: CompanyInfo = {
+  name: "Sell Digital Assets API",
+  shortName: "Sell Digital Assets",
+  title: "Sell Digital Assets API",
+  tagline: "System Status & Observability Dashboard",
+  description: "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
+  logo: {
+    url: "/logo.png",
+    alt: "Sell Digital Assets Logo",
+    width: 48,
+    height: 48,
+  },
+  favicon: {
+    url: "/favicon.ico",
+    type: "image/x-icon",
+  },
+  contact: {
+    email: "support@selldigitalassets.com",
+    phone: "+1 (555) 234-5678",
+    supportUrl: "https://selldigitalassets.com/support",
+  },
+  address: {
+    street: "100 Market Street, Suite 400",
+    city: "San Francisco",
+    state: "CA",
+    postalCode: "94105",
+    country: "United States",
+    formatted: "100 Market Street, Suite 400, San Francisco, CA 94105, USA",
+  },
+  links: {
+    website: "https://selldigitalassets.com",
+    docs: "/api/health",
+    status: "/",
+    github: "https://github.com/majid-superior/sell-digital-assets-api",
+  },
+  copyright: {
+    year: new Date().getFullYear(),
+    holder: "Sell Digital Assets Inc.",
+    text: "Sell Digital Assets • Digital Assets Marketplace",
+  },
+  theme: {
+    tokens: TOKENS,
+    palette: COLOR_HEX_MAP,
+  },
+};
+
+export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
+  const metadata = (entity.metadata && typeof entity.metadata === "object" && !Array.isArray(entity.metadata)
+    ? entity.metadata
+    : {}) as Record<string, any>;
+
+  const addressStreet = entity.address_line1 || (metadata.address as any)?.street || "100 Market Street, Suite 400";
+  const addressCity = entity.city || (metadata.address as any)?.city || "San Francisco";
+  const addressState = entity.state || (metadata.address as any)?.state || "CA";
+  const addressPostal = entity.postal_code || (metadata.address as any)?.postalCode || "94105";
+  const addressCountry = entity.country || (metadata.address as any)?.country || "United States";
+  const formattedAddress = `${addressStreet}, ${addressCity}, ${addressState} ${addressPostal}, ${addressCountry}`;
+
+  const currentYear = new Date().getFullYear();
+
+  return {
+    name: entity.company_name || "Sell Digital Assets API",
+    shortName: entity.company_name || "Sell Digital Assets",
+    title: entity.company_name || "Sell Digital Assets API",
+    tagline: entity.tagline || "System Status & Observability Dashboard",
+    description: entity.description || "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
+    logo: {
+      url: entity.logo_url || "/logo.png",
+      alt: `${entity.company_name || "Sell Digital Assets"} Logo`,
+      width: 48,
+      height: 48,
+    },
+    favicon: {
+      url: entity.favicon_url || "/favicon.ico",
+      type: "image/x-icon",
+    },
+    contact: {
+      email: entity.support_email || "support@selldigitalassets.com",
+      phone: entity.support_phone || "+1 (555) 234-5678",
+      supportUrl: entity.support_url || "https://selldigitalassets.com/support",
+    },
+    address: {
+      street: addressStreet,
+      city: addressCity,
+      state: addressState,
+      postalCode: addressPostal,
+      country: addressCountry,
+      formatted: formattedAddress,
+    },
+    links: {
+      website: (metadata.links as any)?.website || "https://selldigitalassets.com",
+      docs: (metadata.links as any)?.docs || "/api/health",
+      status: (metadata.links as any)?.status || "/",
+      github: (metadata.links as any)?.github || "https://github.com/majid-superior/sell-digital-assets-api",
+    },
+    copyright: {
+      year: (metadata.copyright as any)?.year || currentYear,
+      holder: entity.legal_name || "Sell Digital Assets Inc.",
+      text: (metadata.copyright as any)?.text || `${entity.company_name || "Sell Digital Assets"} • Digital Assets Marketplace`,
+    },
+    raw: entity,
+    theme: {
+      tokens: TOKENS,
+      palette: COLOR_HEX_MAP,
+    },
+  };
+}
+
+let cachedCompany: CompanyInfo = defaultCompany;
+let lastFetched = 0;
+const CACHE_TTL_MS = 60000; // 1 minute in-memory cache
+
+export async function getCompanyInfo(forceRefresh = false): Promise<CompanyInfo> {
+  const now = Date.now();
+  if (!forceRefresh && lastFetched > 0 && now - lastFetched < CACHE_TTL_MS) {
+    return cachedCompany;
+  }
+
+  try {
+    const entity = await companyRepository.getCompany();
+    if (entity) {
+      cachedCompany = mapEntityToCompanyInfo(entity);
+      lastFetched = now;
+    }
+  } catch (_err) {
+    // Graceful fallback to default/cached data if database connection is pending
+  }
+
+  return cachedCompany;
+}
+
+export function refreshCompanyCache(entity: CompanyEntity): void {
+  cachedCompany = mapEntityToCompanyInfo(entity);
+  lastFetched = Date.now();
+}
+
+// Live Proxy allowing synchronous access to database-backed company details
+export const company: CompanyInfo = new Proxy(defaultCompany, {
+  get(_target, prop: keyof CompanyInfo) {
+    return cachedCompany[prop];
+  },
+});
+
 export default company;

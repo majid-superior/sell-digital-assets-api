@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error.js";
 import { env } from "../../config/env.js";
 import { logger } from "../logger/index.js";
+import { renderErrorPage } from "../../pages/error.page.js";
 
 interface DatabaseError extends Error {
   code?: string;
@@ -138,6 +139,18 @@ export const errorMiddleware = (
   const message = isProduction
     ? "Internal Server Error"
     : err.message || "An unexpected error occurred";
+
+  const isApiRoute = req.path.startsWith("/api/") || req.path === "/api";
+  const isDocRoute = req.path.startsWith("/doc");
+  const acceptsHtml = req.accepts(["json", "html"]) === "html";
+
+  if (!isApiRoute && !isDocRoute && acceptsHtml) {
+    res
+      .status(statusCode)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(renderErrorPage(req.originalUrl, statusCode, message));
+    return;
+  }
 
   res.status(statusCode).json({
     success: false,

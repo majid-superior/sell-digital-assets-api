@@ -33,7 +33,7 @@ export class UsersService {
       name: data.name,
       email: data.email,
       passwordHash,
-      role: data.role || "user",
+      role: data.role || "customer",
     });
 
     const { password_hash, ...safeUser } = user;

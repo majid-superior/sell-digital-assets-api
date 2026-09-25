@@ -4,7 +4,7 @@ export const CreateUserSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().trim().email("Invalid email address").max(255),
   password: z.string().min(8, "Password must be at least 8 characters").max(128).optional(),
-  role: z.enum(["user", "creator", "admin"]).optional().default("user"),
+  role: z.enum(["customer", "seller", "admin", "user", "creator"]).optional().default("customer"),
 });
 
 export const PaginationQuerySchema = z.object({
@@ -21,6 +21,7 @@ export const UserResponseSchema = z.object({
   name: z.string(),
   email: z.string().email(),
   role: z.string(),
+  status: z.string().optional(),
   created_at: z.date().or(z.string()),
   updated_at: z.date().or(z.string()),
 });

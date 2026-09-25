@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import swaggerUi from "swagger-ui-express";
 
 import { env } from "./config/env.js";
@@ -18,10 +19,16 @@ import { httpLogger } from "./core/logger/index.js";
 import pagesRoutes from "./pages/pages.routes.js";
 import { renderErrorPage } from "./pages/error.page.js";
 
-// Domain Module Routes (APIs)
 import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
+import companyRoutes from "./modules/company/company.routes.js";
 import { company } from "./data/company.js";
+
+const require = createRequire(import.meta.url);
+const themeDistPath = path.resolve(
+  path.dirname(require.resolve("@majid-superior/sell-digital-assets-theme/package.json")),
+  "dist"
+);
 
 export const app = express();
 
@@ -40,7 +47,7 @@ if (env.NODE_ENV === "production") {
 }
 
 // ============================================================================
-// PIPELINE STEP 2: Helmet Security Headers (Updated for Swagger UI)
+// PIPELINE STEP 2: Helmet Security Headers (Updated for Self-Hosted Theme & Swagger UI)
 // ============================================================================
 app.use(
   helmet({
@@ -48,8 +55,8 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "blob:", "https://validator.swagger.io"],
       },
     },
@@ -77,8 +84,9 @@ app.use(express.urlencoded({ extended: true, limit: env.BODY_LIMIT }));
 app.use(cookieParser());
 
 // ============================================================================
-// Static Assets
+// Static Assets & Centralized Theme
 // ============================================================================
+app.use("/theme", express.static(themeDistPath));
 app.use(express.static("public"));
 
 // ============================================================================
@@ -91,7 +99,7 @@ const swaggerFilePath = fs.existsSync(swaggerDistPath) ? swaggerDistPath : swagg
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
   // 1. Define your explicit order
-  const tagOrder = ["Health", "Authentication", "Users"];
+  const tagOrder = ["Health", "Company Branding", "Authentication", "Users"];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
     swaggerFile.tags.sort((a: { name: string }, b: { name: string }) => {
@@ -108,7 +116,8 @@ if (fs.existsSync(swaggerFilePath)) {
       customSiteTitle: `${company.title} Documentation`,
       customfavIcon: company.favicon.url,
       customCssUrl: [
-        "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap",
+        "/theme/fonts.css",
+        "/theme/theme.css",
         "/css/style.css",
       ] as unknown as string,
       customJs: [
@@ -139,6 +148,7 @@ app.use("/", pagesRoutes);
 // ============================================================================
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/company", companyRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler
