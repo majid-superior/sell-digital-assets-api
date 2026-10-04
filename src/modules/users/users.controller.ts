@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { usersService } from "./users.service.js";
 import { AppError } from "../../core/errors/app-error.js";
-import type { CreateUserInput, PaginationQueryInput, UuidParamInput } from "./users.schema.js";
+import type { CreateUserInput, PaginationQueryInput, UuidParamInput, UpdateMeInput } from "./users.schema.js";
 
 export class UsersController {
   async getAllUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -29,6 +29,25 @@ export class UsersController {
       const user = await usersService.getUserById(req.user.id);
       res.status(200).json({
         success: true,
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateMe(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AppError("Authentication required", 401);
+      }
+
+      const body = req.body as UpdateMeInput;
+      const user = await usersService.updateMe(req.user.id, body);
+
+      res.status(200).json({
+        success: true,
+        message: "Profile updated successfully",
         data: user,
       });
     } catch (error) {

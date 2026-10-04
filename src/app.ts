@@ -4,7 +4,6 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import swaggerUi from "swagger-ui-express";
 
 import { env } from "./config/env.js";
@@ -24,11 +23,7 @@ import usersRoutes from "./modules/users/users.routes.js";
 import companyRoutes from "./modules/company/company.routes.js";
 import { company } from "./data/company.js";
 
-const require = createRequire(import.meta.url);
-const themeDistPath = path.resolve(
-  path.dirname(require.resolve("@majid-superior/sell-digital-assets-theme/package.json")),
-  "dist"
-);
+const themeStaticPath = path.resolve(process.cwd(), "public/theme");
 
 export const app = express();
 
@@ -70,12 +65,7 @@ app.use(
 app.use(corsMiddleware);
 
 // ============================================================================
-// PIPELINE STEP 4: Rate Limiting
-// ============================================================================
-app.use(generalLimiter);
-
-// ============================================================================
-// PIPELINE STEP 5: Request ID & Parsing
+// PIPELINE STEP 4: Request ID & Parsing
 // ============================================================================
 app.use(requestIdMiddleware);
 app.use(httpLogger);
@@ -86,8 +76,22 @@ app.use(cookieParser());
 // ============================================================================
 // Static Assets & Centralized Theme
 // ============================================================================
-app.use("/theme", express.static(themeDistPath));
-app.use(express.static("public"));
+const isProduction = env.NODE_ENV === "production";
+app.use(
+  "/theme",
+  express.static(themeStaticPath, {
+    maxAge: isProduction ? "7d" : 0,
+    etag: true,
+    lastModified: true,
+  }),
+);
+app.use(
+  express.static("public", {
+    maxAge: isProduction ? "1d" : 0,
+    etag: true,
+    lastModified: true,
+  }),
+);
 
 // ============================================================================
 // Automated Swagger UI Documentation (/doc, /docs, /openapi.json)
@@ -144,8 +148,13 @@ if (fs.existsSync(swaggerFilePath)) {
 app.use("/", pagesRoutes);
 
 // ============================================================================
-// PIPELINE STEPS 6-10: Domain Modules (REST APIs)
+// PIPELINE STEPS 6-10: Domain Modules (REST APIs), Scoped CSP & Rate Limiting
 // ============================================================================
+app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  next();
+});
+app.use("/api", generalLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/company", companyRoutes);

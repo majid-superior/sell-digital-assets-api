@@ -100,6 +100,10 @@
             "description": "OK"
           }
         },
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Refresh access token",
         "requestBody": {
           "required": true,
           "content": {
@@ -109,11 +113,31 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Revokes active refresh token session and clears authentication cookies",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
         },
         "tags": [
           "Authentication"
         ],
-        "summary": "Refresh access token"
+        "summary": "User logout",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenInput"
+              }
+            }
+          }
+        }
       }
     },
     "/api/users": {

@@ -139,6 +139,13 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/RefreshTokenInput" } } },
         };
+      } else if (normalizedPath === "/api/auth/logout" && methods.post) {
+        methods.post.summary = "User logout";
+        methods.post.description = "Revokes active refresh token session and clears authentication cookies";
+        methods.post.requestBody = {
+          required: false,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/RefreshTokenInput" } } },
+        };
       }
     } else if (normalizedPath.startsWith("/api/users")) {
       for (const method of Object.values<any>(methods)) {

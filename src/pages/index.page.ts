@@ -34,7 +34,7 @@ export function renderIndexPage(data: SystemStatus): string {
     })();
   </script>
 
-  <!-- Theme Styles & Self-Hosted Fonts from @majid-superior/sell-digital-assets-theme -->
+  <!-- Theme Styles & Self-Hosted Fonts (/theme) -->
   <link rel="stylesheet" href="/theme/fonts.css">
   <link rel="stylesheet" href="/theme/theme.css">
   <link rel="stylesheet" href="/css/style.css">

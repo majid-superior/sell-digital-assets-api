@@ -123,6 +123,22 @@ export const errorMiddleware = (
           ...(requestId ? { requestId } : {}),
         });
         return;
+      case "23514":
+        res.status(400).json({
+          success: false,
+          status: "fail",
+          message: "Database check constraint validation failed",
+          ...(requestId ? { requestId } : {}),
+        });
+        return;
+      case "23502":
+        res.status(400).json({
+          success: false,
+          status: "fail",
+          message: "A required database field was not provided",
+          ...(requestId ? { requestId } : {}),
+        });
+        return;
       case "22P02":
         res.status(400).json({
           success: false,

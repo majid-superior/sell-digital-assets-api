@@ -1,6 +1,6 @@
 /**
  * Auto-generated TypeScript types from database schema
- * Generated on: 2026-09-20T18:35:20.091Z
+ * Generated on: 2026-10-04T11:53:28.007Z
  * DO NOT EDIT MANUALLY - Re-generate using 'npm run db:schema'
  */
 
