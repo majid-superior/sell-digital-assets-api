@@ -1,65 +1,29 @@
 /* ==========================================================================
    Sell Digital Assets - Unified Master Design System Stylesheet (style.css)
    Universal styling for all pages: Status, Error, and Swagger UI Documentation.
+   Consumes design tokens, fonts, and dark mode variables directly from:
+   Local Theme Design System (/theme)
    ========================================================================== */
 
+@import "/theme/fonts.css";
+@import "/theme/theme.css";
+
 /* --------------------------------------------------------------------------
-   1. COLOR PALETTE & DESIGN TOKENS (LIGHT THEME - DEFAULT)
+   1. EXTENDED DESIGN TOKENS (LIGHT THEME - DEFAULT)
    -------------------------------------------------------------------------- */
 :root {
-  /* Brand Colors */
-  --color-primary: #ae3200;
-  --color-primary-container: #ff5a1f;
-  --color-on-primary: #ffffff;
-  --color-on-primary-container: #541400;
-  --color-primary-fixed: #ffdbd0;
-  --color-primary-fixed-dim: #ffb59e;
-  --color-on-primary-fixed: #3a0b00;
-
-  --color-secondary: #006c45;
-  --color-secondary-container: #86f9bc;
-  --color-on-secondary: #ffffff;
-  --color-on-secondary-container: #00734a;
-
-  --color-tertiary: #005ac2;
-  --color-tertiary-container: #508fff;
-  --color-on-tertiary: #ffffff;
-  --color-on-tertiary-container: #00295f;
-
-  /* Surfaces & Backgrounds */
-  --color-background: #fcf9f8;
-  --color-on-background: #1c1b1b;
-  --color-surface: #fcf9f8;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f6f3f2;
-  --color-surface-container: #f0edec;
-  --color-surface-container-high: #ebe7e7;
-  --color-surface-container-highest: #e5e2e1;
-  --color-on-surface: #1c1b1b;
-  --color-on-surface-variant: #5b4038;
-
-  /* Outlines & Borders */
-  --color-outline: #8f7067;
-  --color-outline-variant: #e4beb3;
-
-  /* Status / Feedback */
-  --color-error: #ba1a1a;
-  --color-error-container: #ffdad6;
-  --color-on-error: #ffffff;
-  --color-on-error-container: #93000a;
+  /* Typography */
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* Elevation Shadows & Glow */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08);
-  --glow-primary: rgba(174, 50, 0, 0.2);
+  --glow-primary: color-mix(in srgb, var(--color-primary) 20%, transparent);
 
-  /* Typography */
-  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
-  /* Radii & Spacing */
+  /* Radii & Spacing (aligned with theme tokens) */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -67,63 +31,36 @@
   --radius-2xl: 20px;
   --radius-full: 9999px;
 
-  --spacing-xs: 0.25rem; /* 4px */
-  --spacing-sm: 0.5rem;  /* 8px */
-  --spacing-md: 1rem;    /* 16px */
-  --spacing-lg: 1.5rem;  /* 24px */
-  --spacing-xl: 2.5rem;  /* 40px */
+  --spacing-xs: 0.25rem;
+  /* 4px */
+  --spacing-sm: 0.5rem;
+  /* 8px */
+  --spacing-md: 1rem;
+  /* 16px */
+  --spacing-lg: 1.5rem;
+  /* 24px */
+  --spacing-xl: 2.5rem;
+  /* 40px */
 }
 
 /* --------------------------------------------------------------------------
-   2. COLOR PALETTE (DARK THEME)
+   2. EXTENDED DESIGN TOKENS (DARK THEME)
    -------------------------------------------------------------------------- */
 [data-theme="dark"],
 .dark {
-  --color-primary: #ffb59e;
-  --color-primary-container: #ff5a1f;
-  --color-on-primary: #5c1900;
-  --color-on-primary-container: #ffdbd0;
-
-  --color-secondary: #69dca1;
-  --color-secondary-container: #005233;
-  --color-on-secondary: #003922;
-  --color-on-secondary-container: #86f9bc;
-
-  --color-tertiary: #adc6ff;
-  --color-tertiary-container: #004395;
-  --color-on-tertiary: #002e69;
-  --color-on-tertiary-container: #d8e2ff;
-
-  --color-background: #141313;
-  --color-on-background: #e5e2e1;
-  --color-surface: #141313;
-  --color-surface-container-lowest: #0f0e0e;
-  --color-surface-container-low: #1c1b1b;
-  --color-surface-container: #201f1f;
-  --color-surface-container-high: #2b2a2a;
-  --color-surface-container-highest: #353434;
-  --color-on-surface: #e5e2e1;
-  --color-on-surface-variant: #d7c2b9;
-
-  --color-outline: #9f8d85;
-  --color-outline-variant: #52443d;
-
-  --color-error: #ffb4ab;
-  --color-error-container: #93000a;
-  --color-on-error: #690005;
-  --color-on-error-container: #ffdad6;
-
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
-  --glow-primary: rgba(255, 181, 158, 0.15);
+  --glow-primary: color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 /* --------------------------------------------------------------------------
    3. GLOBAL RESET & BASE LAYOUT
    -------------------------------------------------------------------------- */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -140,8 +77,8 @@ body {
   background-color: var(--color-background);
   color: var(--color-on-background);
   background-image:
-    radial-gradient(circle at 15% 15%, rgba(174, 50, 0, 0.05) 0%, transparent 40%),
-    radial-gradient(circle at 85% 85%, rgba(0, 108, 69, 0.04) 0%, transparent 40%);
+    radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--color-primary) 5%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--color-secondary) 4%, transparent) 0%, transparent 40%);
   background-attachment: fixed;
   display: flex;
   flex-direction: column;
@@ -155,8 +92,8 @@ body {
 [data-theme="dark"] body,
 .dark body {
   background-image:
-    radial-gradient(circle at 15% 15%, rgba(255, 181, 158, 0.05) 0%, transparent 40%),
-    radial-gradient(circle at 85% 85%, rgba(105, 220, 161, 0.04) 0%, transparent 40%);
+    radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--color-primary) 5%, transparent) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--color-secondary) 4%, transparent) 0%, transparent 40%);
 }
 
 .container {
@@ -491,19 +428,19 @@ body {
 .badge-secondary {
   background-color: var(--color-secondary-container);
   color: var(--color-on-secondary-container);
-  border-color: rgba(0, 108, 69, 0.25);
+  border-color: color-mix(in srgb, var(--color-secondary) 25%, transparent);
 }
 
 .badge-tertiary {
   background-color: var(--color-tertiary-container);
   color: var(--color-on-tertiary-container);
-  border-color: rgba(0, 90, 194, 0.25);
+  border-color: color-mix(in srgb, var(--color-tertiary) 25%, transparent);
 }
 
 .badge-error {
   background-color: var(--color-error-container);
   color: var(--color-on-error-container);
-  border-color: rgba(186, 26, 26, 0.25);
+  border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
 }
 
 /* Pulsing Status Beacon */
@@ -544,8 +481,15 @@ body {
 }
 
 @keyframes beacon-pulse {
-  0% { transform: scale(0.7); opacity: 0.9; }
-  100% { transform: scale(2.2); opacity: 0; }
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -553,7 +497,7 @@ body {
    -------------------------------------------------------------------------- */
 .error-box {
   background-color: var(--color-error-container);
-  border: 1px solid rgba(186, 26, 26, 0.3);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
   border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: 0.825rem;
@@ -596,12 +540,12 @@ body {
   height: 68px;
   border-radius: var(--radius-xl);
   background-color: var(--color-error-container);
-  border: 1px solid rgba(186, 26, 26, 0.25);
+  border: 1px solid color-mix(in srgb, var(--color-error) 25%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--color-error);
-  box-shadow: 0 8px 20px rgba(186, 26, 26, 0.15);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-error) 15%, transparent);
   margin-bottom: var(--spacing-xs);
 }
 
@@ -632,7 +576,7 @@ p.description {
   background-color: var(--color-error-container);
   padding: 0.45rem 0.95rem;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(186, 26, 26, 0.25);
+  border: 1px solid color-mix(in srgb, var(--color-error) 25%, transparent);
   word-break: break-all;
   max-width: 100%;
 }
@@ -727,12 +671,34 @@ p.description {
 }
 
 .swagger-ui .info .title {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
   font-family: var(--font-sans) !important;
   font-size: 2rem !important;
   font-weight: 800 !important;
   color: var(--color-on-background) !important;
   letter-spacing: -0.02em !important;
 }
+
+/* Reset Swagger UI's top offset and align all title badges */
+.swagger-ui .info .title small {
+  top: 0 !important;
+  margin: 0 !important;
+  vertical-align: middle !important;
+}
+
+/* Style the version badge (1.0.0) */
+.swagger-ui .info .title small:not(.version-stamp) {
+  background-color: var(--color-surface-container-high, #7d8492) !important;
+  border-radius: var(--radius-full) !important;
+  padding: 4px 12px !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+}
+
+/* Style the OpenAPI badge (OAS 3.0) */
 
 .swagger-ui .info .title small.version-stamp {
   background-color: var(--color-primary) !important;
@@ -741,8 +707,7 @@ p.description {
   font-size: 0.75rem !important;
   font-weight: 600 !important;
   margin-left: 10px !important;
-  color: #ffffff !important;
-  vertical-align: middle !important;
+  color: var(--color-on-primary) !important;
 }
 
 .swagger-ui .info p {
@@ -764,7 +729,7 @@ p.description {
 .swagger-ui .btn.authorize {
   background-color: var(--color-secondary) !important;
   border-color: var(--color-secondary) !important;
-  color: #ffffff !important;
+  color: var(--color-on-secondary) !important;
   border-radius: var(--radius-md) !important;
   font-weight: 600 !important;
   transition: all 0.2s ease !important;
@@ -775,7 +740,7 @@ p.description {
 }
 
 .swagger-ui .btn.authorize svg {
-  fill: #ffffff !important;
+  fill: var(--color-on-secondary) !important;
 }
 
 /* Operations, Methods & Badges */
@@ -800,48 +765,56 @@ p.description {
   font-weight: 700 !important;
   min-width: 70px !important;
   text-align: center !important;
-  color: #ffffff !important;
+  color: var(--color-on-primary) !important;
 }
 
 /* Method Colors */
 .swagger-ui .opblock.opblock-get {
-  background: rgba(0, 108, 69, 0.03) !important;
-  border-color: rgba(0, 108, 69, 0.3) !important;
+  background: color-mix(in srgb, var(--color-secondary) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-secondary) 30%, transparent) !important;
 }
+
 .swagger-ui .opblock.opblock-get .opblock-summary-method {
-  background-color: #006c45 !important;
+  background-color: var(--color-secondary) !important;
+  color: var(--color-on-secondary) !important;
 }
 
 .swagger-ui .opblock.opblock-post {
-  background: rgba(174, 50, 0, 0.03) !important;
-  border-color: rgba(174, 50, 0, 0.3) !important;
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent) !important;
 }
+
 .swagger-ui .opblock.opblock-post .opblock-summary-method {
-  background-color: #ae3200 !important;
+  background-color: var(--color-primary) !important;
+  color: var(--color-on-primary) !important;
 }
 
 .swagger-ui .opblock.opblock-put,
 .swagger-ui .opblock.opblock-patch {
-  background: rgba(0, 90, 194, 0.03) !important;
-  border-color: rgba(0, 90, 194, 0.3) !important;
+  background: color-mix(in srgb, var(--color-tertiary) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-tertiary) 30%, transparent) !important;
 }
+
 .swagger-ui .opblock.opblock-put .opblock-summary-method,
 .swagger-ui .opblock.opblock-patch .opblock-summary-method {
-  background-color: #005ac2 !important;
+  background-color: var(--color-tertiary) !important;
+  color: var(--color-on-tertiary) !important;
 }
 
 .swagger-ui .opblock.opblock-delete {
-  background: rgba(186, 26, 26, 0.03) !important;
-  border-color: rgba(186, 26, 26, 0.3) !important;
+  background: color-mix(in srgb, var(--color-error) 4%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-error) 30%, transparent) !important;
 }
+
 .swagger-ui .opblock.opblock-delete .opblock-summary-method {
-  background-color: #ba1a1a !important;
+  background-color: var(--color-error) !important;
+  color: var(--color-on-error) !important;
 }
 
 .swagger-ui .btn.execute {
   background-color: var(--color-primary) !important;
   border-color: var(--color-primary) !important;
-  color: #ffffff !important;
+  color: var(--color-on-primary) !important;
   border-radius: var(--radius-sm) !important;
   font-weight: 600 !important;
 }
@@ -876,8 +849,8 @@ p.description {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
 }
 
-[data-theme="dark"] .swagger-ui .scheme-container .schemes > label,
-.dark .swagger-ui .scheme-container .schemes > label {
+[data-theme="dark"] .swagger-ui .scheme-container .schemes>label,
+.dark .swagger-ui .scheme-container .schemes>label {
   color: var(--color-on-background) !important;
 }
 
@@ -901,28 +874,28 @@ p.description {
 
 [data-theme="dark"] .swagger-ui .opblock.opblock-get,
 .dark .swagger-ui .opblock.opblock-get {
-  background: rgba(0, 108, 69, 0.12) !important;
-  border-color: rgba(105, 220, 161, 0.35) !important;
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-secondary) 35%, transparent) !important;
 }
 
 [data-theme="dark"] .swagger-ui .opblock.opblock-post,
 .dark .swagger-ui .opblock.opblock-post {
-  background: rgba(174, 50, 0, 0.12) !important;
-  border-color: rgba(255, 181, 158, 0.35) !important;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent) !important;
 }
 
 [data-theme="dark"] .swagger-ui .opblock.opblock-put,
 [data-theme="dark"] .swagger-ui .opblock.opblock-patch,
 .dark .swagger-ui .opblock.opblock-put,
 .dark .swagger-ui .opblock.opblock-patch {
-  background: rgba(0, 90, 194, 0.12) !important;
-  border-color: rgba(173, 198, 255, 0.35) !important;
+  background: color-mix(in srgb, var(--color-tertiary) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-tertiary) 35%, transparent) !important;
 }
 
 [data-theme="dark"] .swagger-ui .opblock.opblock-delete,
 .dark .swagger-ui .opblock.opblock-delete {
-  background: rgba(186, 26, 26, 0.12) !important;
-  border-color: rgba(255, 180, 171, 0.35) !important;
+  background: color-mix(in srgb, var(--color-error) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent) !important;
 }
 
 [data-theme="dark"] .swagger-ui .opblock .opblock-summary-path,

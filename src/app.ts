@@ -18,10 +18,12 @@ import { httpLogger } from "./core/logger/index.js";
 import pagesRoutes from "./pages/pages.routes.js";
 import { renderErrorPage } from "./pages/error.page.js";
 
-// Domain Module Routes (APIs)
 import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
+import companyRoutes from "./modules/company/company.routes.js";
 import { company } from "./data/company.js";
+
+const themeStaticPath = path.resolve(process.cwd(), "public/theme");
 
 export const app = express();
 
@@ -40,7 +42,7 @@ if (env.NODE_ENV === "production") {
 }
 
 // ============================================================================
-// PIPELINE STEP 2: Helmet Security Headers (Updated for Swagger UI)
+// PIPELINE STEP 2: Helmet Security Headers (Updated for Self-Hosted Theme & Swagger UI)
 // ============================================================================
 app.use(
   helmet({
@@ -48,8 +50,8 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "blob:", "https://validator.swagger.io"],
       },
     },
@@ -63,12 +65,7 @@ app.use(
 app.use(corsMiddleware);
 
 // ============================================================================
-// PIPELINE STEP 4: Rate Limiting
-// ============================================================================
-app.use(generalLimiter);
-
-// ============================================================================
-// PIPELINE STEP 5: Request ID & Parsing
+// PIPELINE STEP 4: Request ID & Parsing
 // ============================================================================
 app.use(requestIdMiddleware);
 app.use(httpLogger);
@@ -77,9 +74,24 @@ app.use(express.urlencoded({ extended: true, limit: env.BODY_LIMIT }));
 app.use(cookieParser());
 
 // ============================================================================
-// Static Assets
+// Static Assets & Centralized Theme
 // ============================================================================
-app.use(express.static("public"));
+const isProduction = env.NODE_ENV === "production";
+app.use(
+  "/theme",
+  express.static(themeStaticPath, {
+    maxAge: isProduction ? "7d" : 0,
+    etag: true,
+    lastModified: true,
+  }),
+);
+app.use(
+  express.static("public", {
+    maxAge: isProduction ? "1d" : 0,
+    etag: true,
+    lastModified: true,
+  }),
+);
 
 // ============================================================================
 // Automated Swagger UI Documentation (/doc, /docs, /openapi.json)
@@ -91,7 +103,7 @@ const swaggerFilePath = fs.existsSync(swaggerDistPath) ? swaggerDistPath : swagg
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
   // 1. Define your explicit order
-  const tagOrder = ["Health", "Authentication", "Users"];
+  const tagOrder = ["Health", "Company Branding", "Authentication", "Users"];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
     swaggerFile.tags.sort((a: { name: string }, b: { name: string }) => {
@@ -108,7 +120,8 @@ if (fs.existsSync(swaggerFilePath)) {
       customSiteTitle: `${company.title} Documentation`,
       customfavIcon: company.favicon.url,
       customCssUrl: [
-        "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap",
+        "/theme/fonts.css",
+        "/theme/theme.css",
         "/css/style.css",
       ] as unknown as string,
       customJs: [
@@ -135,10 +148,16 @@ if (fs.existsSync(swaggerFilePath)) {
 app.use("/", pagesRoutes);
 
 // ============================================================================
-// PIPELINE STEPS 6-10: Domain Modules (REST APIs)
+// PIPELINE STEPS 6-10: Domain Modules (REST APIs), Scoped CSP & Rate Limiting
 // ============================================================================
+app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  next();
+});
+app.use("/api", generalLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/company", companyRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

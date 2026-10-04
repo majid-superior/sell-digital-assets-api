@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error.js";
 import { verifyAccessToken, type AuthUserPayload } from "../security/tokens.js";
+import { userRepository } from "../../database/repositories/user.repository.js";
 
 declare global {
   namespace Express {
@@ -10,7 +11,7 @@ declare global {
   }
 }
 
-export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
+export const authenticate = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
   let token: string | undefined;
 
@@ -21,18 +22,29 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
   }
 
   if (!token) {
-    throw new AppError("Authentication required. Please provide a valid Bearer token.", 401);
+    return next(new AppError("Authentication required. Please provide a valid Bearer token.", 401));
   }
 
   try {
     const decoded = verifyAccessToken(token);
-    req.user = decoded;
+
+    // Verify account exists and is actively permitted to access the platform
+    const user = await userRepository.findById(decoded.id);
+    if (!user || user.status !== "active") {
+      return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+    }
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
     next();
   } catch (err: unknown) {
     if ((err as Error).name === "TokenExpiredError") {
-      throw new AppError("Access token expired. Please refresh your token.", 401);
+      return next(new AppError("Access token expired. Please refresh your token.", 401));
     }
-    throw new AppError("Invalid authentication token.", 401);
+    next(new AppError("Invalid authentication token.", 401));
   }
 };
 (authenticate as any)._authRequired = true;

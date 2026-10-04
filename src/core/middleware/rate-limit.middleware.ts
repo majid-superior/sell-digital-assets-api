@@ -52,10 +52,12 @@ export const generalLimiter = rateLimit({
 });
 
 // 2. Strict Rate Limiter for Authentication Endpoints (Brute-Force Defense)
+// Only failed attempts (status >= 400) count towards the limit; successful logins are not counted.
 const authStore = createRateLimitStore("auth");
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 attempts per window
+  max: 5, // Limit each IP to 5 failed attempts per window
+  skipSuccessfulRequests: true, // Do not count successful requests (status < 400)
   ...(authStore ? { store: authStore } : {}),
   standardHeaders: true,
   legacyHeaders: false,

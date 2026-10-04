@@ -1,19 +1,25 @@
-export type UserRole = "admin" | "creator" | "user";
+export type UserRole = "admin" | "seller" | "customer" | "creator" | "user";
 
-export const ROLES: Record<string, UserRole> = {
+export const ROLES = {
   ADMIN: "admin",
-  CREATOR: "creator",
-  USER: "user",
-};
+  SELLER: "seller",
+  CUSTOMER: "customer",
+  // Legacy aliases
+  CREATOR: "seller",
+  USER: "customer",
+} as const;
 
-export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ["*"],
-  creator: ["products:create", "products:update", "products:delete", "inventory:manage"],
+  seller: ["products:create", "products:update", "products:delete", "inventory:manage", "analytics:view"],
+  creator: ["products:create", "products:update", "products:delete", "inventory:manage", "analytics:view"],
+  customer: ["products:view", "products:purchase", "assets:download"],
   user: ["products:view", "products:purchase", "assets:download"],
 };
 
 export function hasPermission(userRole: string, requiredPermission: string): boolean {
-  const permissions = ROLE_PERMISSIONS[userRole as UserRole] || [];
+  const permissions = ROLE_PERMISSIONS[userRole] || [];
   if (permissions.includes("*")) return true;
   return permissions.includes(requiredPermission);
 }
+

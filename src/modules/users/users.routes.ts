@@ -2,7 +2,7 @@ import { Router } from "express";
 import { usersController } from "./users.controller.js";
 import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import { validateBody, validateQuery, validateParams } from "../../core/validation/validate.middleware.js";
-import { CreateUserSchema, PaginationQuerySchema, UuidParamSchema } from "./users.schema.js";
+import { CreateUserSchema, PaginationQuerySchema, UuidParamSchema, UpdateMeSchema } from "./users.schema.js";
 
 const router = Router();
 
@@ -17,6 +17,14 @@ router.get(
 
 // Authenticated user gets own profile
 router.get("/me", authenticate, usersController.getMe.bind(usersController));
+
+// Authenticated user updates own profile
+router.patch(
+  "/me",
+  authenticate,
+  validateBody(UpdateMeSchema),
+  usersController.updateMe.bind(usersController),
+);
 
 // Get user by ID (admin only)
 router.get(

@@ -31,15 +31,32 @@ export class AuthController {
 
   async refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
-      if (!refreshToken) {
-        throw new AppError("Refresh token is required", 400);
+      const refreshToken = req.body?.refreshToken || req.cookies?.refreshToken;
+      if (!refreshToken || typeof refreshToken !== "string") {
+        throw new AppError("Refresh token is required via request body or cookie", 400);
       }
 
       const result = await authService.refresh(refreshToken);
       res.status(200).json({
         success: true,
         ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const refreshToken = req.body?.refreshToken || req.cookies?.refreshToken;
+      await authService.logout(refreshToken);
+
+      res.clearCookie("accessToken", { httpOnly: true, secure: true, sameSite: "strict" });
+      res.clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "strict" });
+
+      res.status(200).json({
+        success: true,
+        message: "Successfully logged out",
       });
     } catch (error) {
       next(error);

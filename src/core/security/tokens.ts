@@ -9,20 +9,27 @@ export interface AuthUserPayload {
   jti?: string;
 }
 
-export function generateTokens(user: AuthUserPayload): {
+export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+
+export interface GeneratedTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: string;
-} {
+  jti: string;
+  refreshExpiresAt: Date;
+}
+
+export function generateTokens(user: AuthUserPayload): GeneratedTokens {
   const accessPayload = {
     id: user.id,
     email: user.email,
     role: user.role || "user",
   };
 
+  const jti = crypto.randomUUID();
   const refreshPayload = {
     ...accessPayload,
-    jti: crypto.randomUUID(),
+    jti,
   };
 
   const accessToken = jwt.sign(accessPayload, env.JWT_SECRET, {
@@ -31,14 +38,18 @@ export function generateTokens(user: AuthUserPayload): {
   });
 
   const refreshToken = jwt.sign(refreshPayload, env.JWT_REFRESH_SECRET, {
-    expiresIn: "7d",
+    expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
     algorithm: "HS256",
   });
+
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   return {
     accessToken,
     refreshToken,
     expiresIn: "15m",
+    jti,
+    refreshExpiresAt,
   };
 }
 

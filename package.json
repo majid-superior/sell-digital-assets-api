@@ -9,7 +9,7 @@
     "test": "tsx --test --test-force-exit src/tests/**/*.test.ts",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "migrate": "tsx src/database/migrate.ts",
+    "db:reset": "tsx src/database/reset.ts",
     "swagger": "tsx src/swagger/swagger.ts"
   },
   "repository": {

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error.js";
 import { env } from "../../config/env.js";
 import { logger } from "../logger/index.js";
+import { renderErrorPage } from "../../pages/error.page.js";
 
 interface DatabaseError extends Error {
   code?: string;
@@ -122,6 +123,22 @@ export const errorMiddleware = (
           ...(requestId ? { requestId } : {}),
         });
         return;
+      case "23514":
+        res.status(400).json({
+          success: false,
+          status: "fail",
+          message: "Database check constraint validation failed",
+          ...(requestId ? { requestId } : {}),
+        });
+        return;
+      case "23502":
+        res.status(400).json({
+          success: false,
+          status: "fail",
+          message: "A required database field was not provided",
+          ...(requestId ? { requestId } : {}),
+        });
+        return;
       case "22P02":
         res.status(400).json({
           success: false,
@@ -138,6 +155,18 @@ export const errorMiddleware = (
   const message = isProduction
     ? "Internal Server Error"
     : err.message || "An unexpected error occurred";
+
+  const isApiRoute = req.path.startsWith("/api/") || req.path === "/api";
+  const isDocRoute = req.path.startsWith("/doc");
+  const acceptsHtml = req.accepts(["json", "html"]) === "html";
+
+  if (!isApiRoute && !isDocRoute && acceptsHtml) {
+    res
+      .status(statusCode)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(renderErrorPage(req.originalUrl, statusCode, message));
+    return;
+  }
 
   res.status(statusCode).json({
     success: false,

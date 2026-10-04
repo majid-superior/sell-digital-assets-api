@@ -19,7 +19,7 @@ export class AuthService {
       name: input.name,
       email: input.email,
       passwordHash,
-      role: "user",
+      role: "customer",
     });
 
     const tokens = generateTokens({
@@ -34,6 +34,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
       },
       tokens,
     };
@@ -41,12 +42,33 @@ export class AuthService {
 
   async login(input: LoginUserInput) {
     const user = await userRepository.findByEmail(input.email);
+
+    // 1. Check account lockout BEFORE evaluating credentials
+    if (user?.locked_until && new Date(user.locked_until) > new Date()) {
+      throw new AppError(
+        "Your account is temporarily locked due to multiple failed login attempts. Please try again later.",
+        403,
+      );
+    }
+
+    // 2. Timing-safe password verification
     const hashToCompare = user?.password_hash || DUMMY_HASH;
     const isValid = await comparePassword(input.password, hashToCompare);
 
     if (!user || !user.password_hash || !isValid) {
+      if (user) {
+        await userRepository.recordFailedLogin(user.id);
+      }
       throw new AppError("Invalid email or password", 401);
     }
+
+    // 3. Account status checks
+    if (user.status !== "active") {
+      throw new AppError(`Your account is currently ${user.status}. Please contact support.`, 403);
+    }
+
+    // 4. Record successful login and reset failure counter
+    await userRepository.updateLastLogin(user.id);
 
     const tokens = generateTokens({
       id: user.id,
@@ -60,6 +82,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
       },
       tokens,
     };
@@ -71,7 +94,11 @@ export class AuthService {
     // Verify user still exists in the database
     const user = await userRepository.findById(decoded.id);
     if (!user) {
-      throw new AppError("Account associated with this token no longer exists or was deactivated", 401);
+      throw new AppError("Account associated with this token no longer exists", 401);
+    }
+
+    if (user.status !== "active") {
+      throw new AppError(`Account is currently ${user.status}`, 403);
     }
 
     const tokens = generateTokens({
@@ -81,6 +108,10 @@ export class AuthService {
     });
 
     return { tokens };
+  }
+
+  async logout(_refreshToken?: string): Promise<void> {
+    // Stateless token invalidation handled via cookie clearance in controller
   }
 }
 

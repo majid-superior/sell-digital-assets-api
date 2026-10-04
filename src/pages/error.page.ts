@@ -3,15 +3,26 @@ import { company } from "../data/company.js";
 import { renderHeader } from "./components/header.component.js";
 import { renderFooter } from "./components/footer.component.js";
 
-export function renderErrorPage(urlPath: string): string {
+export function renderErrorPage(urlPath: string, statusCode: number = 404, customMessage?: string): string {
   const safePath = escapeHtml(urlPath);
+  const is500 = statusCode >= 500;
+  const pageTitle = is500
+    ? `${statusCode} - Internal Server Error | ${escapeHtml(company.title)}`
+    : `${statusCode} - Page Not Available | ${escapeHtml(company.title)}`;
+  const badgeText = is500
+    ? `${statusCode} Error &bull; Internal Server Error`
+    : `${statusCode} Error &bull; Route Not Found`;
+  const headingText = is500 ? "Internal Server Error" : "Page Not Available";
+  const descText = is500
+    ? (customMessage ? escapeHtml(customMessage) : "An unexpected internal server error occurred while processing your request.")
+    : "The requested route is not registered on this API server or is blocked from direct browser access:";
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>404 - Page Not Available | ${escapeHtml(company.title)}</title>
+  <title>${pageTitle}</title>
   <link rel="icon" type="${escapeHtml(company.favicon.type)}" href="${escapeHtml(company.favicon.url)}" />
 
   <!-- Prevent Theme Flashing (Zero-FOUC Head Script) -->
@@ -31,12 +42,9 @@ export function renderErrorPage(urlPath: string): string {
     })();
   </script>
 
-  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
-  <!-- Unified Master Stylesheet -->
+  <!-- Theme Styles & Self-Hosted Fonts (/theme) -->
+  <link rel="stylesheet" href="/theme/fonts.css">
+  <link rel="stylesheet" href="/theme/theme.css">
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/theme.js" defer></script>
 </head>
@@ -55,18 +63,18 @@ export function renderErrorPage(urlPath: string): string {
           </svg>
         </div>
 
-        <span class="badge badge-error">404 Error &bull; Route Not Found</span>
+        <span class="badge badge-error">${badgeText}</span>
 
-        <h2 class="error-heading">Page Not Available</h2>
+        <h2 class="error-heading">${headingText}</h2>
 
         <p class="description">
-          The requested route is not registered on this API server or is blocked from direct browser access:
+          ${descText}
         </p>
 
         <div class="url-chip">${safePath}</div>
 
         <p class="description">
-          Only the System Status dashboard is accessible via browser navigation.
+          ${is500 ? "Please try refreshing or return to the status dashboard." : "Only the System Status dashboard is accessible via browser navigation."}
         </p>
 
         <div class="nav-actions">

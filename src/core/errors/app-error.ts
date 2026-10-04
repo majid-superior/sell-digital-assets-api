@@ -1,4 +1,5 @@
 export class AppError extends Error {
+  public override readonly name: string = "AppError";
   public readonly statusCode: number;
   public readonly status: "fail" | "error";
   public readonly isOperational: boolean;
@@ -11,6 +12,7 @@ export class AppError extends Error {
     isOperational: boolean = true,
   ) {
     super(message);
+    this.name = "AppError";
     this.statusCode = statusCode;
     this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
     this.isOperational = isOperational;

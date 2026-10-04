@@ -30,7 +30,17 @@ export const validateQuery = (schema: ZodSchema): SchemaMiddleware => {
       const formattedErrors = (result.error as ZodError).flatten();
       return next(new AppError("Query parameter validation failed", 400, formattedErrors));
     }
-    req.query = result.data as Record<string, any>;
+    const validatedQuery = result.data as Record<string, any>;
+    try {
+      req.query = validatedQuery;
+    } catch {
+      Object.defineProperty(req, "query", {
+        value: validatedQuery,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    }
     next();
   };
   middleware._validatorType = "query";
@@ -45,7 +55,17 @@ export const validateParams = (schema: ZodSchema): SchemaMiddleware => {
       const formattedErrors = (result.error as ZodError).flatten();
       return next(new AppError("Route parameter validation failed", 400, formattedErrors));
     }
-    req.params = result.data as Record<string, string>;
+    const validatedParams = result.data as Record<string, string>;
+    try {
+      req.params = validatedParams;
+    } catch {
+      Object.defineProperty(req, "params", {
+        value: validatedParams,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    }
     next();
   };
   middleware._validatorType = "params";
