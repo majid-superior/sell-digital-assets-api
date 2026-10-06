@@ -4,8 +4,17 @@ import { logger } from "../core/logger/index.js";
 
 const { Pool } = pg;
 
+const requiresSsl =
+  process.env.DATABASE_SSL === "true" ||
+  env.DATABASE_URL.includes("sslmode=require") ||
+  env.DATABASE_URL.includes("render.com") ||
+  env.DATABASE_URL.includes("amazonaws.com") ||
+  env.DATABASE_URL.includes("supabase.co") ||
+  env.DATABASE_URL.includes("neon.tech");
+
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
+  ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
   max: 20, // Max concurrent clients in the pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

@@ -251,50 +251,77 @@ export async function resetDatabase(): Promise<void> {
 
   console.log(`⚠️  Resetting database: ${targetDbName}`);
 
-  // Step 1: Connect to maintenance database to drop and recreate the target database
-  const maintenanceUrl = new URL(databaseUrl);
-  maintenanceUrl.pathname = "/postgres";
+  const requiresSsl =
+    process.env.DATABASE_SSL === "true" ||
+    databaseUrl.includes("sslmode=require") ||
+    databaseUrl.includes("render.com") ||
+    databaseUrl.includes("amazonaws.com") ||
+    databaseUrl.includes("supabase.co") ||
+    databaseUrl.includes("neon.tech");
 
-  const maintenanceClient = new Client({
-    connectionString: maintenanceUrl.toString(),
+  const isCloudDb =
+    requiresSsl ||
+    databaseUrl.includes("render.com") ||
+    databaseUrl.includes("supabase.co") ||
+    databaseUrl.includes("neon.tech") ||
+    databaseUrl.includes("amazonaws.com");
+
+  if (!isCloudDb) {
+    // Step 1: For local PostgreSQL, connect to maintenance database to drop and recreate the target database
+    const maintenanceUrl = new URL(databaseUrl);
+    maintenanceUrl.pathname = "/postgres";
+
+    const maintenanceClient = new Client({
+      connectionString: maintenanceUrl.toString(),
+    });
+
+    try {
+      await maintenanceClient.connect();
+
+      console.log("🗑️  Dropping old database...");
+      const safeDbName = targetDbName.replace(/"/g, '""');
+
+      try {
+        // PostgreSQL 13+ supports WITH (FORCE) to automatically terminate active connections
+        await maintenanceClient.query(
+          `DROP DATABASE IF EXISTS "${safeDbName}" WITH (FORCE);`,
+        );
+      } catch {
+        // Fallback for older PostgreSQL versions
+        await maintenanceClient.query(
+          `SELECT pg_terminate_backend(pid)
+           FROM pg_stat_activity
+           WHERE datname = $1 AND pid <> pg_backend_pid();`,
+          [targetDbName],
+        );
+        await maintenanceClient.query(`DROP DATABASE IF EXISTS "${safeDbName}";`);
+      }
+
+      console.log("📦 Creating fresh database...");
+      await maintenanceClient.query(`CREATE DATABASE "${safeDbName}";`);
+    } catch (err: any) {
+      console.warn(`⚠️  Maintenance DB drop/create skipped (${err.message}). Falling back to schema reset.`);
+    } finally {
+      await maintenanceClient.end().catch(() => {});
+    }
+  } else {
+    console.log("☁️  Cloud / Managed Database detected: Performing clean schema reset...");
+  }
+
+  // Step 2: Connect to the target database and execute the schema DDL in a transaction
+  const targetClient = new Client({
+    connectionString: databaseUrl,
+    ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
   });
 
   try {
-    await maintenanceClient.connect();
-
-    console.log("🗑️  Dropping old database...");
-    const safeDbName = targetDbName.replace(/"/g, '""');
-
-    try {
-      // PostgreSQL 13+ supports WITH (FORCE) to automatically terminate active connections
-      await maintenanceClient.query(
-        `DROP DATABASE IF EXISTS "${safeDbName}" WITH (FORCE);`,
-      );
-    } catch {
-      // Fallback for older PostgreSQL versions
-      await maintenanceClient.query(
-        `SELECT pg_terminate_backend(pid)
-         FROM pg_stat_activity
-         WHERE datname = $1 AND pid <> pg_backend_pid();`,
-        [targetDbName],
-      );
-      await maintenanceClient.query(`DROP DATABASE IF EXISTS "${safeDbName}";`);
-    }
-
-    console.log("📦 Creating fresh database...");
-    await maintenanceClient.query(`CREATE DATABASE "${safeDbName}";`);
-  } catch (err: any) {
-    console.error(`❌ Error: ${err.message}`);
-    process.exit(1);
-  } finally {
-    await maintenanceClient.end().catch(() => {});
-  }
-
-  // Step 2: Connect to the freshly created target database and execute the schema DDL in a transaction
-  const targetClient = new Client({ connectionString: databaseUrl });
-
-  try {
     await targetClient.connect();
+
+    if (isCloudDb) {
+      await targetClient.query(
+        "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER;",
+      );
+    }
 
     console.log("🔨 Applying schema and tables...");
     await targetClient.query("BEGIN");
