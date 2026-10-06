@@ -33,6 +33,15 @@
     "/api/health": {
       "get": {
         "description": "Returns database connectivity and operational telemetry",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "description": ""
@@ -47,6 +56,15 @@
     "/api/auth/register": {
       "post": {
         "description": "Creates a new user account and returns JWT tokens",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
@@ -71,6 +89,15 @@
     "/api/auth/login": {
       "post": {
         "description": "Authenticates credentials and returns access & refresh tokens",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -95,6 +122,15 @@
     "/api/auth/refresh": {
       "post": {
         "description": "Exchanges a valid refresh token for a new access token",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -119,6 +155,15 @@
     "/api/auth/logout": {
       "post": {
         "description": "Revokes active refresh token session and clears authentication cookies",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -144,6 +189,13 @@
       "get": {
         "description": "Returns paginated list of registered users",
         "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -185,6 +237,13 @@
         "description": "Creates a new user account with designated role",
         "parameters": [
           {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -223,6 +282,13 @@
         "description": "Retrieves profile of the token owner",
         "parameters": [
           {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -248,6 +314,13 @@
       "patch": {
         "description": "",
         "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -284,6 +357,13 @@
             }
           },
           {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -310,6 +390,15 @@
     "/api/company": {
       "get": {
         "description": "Retrieves public company details, branding, and platform settings",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -323,6 +412,13 @@
       "put": {
         "description": "Updates company profile, branding, URLs, addresses, and platform settings",
         "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -349,6 +445,13 @@
       "patch": {
         "description": "Partially updates company configuration",
         "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",

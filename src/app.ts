@@ -10,6 +10,7 @@ import { env } from "./config/env.js";
 import { AppError } from "./core/errors/app-error.js";
 import { errorMiddleware } from "./core/middleware/error.middleware.js";
 import { corsMiddleware } from "./core/middleware/cors.middleware.js";
+import { ipGuardMiddleware } from "./core/middleware/ip-guard.middleware.js";
 import { requestIdMiddleware } from "./core/middleware/request-id.middleware.js";
 import { generalLimiter } from "./core/middleware/rate-limit.middleware.js";
 import { httpLogger } from "./core/logger/index.js";
@@ -28,9 +29,10 @@ const themeStaticPath = path.resolve(process.cwd(), "public/theme");
 export const app = express();
 
 // ============================================================================
-// PIPELINE STEP 1: HTTPS & Reverse Proxy Handling
+// PIPELINE STEP 1: Direct IP Defense, HTTPS & Reverse Proxy Handling
 // ============================================================================
 app.set("trust proxy", 1);
+app.use(ipGuardMiddleware);
 
 if (env.NODE_ENV === "production") {
   app.use((req: Request, res: Response, next: NextFunction) => {
