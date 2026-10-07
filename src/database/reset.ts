@@ -59,7 +59,31 @@ $$ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public;
 
--- Step 3: Company Table (Defaults dynamically sourced from company.ts)
+-- Step 3: Currencies Table
+CREATE TABLE IF NOT EXISTS currencies (
+    code VARCHAR(3) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    symbol VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Seed Top 10 Currencies (including Pakistan as default)
+INSERT INTO currencies (code, name, symbol) VALUES
+    ('PKR', 'Pakistani Rupee', '₨'),
+    ('USD', 'United States Dollar', '$'),
+    ('EUR', 'Euro', '€'),
+    ('GBP', 'British Pound', '£'),
+    ('JPY', 'Japanese Yen', '¥'),
+    ('CAD', 'Canadian Dollar', 'CA$'),
+    ('AUD', 'Australian Dollar', 'A$'),
+    ('CHF', 'Swiss Franc', 'CHF'),
+    ('CNY', 'Chinese Yuan', '¥'),
+    ('AED', 'United Arab Emirates Dirham', 'AED')
+ON CONFLICT (code) DO UPDATE 
+    SET name = EXCLUDED.name,
+        symbol = EXCLUDED.symbol;
+
+-- Step 4: Company Table (Defaults dynamically sourced from company.ts)
 CREATE TABLE IF NOT EXISTS company (
     id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     company_name VARCHAR(150) NOT NULL,
@@ -81,7 +105,8 @@ CREATE TABLE IF NOT EXISTS company (
     postal_code VARCHAR(20),
     country VARCHAR(100),
     tax_id VARCHAR(50),
-    default_currency VARCHAR(3) NOT NULL DEFAULT '${defaultCompanyEntity.default_currency || "USD"}',
+    default_currency VARCHAR(3) NOT NULL DEFAULT '${defaultCompanyEntity.default_currency ?? "PKR"}'
+        REFERENCES currencies(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     platform_fee_percent NUMERIC(5, 2) NOT NULL DEFAULT ${defaultCompanyEntity.platform_fee_percent ?? 5.0} 
         CHECK (platform_fee_percent >= 0.00 AND platform_fee_percent <= 100.00),
     payout_minimum NUMERIC(10, 2) NOT NULL DEFAULT ${defaultCompanyEntity.payout_minimum ?? 50.0}
@@ -110,7 +135,7 @@ BEFORE UPDATE ON company
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 4: Roles Table
+-- Step 5: Roles Table
 CREATE TABLE IF NOT EXISTS roles (
     id SMALLSERIAL PRIMARY KEY,
     slug VARCHAR(50) NOT NULL UNIQUE,
@@ -134,7 +159,7 @@ ON CONFLICT (id) DO UPDATE
 -- Synchronize sequence with highest manual ID
 SELECT setval(pg_get_serial_sequence('roles', 'id'), COALESCE((SELECT MAX(id) FROM roles), 1));
 
--- Step 5: Users Table
+-- Step 6: Users Table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     role_id SMALLINT NOT NULL DEFAULT 1,
@@ -203,7 +228,7 @@ INSERT INTO users (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Step 6: Unified Query View
+-- Step 7: Unified Query Views
 CREATE OR REPLACE VIEW view_users AS
 SELECT 
     u.id,
@@ -224,6 +249,14 @@ SELECT
     u.deleted_at
 FROM users u
 JOIN roles r ON u.role_id = r.id;
+
+CREATE OR REPLACE VIEW view_company AS
+SELECT 
+    c.*,
+    curr.name AS currency_name,
+    curr.symbol AS currency_symbol
+FROM company c
+LEFT JOIN currencies curr ON c.default_currency = curr.code;
 `;
 
 export async function resetDatabase(): Promise<void> {

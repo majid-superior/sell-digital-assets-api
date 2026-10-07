@@ -46,6 +46,31 @@ export interface CompanyCopyright {
   text: string;
 }
 
+export interface CurrencyInfo {
+  code: string;
+  name: string;
+  symbol: string;
+}
+
+export const TOP_CURRENCIES: CurrencyInfo[] = [
+  { code: "PKR", name: "Pakistani Rupee", symbol: "₨" },
+  { code: "USD", name: "United States Dollar", symbol: "$" },
+  { code: "EUR", name: "Euro", symbol: "€" },
+  { code: "GBP", name: "British Pound", symbol: "£" },
+  { code: "JPY", name: "Japanese Yen", symbol: "¥" },
+  { code: "CAD", name: "Canadian Dollar", symbol: "CA$" },
+  { code: "AUD", name: "Australian Dollar", symbol: "A$" },
+  { code: "CHF", name: "Swiss Franc", symbol: "CHF" },
+  { code: "CNY", name: "Chinese Yuan", symbol: "¥" },
+  { code: "AED", name: "United Arab Emirates Dirham", symbol: "AED" },
+];
+
+export const defaultCurrency: CurrencyInfo = {
+  code: "PKR",
+  name: "Pakistani Rupee",
+  symbol: "₨",
+};
+
 export interface CompanyInfo {
   name: string;
   shortName: string;
@@ -59,6 +84,7 @@ export interface CompanyInfo {
   links: CompanyLinks;
   copyright: CompanyCopyright;
   defaultCurrency?: string | undefined;
+  currency?: CurrencyInfo | undefined;
   platformFeePercent?: number | undefined;
   payoutMinimum?: number | undefined;
   raw?: CompanyEntity | undefined;
@@ -66,9 +92,9 @@ export interface CompanyInfo {
 }
 
 export const defaultCompany: CompanyInfo = {
-  name: "Sell Digital Assets API",
+  name: "Sell Digital Assets",
   shortName: "Sell Digital Assets",
-  title: "Sell Digital Assets API",
+  title: "Sell Digital Assets",
   tagline: "System Status & Observability Dashboard",
   description:
     "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
@@ -103,9 +129,10 @@ export const defaultCompany: CompanyInfo = {
     holder: "Sell Digital Assets Inc.",
     text: "Sell Digital Assets • Digital Assets Marketplace",
   },
-  defaultCurrency: "USD",
+  defaultCurrency: defaultCurrency.code,
+  currency: defaultCurrency,
   platformFeePercent: 5.0,
-  payoutMinimum: 50.0,
+  payoutMinimum: 25000.0,
   theme: {
     tokens: TOKENS,
     palette: COLOR_HEX_MAP,
@@ -131,9 +158,10 @@ export const defaultCompanyEntity: CompanyEntity = {
   state: defaultCompany.address.state,
   postal_code: defaultCompany.address.postalCode,
   country: defaultCompany.address.country,
-  default_currency: defaultCompany.defaultCurrency ?? "USD",
+  default_currency: defaultCompany.defaultCurrency ?? "PKR",
+  currency: defaultCurrency,
   platform_fee_percent: defaultCompany.platformFeePercent ?? 5.0,
-  payout_minimum: defaultCompany.payoutMinimum ?? 50.0,
+  payout_minimum: defaultCompany.payoutMinimum ?? 25000.0,
   social_links: {},
   metadata: {
     links: defaultCompany.links,
@@ -150,42 +178,41 @@ export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
       : {}
   ) as Record<string, any>;
 
-  const addressStreet =
-    entity.address_line1 || (metadata.address as any)?.street || "Ring Road";
-  const addressCity =
-    entity.city || (metadata.address as any)?.city || "Lahore";
-  const addressState =
-    entity.state || (metadata.address as any)?.state || "Punjab";
-  const addressPostal =
-    entity.postal_code || (metadata.address as any)?.postalCode || "000000";
-  const addressCountry =
-    entity.country || (metadata.address as any)?.country || "Pakistan";
-  const formattedAddress = `${addressStreet}, ${addressCity}, ${addressState} ${addressPostal}, ${addressCountry}`;
-
-  const currentYear = new Date().getFullYear();
+  const addressStreet = entity.address_line1 ?? "";
+  const addressCity = entity.city ?? "";
+  const addressState = entity.state ?? "";
+  const addressPostal = entity.postal_code ?? "";
+  const addressCountry = entity.country ?? "";
+  const formattedAddress = [
+    addressStreet,
+    addressCity,
+    addressState,
+    addressPostal,
+    addressCountry,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return {
-    name: entity.company_name || "Sell Digital Assets API",
-    shortName: entity.company_name || "Sell Digital Assets",
-    title: entity.company_name || "Sell Digital Assets API",
-    tagline: entity.tagline || "System Status & Observability Dashboard",
-    description:
-      entity.description ||
-      "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
+    name: entity.company_name,
+    shortName: entity.company_name,
+    title: entity.company_name,
+    tagline: entity.tagline ?? "",
+    description: entity.description ?? "",
     logo: {
-      url: entity.logo_url || "/logo.png",
-      alt: `${entity.company_name || "Sell Digital Assets"} Logo`,
+      url: entity.logo_url ?? "",
+      alt: `${entity.company_name} Logo`,
       width: 48,
       height: 48,
     },
     favicon: {
-      url: entity.favicon_url || "/favicon.ico",
+      url: entity.favicon_url ?? "",
       type: "image/x-icon",
     },
     contact: {
-      email: entity.support_email || "support@selldigitalassets.com",
-      phone: entity.support_phone || "+00 (012) 345-6789",
-      supportUrl: entity.support_url || "https://selldigitalassets.com/support",
+      email: entity.support_email,
+      phone: entity.support_phone ?? "",
+      supportUrl: entity.support_url ?? "",
     },
     address: {
       street: addressStreet,
@@ -196,26 +223,26 @@ export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
       formatted: formattedAddress,
     },
     links: {
-      website:
-        (metadata.links as any)?.website || "https://selldigitalassets.com",
+      website: (metadata.links as any)?.website ?? "",
     },
     copyright: {
-      year: (metadata.copyright as any)?.year || currentYear,
-      holder: entity.legal_name || "Sell Digital Assets Inc.",
-      text:
-        (metadata.copyright as any)?.text ||
-        `${entity.company_name || "Sell Digital Assets"} • Digital Assets Marketplace`,
+      year: (metadata.copyright as any)?.year ?? new Date().getFullYear(),
+      holder: entity.legal_name,
+      text: (metadata.copyright as any)?.text ?? "",
     },
-    defaultCurrency:
-      entity.default_currency || defaultCompany.defaultCurrency || "USD",
+    defaultCurrency: entity.default_currency,
+    currency:
+      entity.currency && typeof entity.currency === "object"
+        ? (entity.currency as CurrencyInfo)
+        : (TOP_CURRENCIES.find((c) => c.code === entity.default_currency) ?? defaultCurrency),
     platformFeePercent:
       entity.platform_fee_percent !== undefined
         ? Number(entity.platform_fee_percent)
-        : (defaultCompany.platformFeePercent ?? 5.0),
+        : undefined,
     payoutMinimum:
       entity.payout_minimum !== undefined
         ? Number(entity.payout_minimum)
-        : (defaultCompany.payoutMinimum ?? 50.0),
+        : undefined,
     raw: entity,
     theme: {
       tokens: TOKENS,

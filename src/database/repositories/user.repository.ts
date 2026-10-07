@@ -87,13 +87,13 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
     const [countRes, dataRes] = await Promise.all([
       this.query<{ count: string }>(
-        "SELECT COUNT(*) FROM view_users WHERE deleted_at IS NULL",
+        "SELECT COUNT(*) FROM view_users WHERE deleted_at IS NULL AND role != 'admin'",
       ),
       this.query<Omit<UserEntity, "password_hash">>(
         `SELECT id, role_id, role, role_name, name, email, auth_provider, status, 
                 email_verified_at, last_login_at, created_at, updated_at 
          FROM view_users 
-         WHERE deleted_at IS NULL 
+         WHERE deleted_at IS NULL AND role != 'admin' 
          ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
         [limit, offset],
       ),

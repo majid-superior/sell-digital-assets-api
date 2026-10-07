@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Sell Digital Assets API Documentation",
+    "title": "Sell Digital Assets Documentation",
     "version": "1.0.0",
     "description": "Enterprise-grade digital assets marketplace and license distribution REST API platform."
   },
@@ -312,7 +312,7 @@
         "summary": "Get current authenticated profile"
       },
       "patch": {
-        "description": "",
+        "description": "Updates own profile details or password",
         "parameters": [
           {
             "name": "req",
@@ -341,7 +341,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "summary": "Update current profile"
       }
     },
     "/api/users/{id}": {
@@ -384,7 +385,89 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Get user by ID"
+        "summary": "Get user by ID (Admin only)"
+      },
+      "patch": {
+        "description": "Updates user role, name, or status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update user by ID (Admin only)"
+      },
+      "delete": {
+        "description": "Deactivates / Soft-deletes user account by UUID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delete user by ID (Admin only)"
       }
     },
     "/api/company": {

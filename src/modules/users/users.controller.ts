@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { usersService } from "./users.service.js";
 import { AppError } from "../../core/errors/app-error.js";
-import type { CreateUserInput, PaginationQueryInput, UuidParamInput, UpdateMeInput } from "./users.schema.js";
+import type { CreateUserInput, PaginationQueryInput, UuidParamInput, UpdateMeInput, UpdateUserInput } from "./users.schema.js";
 
 export class UsersController {
   async getAllUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -77,6 +77,36 @@ export class UsersController {
         success: true,
         message: "User created successfully",
         data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as unknown as UuidParamInput;
+      const body = req.body as UpdateUserInput;
+      const user = await usersService.updateUser(id, body);
+
+      res.status(200).json({
+        success: true,
+        message: "User updated successfully",
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as unknown as UuidParamInput;
+      await usersService.deleteUser(id);
+
+      res.status(200).json({
+        success: true,
+        message: "User deactivated successfully",
       });
     } catch (error) {
       next(error);

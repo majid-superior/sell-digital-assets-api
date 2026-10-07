@@ -165,12 +165,28 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             content: { "application/json": { schema: { $ref: "#/components/schemas/CreateUserInput" } } },
           };
         }
-      } else if (normalizedPath === "/api/users/me" && methods.get) {
-        methods.get.summary = "Get current authenticated profile";
-        methods.get.description = "Retrieves profile of the token owner";
-      } else if (normalizedPath === "/api/users/{id}" && methods.get) {
-        methods.get.summary = "Get user by ID";
-        methods.get.description = "Retrieves user record by UUID";
+      } else if (normalizedPath === "/api/users/me") {
+        if (methods.get) {
+          methods.get.summary = "Get current authenticated profile";
+          methods.get.description = "Retrieves profile of the token owner";
+        }
+        if (methods.patch) {
+          methods.patch.summary = "Update current profile";
+          methods.patch.description = "Updates own profile details or password";
+        }
+      } else if (normalizedPath === "/api/users/{id}") {
+        if (methods.get) {
+          methods.get.summary = "Get user by ID (Admin only)";
+          methods.get.description = "Retrieves user record by UUID";
+        }
+        if (methods.patch) {
+          methods.patch.summary = "Update user by ID (Admin only)";
+          methods.patch.description = "Updates user role, name, or status";
+        }
+        if (methods.delete) {
+          methods.delete.summary = "Delete user by ID (Admin only)";
+          methods.delete.description = "Deactivates / Soft-deletes user account by UUID";
+        }
       }
     } else if (normalizedPath.startsWith("/api/company")) {
       for (const method of Object.values<any>(methods)) {
@@ -196,6 +212,33 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         method.summary = "System health status";
         method.description = "Returns database connectivity and operational telemetry";
       }
+    }
+  }
+
+  if (cleanedPaths["/api/users/{id}"]) {
+    if (!cleanedPaths["/api/users/{id}"].patch) {
+      cleanedPaths["/api/users/{id}"].patch = {
+        tags: ["Users"],
+        summary: "Update user by ID (Admin only)",
+        description: "Updates user role, name, or status by UUID",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: { 200: { description: "User updated successfully" } },
+      };
+    }
+    if (!cleanedPaths["/api/users/{id}"].delete) {
+      cleanedPaths["/api/users/{id}"].delete = {
+        tags: ["Users"],
+        summary: "Delete user by ID (Admin only)",
+        description: "Deactivates / Soft-deletes user account by UUID",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: { 200: { description: "User deleted successfully" } },
+      };
     }
   }
 

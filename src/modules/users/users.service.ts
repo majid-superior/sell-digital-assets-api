@@ -1,7 +1,7 @@
 import { userRepository, type UserEntity, type PaginationQuery, type PaginatedResult } from "../../database/repositories/user.repository.js";
 import { AppError } from "../../core/errors/app-error.js";
 
-import type { CreateUserInput, UpdateMeInput } from "./users.schema.js";
+import type { CreateUserInput, UpdateMeInput, UpdateUserInput } from "./users.schema.js";
 import { hashPassword, comparePassword } from "../../core/security/password.js";
 
 export class UsersService {
@@ -69,6 +69,41 @@ export class UsersService {
 
     const { password_hash, ...safeUser } = updated;
     return safeUser;
+  }
+
+  async updateUser(
+    id: string,
+    data: UpdateUserInput,
+  ): Promise<Omit<UserEntity, "password_hash">> {
+    const user = await userRepository.findById(id);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    const normalizedStatus =
+      data.status === "deactive" ? "suspended" : data.status;
+
+    const updated = await userRepository.update(id, {
+      name: data.name,
+      status: normalizedStatus,
+      role: data.role,
+    });
+
+    if (!updated) {
+      throw new AppError("User not found", 404);
+    }
+
+    const { password_hash, ...safeUser } = updated;
+    return safeUser;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const user = await userRepository.findById(id);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    await userRepository.update(id, { status: "suspended" });
   }
 }
 

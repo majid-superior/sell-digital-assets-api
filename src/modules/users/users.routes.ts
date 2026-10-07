@@ -2,7 +2,7 @@ import { Router } from "express";
 import { usersController } from "./users.controller.js";
 import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import { validateBody, validateQuery, validateParams } from "../../core/validation/validate.middleware.js";
-import { CreateUserSchema, PaginationQuerySchema, UuidParamSchema, UpdateMeSchema } from "./users.schema.js";
+import { CreateUserSchema, PaginationQuerySchema, UuidParamSchema, UpdateMeSchema, UpdateUserSchema } from "./users.schema.js";
 
 const router = Router();
 
@@ -33,6 +33,25 @@ router.get(
   authorize("admin"),
   validateParams(UuidParamSchema),
   usersController.getUserById.bind(usersController),
+);
+
+// Update user by ID (admin only)
+router.patch(
+  "/:id",
+  authenticate,
+  authorize("admin"),
+  validateParams(UuidParamSchema),
+  validateBody(UpdateUserSchema),
+  usersController.updateUser.bind(usersController),
+);
+
+// Deactivate / Delete user by ID (admin only)
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("admin"),
+  validateParams(UuidParamSchema),
+  usersController.deleteUser.bind(usersController),
 );
 
 // Create user (admin only)

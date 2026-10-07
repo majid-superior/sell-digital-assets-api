@@ -51,3 +51,12 @@ export const UpdateMeSchema = z
 
 export type UpdateMeInput = z.infer<typeof UpdateMeSchema>;
 
+export const UpdateUserSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(100).optional(),
+  email: z.string().trim().email("Invalid email address").max(255).optional(),
+  role: z.enum(["customer", "seller", "admin", "buyer", "user", "creator"]).optional(),
+  status: z.enum(["active", "deactive", "pending", "suspended", "banned"]).optional(),
+});
+
+export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
+

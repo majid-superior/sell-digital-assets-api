@@ -4,6 +4,13 @@
  * DO NOT EDIT MANUALLY - Re-generate using 'npm run db:schema'
  */
 
+export interface CurrencyEntity {
+  code: string;
+  name: string;
+  symbol: string;
+  created_at?: Date | string;
+}
+
 export interface CompanyEntity {
   id?: number;
   company_name: string;
@@ -26,6 +33,7 @@ export interface CompanyEntity {
   country?: string | null;
   tax_id?: string | null;
   default_currency?: string;
+  currency?: CurrencyEntity;
   platform_fee_percent?: number;
   payout_minimum?: number;
   social_links?: Record<string, unknown> | unknown[];

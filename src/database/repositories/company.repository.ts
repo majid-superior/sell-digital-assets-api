@@ -4,7 +4,17 @@ import type { CompanyEntity } from "../types.js";
 export class CompanyRepository extends BaseRepository<CompanyEntity> {
   async getCompany(): Promise<CompanyEntity | null> {
     const result = await this.query<CompanyEntity>(
-      "SELECT * FROM company WHERE id = 1 LIMIT 1",
+      `SELECT 
+         c.*,
+         json_build_object(
+           'code', curr.code,
+           'name', curr.name,
+           'symbol', curr.symbol
+         ) AS currency
+       FROM company c
+       LEFT JOIN currencies curr ON c.default_currency = curr.code
+       WHERE c.id = 1 
+       LIMIT 1`,
     );
     return result.rows[0] || null;
   }
@@ -60,8 +70,8 @@ export class CompanyRepository extends BaseRepository<CompanyEntity> {
     }
 
     const queryStr = `UPDATE company SET ${updates.join(", ")} WHERE id = 1 RETURNING *`;
-    const result = await this.query<CompanyEntity>(queryStr, values);
-    return result.rows[0]!;
+    await this.query<CompanyEntity>(queryStr, values);
+    return (await this.getCompany())!;
   }
 }
 
