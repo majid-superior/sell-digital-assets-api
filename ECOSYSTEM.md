@@ -24,11 +24,11 @@ graph TB
     end
 
     subgraph "Persistence Layer (Render Managed Database)"
-        PG[("PostgreSQL 16+<br/>citext, pgcrypto, tables:<br/>currencies, company, users, products, inventory, sales")]
+        PG[("PostgreSQL 16+<br/>citext, pgcrypto, tables:<br/>currencies, organizations, users, products, inventory, sales")]
     end
 
     WebClient -->|Public Catalog, Cart, Checkout, Downloads| API
-    AdminClient -->|Company Settings, Metrics, Users Directory| API
+    AdminClient -->|Organization Settings, Metrics, Users Directory| API
     API -->|Connection Pool (pg)| PG
 ```
 
@@ -53,10 +53,10 @@ graph TB
   * `creator`: Permitted on `sell-digital-assets-website` to upload digital goods, manage pricing tiers, and inspect sales metrics.
   * `user` (Buyer): Permitted on `sell-digital-assets-website` to purchase assets, access their purchase library, and download asset files.
 
-### B. Company Configuration & Currency Synchronization
-* The `company` singleton table in PostgreSQL stores legal name, branding, tagline, default currency, and minimum payout threshold.
+### B. Organization Configuration & Currency Synchronization
+* The `organizations` singleton table in PostgreSQL stores legal name, branding, tagline, default currency, and minimum payout threshold.
 * The `currencies` table stores supported global currencies (`PKR`, `USD`, `EUR`, `GBP`, etc.) with their unicode symbols (`₨`, `$`, `€`, `£`, `¥`).
-* When an administrator alters the company currency in `sell-digital-assets-admin`, the change propagates across the backend REST endpoints and dynamically updates prices and payouts across `sell-digital-assets-website`.
+* When an administrator alters the organization currency in `sell-digital-assets-admin`, the change propagates across the backend REST endpoints and dynamically updates prices and payouts across `sell-digital-assets-website`.
 
 ### C. Digital Asset Fulfillment Pipeline
 1. **Asset Upload**: Creator uploads file bundle via `sell-digital-assets-website` (`POST /api/inventory`).

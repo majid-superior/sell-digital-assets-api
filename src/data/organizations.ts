@@ -1,33 +1,33 @@
-import { companyRepository } from "../database/repositories/company.repository.js";
-import type { CompanyEntity } from "../database/types.js";
+import { organizationsRepository } from "../database/repositories/organizations.repository.js";
+import type { OrganizationEntity } from "../database/types.js";
 import { COLOR_HEX_MAP, TOKENS } from "../theme/index.js";
 
 export { COLOR_HEX_MAP, TOKENS };
 
-export interface CompanyTheme {
+export interface OrganizationTheme {
   tokens: typeof TOKENS;
   palette: typeof COLOR_HEX_MAP;
 }
 
-export interface CompanyLogo {
+export interface OrganizationLogo {
   url: string;
   alt: string;
   width: number;
   height: number;
 }
 
-export interface CompanyFavicon {
+export interface OrganizationFavicon {
   url: string;
   type: string;
 }
 
-export interface CompanyContact {
+export interface OrganizationContact {
   email: string;
   phone: string;
   supportUrl: string;
 }
 
-export interface CompanyAddress {
+export interface OrganizationAddress {
   street: string;
   city: string;
   state: string;
@@ -36,11 +36,11 @@ export interface CompanyAddress {
   formatted: string;
 }
 
-export interface CompanyLinks {
+export interface OrganizationLinks {
   website: string;
 }
 
-export interface CompanyCopyright {
+export interface OrganizationCopyright {
   year: number;
   holder: string;
   text: string;
@@ -71,27 +71,27 @@ export const defaultCurrency: CurrencyInfo = {
   symbol: "₨",
 };
 
-export interface CompanyInfo {
+export interface OrganizationInfo {
   name: string;
   shortName: string;
   title: string;
   tagline: string;
   description: string;
-  logo: CompanyLogo;
-  favicon: CompanyFavicon;
-  contact: CompanyContact;
-  address: CompanyAddress;
-  links: CompanyLinks;
-  copyright: CompanyCopyright;
+  logo: OrganizationLogo;
+  favicon: OrganizationFavicon;
+  contact: OrganizationContact;
+  address: OrganizationAddress;
+  links: OrganizationLinks;
+  copyright: OrganizationCopyright;
   defaultCurrency?: string | undefined;
   currency?: CurrencyInfo | undefined;
   platformFeePercent?: number | undefined;
   payoutMinimum?: number | undefined;
-  raw?: CompanyEntity | undefined;
-  theme: CompanyTheme;
+  raw?: OrganizationEntity | undefined;
+  theme: OrganizationTheme;
 }
 
-export const defaultCompany: CompanyInfo = {
+export const defaultOrganization: OrganizationInfo = {
   name: "Sell Digital Assets",
   shortName: "Sell Digital Assets",
   title: "Sell Digital Assets",
@@ -139,37 +139,37 @@ export const defaultCompany: CompanyInfo = {
   },
 };
 
-export const defaultCompanyEntity: CompanyEntity = {
+export const defaultOrganizationEntity: OrganizationEntity = {
   id: 1,
-  company_name: defaultCompany.shortName,
-  legal_name: defaultCompany.copyright.holder,
-  tagline: defaultCompany.tagline,
-  description: defaultCompany.description,
-  logo_url: defaultCompany.logo.url,
+  organization_name: defaultOrganization.shortName,
+  legal_name: defaultOrganization.copyright.holder,
+  tagline: defaultOrganization.tagline,
+  description: defaultOrganization.description,
+  logo_url: defaultOrganization.logo.url,
   logo_dark_url: "/logo-dark.png",
-  favicon_url: defaultCompany.favicon.url,
+  favicon_url: defaultOrganization.favicon.url,
   cover_banner_url: "/banner.png",
-  support_email: defaultCompany.contact.email,
-  contact_email: defaultCompany.contact.email,
-  support_phone: defaultCompany.contact.phone,
-  support_url: defaultCompany.contact.supportUrl,
-  address_line1: defaultCompany.address.street,
-  city: defaultCompany.address.city,
-  state: defaultCompany.address.state,
-  postal_code: defaultCompany.address.postalCode,
-  country: defaultCompany.address.country,
-  default_currency: defaultCompany.defaultCurrency ?? "PKR",
+  support_email: defaultOrganization.contact.email,
+  contact_email: defaultOrganization.contact.email,
+  support_phone: defaultOrganization.contact.phone,
+  support_url: defaultOrganization.contact.supportUrl,
+  address_line1: defaultOrganization.address.street,
+  city: defaultOrganization.address.city,
+  state: defaultOrganization.address.state,
+  postal_code: defaultOrganization.address.postalCode,
+  country: defaultOrganization.address.country,
+  default_currency: defaultOrganization.defaultCurrency ?? "PKR",
   currency: defaultCurrency,
-  platform_fee_percent: defaultCompany.platformFeePercent ?? 5.0,
-  payout_minimum: defaultCompany.payoutMinimum ?? 25000.0,
+  platform_fee_percent: defaultOrganization.platformFeePercent ?? 5.0,
+  payout_minimum: defaultOrganization.payoutMinimum ?? 25000.0,
   social_links: {},
   metadata: {
-    links: defaultCompany.links,
-    copyright: defaultCompany.copyright,
+    links: defaultOrganization.links,
+    copyright: defaultOrganization.copyright,
   },
 };
 
-export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
+export function mapEntityToOrganizationInfo(entity: OrganizationEntity): OrganizationInfo {
   const metadata = (
     entity.metadata &&
     typeof entity.metadata === "object" &&
@@ -194,14 +194,14 @@ export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
     .join(", ");
 
   return {
-    name: entity.company_name,
-    shortName: entity.company_name,
-    title: entity.company_name,
+    name: entity.organization_name,
+    shortName: entity.organization_name,
+    title: entity.organization_name,
     tagline: entity.tagline ?? "",
     description: entity.description ?? "",
     logo: {
       url: entity.logo_url ?? "",
-      alt: `${entity.company_name} Logo`,
+      alt: `${entity.organization_name} Logo`,
       width: 48,
       height: 48,
     },
@@ -251,41 +251,41 @@ export function mapEntityToCompanyInfo(entity: CompanyEntity): CompanyInfo {
   };
 }
 
-let cachedCompany: CompanyInfo = defaultCompany;
+let cachedOrganization: OrganizationInfo = defaultOrganization;
 let lastFetched = 0;
 const CACHE_TTL_MS = 60000; // 1 minute in-memory cache
 
-export async function getCompanyInfo(
+export async function getOrganizationInfo(
   forceRefresh = false,
-): Promise<CompanyInfo> {
+): Promise<OrganizationInfo> {
   const now = Date.now();
   if (!forceRefresh && lastFetched > 0 && now - lastFetched < CACHE_TTL_MS) {
-    return cachedCompany;
+    return cachedOrganization;
   }
 
   try {
-    const entity = await companyRepository.getCompany();
+    const entity = await organizationsRepository.getOrganization();
     if (entity) {
-      cachedCompany = mapEntityToCompanyInfo(entity);
+      cachedOrganization = mapEntityToOrganizationInfo(entity);
       lastFetched = now;
     }
   } catch (_err) {
     // Graceful fallback to default/cached data if database connection is pending
   }
 
-  return cachedCompany;
+  return cachedOrganization;
 }
 
-export function refreshCompanyCache(entity: CompanyEntity): void {
-  cachedCompany = mapEntityToCompanyInfo(entity);
+export function refreshOrganizationCache(entity: OrganizationEntity): void {
+  cachedOrganization = mapEntityToOrganizationInfo(entity);
   lastFetched = Date.now();
 }
 
-// Live Proxy allowing synchronous access to database-backed company details
-export const company: CompanyInfo = new Proxy(defaultCompany, {
-  get(_target, prop: keyof CompanyInfo) {
-    return cachedCompany[prop];
+// Live Proxy allowing synchronous access to database-backed organization details
+export const organization: OrganizationInfo = new Proxy(defaultOrganization, {
+  get(_target, prop: keyof OrganizationInfo) {
+    return cachedOrganization[prop];
   },
 });
 
-export default company;
+export default organization;

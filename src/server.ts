@@ -3,7 +3,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { checkDatabaseConnection, pool } from "./config/database.js";
 import { logger } from "./core/logger/index.js";
-import { getCompanyInfo } from "./data/company.js";
+import { getOrganizationInfo } from "./data/organizations.js";
 
 const server = app.listen(env.PORT, async () => {
   logger.info(`Server listening on http://localhost:${env.PORT}`);
@@ -12,8 +12,8 @@ const server = app.listen(env.PORT, async () => {
   // Verify database connectivity
   await checkDatabaseConnection();
 
-  // Preload company settings from database
-  await getCompanyInfo(true);
+  // Preload organization settings from database
+  await getOrganizationInfo(true);
 });
 
 // Graceful Shutdown Handlers

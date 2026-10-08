@@ -50,12 +50,18 @@
 2. **Database Schema & Migrations**:
    - Schema definitions and migrations live in `src/database/migrations/`.
    - The consolidated schema migration and automated seed script is `src/database/reset.ts`.
-   - Critical configuration tables (such as the `company` singleton table) are protected against accidental truncation via PostgreSQL trigger `prevent_table_truncate()`.
+   - Critical configuration tables (such as the `organizations` singleton table) are protected against accidental truncation via PostgreSQL trigger `prevent_table_truncate()`.
    - Always use `CITEXT` for email columns to enforce case-insensitive uniqueness at the database level.
 
 3. **Currency & Financial Data**:
    - All monetary values must be stored as integers representing cents/minor units (e.g., `price_cents INTEGER`) to prevent floating-point rounding errors.
    - Active currencies are managed centrally in the `currencies` table (`PKR`, `USD`, `EUR`, `GBP`, etc.).
+
+4. **Soft Delete Principle (Never Hard Delete)**:
+   - Physical SQL `DELETE` operations on category records and core business entities are strictly prohibited.
+   - Deletions must always be executed as soft-deletes by toggling `is_active = false` (or `deleted_at = CURRENT_TIMESTAMP`).
+   - Category repository methods (`delete()`, `softDelete()`) strictly update `is_active = false`, never executing physical SQL deletions.
+   - All repository read queries must filter for active records (`is_active = true`) by default unless inactive items are explicitly requested.
 
 ---
 

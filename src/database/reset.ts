@@ -4,7 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
-import { defaultCompanyEntity } from "../data/company.js";
+import { defaultOrganizationEntity } from "../data/organizations.js";
+import { defaultCategories, flattenCategories } from "../data/categories.js";
 
 // Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
 if (typeof dns.setDefaultResultOrder === "function") {
@@ -37,7 +38,7 @@ loadEnv();
 
 /**
  * Consolidated pure SQL Schema DDL (tables, extensions, functions, triggers, rules, indexes, seeds, views).
- * Defaults for the company table are dynamically bound to company.ts.
+ * Defaults for the organizations table are dynamically bound to organizations.ts.
  */
 export const SCHEMA_SQL = `
 -- Step 1: Extensions
@@ -80,15 +81,19 @@ INSERT INTO currencies (code, name, symbol) VALUES
     ('EUR', 'Euro', '€'),
     ('GBP', 'British Pound', '£'),
     ('JPY', 'Japanese Yen', '¥'),
-    ('CNY', 'Chinese Yuan', '¥')
+    ('CAD', 'Canadian Dollar', 'CA$'),
+    ('AUD', 'Australian Dollar', 'A$'),
+    ('CHF', 'Swiss Franc', 'CHF'),
+    ('CNY', 'Chinese Yuan', '¥'),
+    ('AED', 'United Arab Emirates Dirham', 'AED')
 ON CONFLICT (code) DO UPDATE 
     SET name = EXCLUDED.name,
         symbol = EXCLUDED.symbol;
 
--- Step 4: Company Table (Defaults dynamically sourced from company.ts)
-CREATE TABLE IF NOT EXISTS company (
+-- Step 4: Organizations Table (Defaults dynamically sourced from organizations.ts)
+CREATE TABLE IF NOT EXISTS organizations (
     id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-    company_name VARCHAR(150) NOT NULL,
+    organization_name VARCHAR(150) NOT NULL,
     legal_name VARCHAR(150) NOT NULL,
     tagline VARCHAR(255),
     description TEXT,
@@ -107,11 +112,11 @@ CREATE TABLE IF NOT EXISTS company (
     postal_code VARCHAR(20),
     country VARCHAR(100),
     tax_id VARCHAR(50),
-    default_currency VARCHAR(3) NOT NULL DEFAULT '${defaultCompanyEntity.default_currency ?? "PKR"}'
+    default_currency VARCHAR(3) NOT NULL DEFAULT '${defaultOrganizationEntity.default_currency ?? "PKR"}'
         REFERENCES currencies(code) ON UPDATE CASCADE ON DELETE RESTRICT,
-    platform_fee_percent NUMERIC(5, 2) NOT NULL DEFAULT ${defaultCompanyEntity.platform_fee_percent ?? 5.0} 
+    platform_fee_percent NUMERIC(5, 2) NOT NULL DEFAULT ${defaultOrganizationEntity.platform_fee_percent ?? 5.0} 
         CHECK (platform_fee_percent >= 0.00 AND platform_fee_percent <= 100.00),
-    payout_minimum NUMERIC(10, 2) NOT NULL DEFAULT ${defaultCompanyEntity.payout_minimum ?? 50.0}
+    payout_minimum NUMERIC(10, 2) NOT NULL DEFAULT ${defaultOrganizationEntity.payout_minimum ?? 50.0}
         CHECK (payout_minimum >= 0.00),
     social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -119,21 +124,21 @@ CREATE TABLE IF NOT EXISTS company (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Singleton Protection: Disallow accidental DELETE on the company row
-CREATE OR REPLACE RULE no_delete_company AS
-ON DELETE TO company DO INSTEAD NOTHING;
+-- Singleton Protection: Disallow accidental DELETE on the organizations row
+CREATE OR REPLACE RULE no_delete_organizations AS
+ON DELETE TO organizations DO INSTEAD NOTHING;
 
--- Singleton Protection: Disallow TRUNCATE on the company table
-DROP TRIGGER IF EXISTS trg_prevent_truncate_company ON company;
-CREATE TRIGGER trg_prevent_truncate_company
-BEFORE TRUNCATE ON company
+-- Singleton Protection: Disallow TRUNCATE on the organizations table
+DROP TRIGGER IF EXISTS trg_prevent_truncate_organizations ON organizations;
+CREATE TRIGGER trg_prevent_truncate_organizations
+BEFORE TRUNCATE ON organizations
 FOR EACH STATEMENT
 EXECUTE FUNCTION prevent_table_truncate();
 
--- Trigger: company updated_at
-DROP TRIGGER IF EXISTS trg_company_updated_at ON company;
-CREATE TRIGGER trg_company_updated_at
-BEFORE UPDATE ON company
+-- Trigger: organizations updated_at
+DROP TRIGGER IF EXISTS trg_organizations_updated_at ON organizations;
+CREATE TRIGGER trg_organizations_updated_at
+BEFORE UPDATE ON organizations
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
@@ -230,7 +235,59 @@ INSERT INTO users (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Step 7: Unified Query Views
+-- Step 7: Categories Table (Taxonomy tree for digital assets)
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    parent_id INT,
+    name VARCHAR(150) NOT NULL,
+    slug VARCHAR(150) NOT NULL UNIQUE,
+    depth SMALLINT NOT NULL DEFAULT 0,
+    path TEXT NOT NULL,
+    description TEXT,
+    display_order INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_categories_parent 
+        FOREIGN KEY (parent_id) 
+        REFERENCES categories(id) 
+        ON UPDATE CASCADE 
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_categories_name_not_empty 
+        CHECK (length(trim(name)) > 0),
+    CONSTRAINT chk_categories_slug_not_empty 
+        CHECK (length(trim(slug)) > 0),
+    CONSTRAINT chk_categories_depth_non_negative
+        CHECK (depth >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_categories_parent_id 
+    ON categories (parent_id);
+
+CREATE INDEX IF NOT EXISTS idx_categories_slug 
+    ON categories (slug);
+
+CREATE INDEX IF NOT EXISTS idx_categories_depth 
+    ON categories (depth);
+
+CREATE INDEX IF NOT EXISTS idx_categories_is_active 
+    ON categories (is_active);
+
+DROP TRIGGER IF EXISTS trg_categories_updated_at ON categories;
+CREATE TRIGGER trg_categories_updated_at
+BEFORE UPDATE ON categories
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Category Soft-Delete Protection Rule: Intercept DELETE and convert to UPDATE is_active = FALSE
+CREATE OR REPLACE RULE no_delete_categories AS
+ON DELETE TO categories DO INSTEAD
+    UPDATE categories SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+
+-- Step 8: Unified Query Views
 CREATE OR REPLACE VIEW view_users AS
 SELECT 
     u.id,
@@ -252,13 +309,37 @@ SELECT
 FROM users u
 JOIN roles r ON u.role_id = r.id;
 
-CREATE OR REPLACE VIEW view_company AS
+CREATE OR REPLACE VIEW view_organizations AS
 SELECT 
-    c.*,
+    o.*,
     curr.name AS currency_name,
-    curr.symbol AS currency_symbol
-FROM company c
-LEFT JOIN currencies curr ON c.default_currency = curr.code;
+    curr.symbol AS currency_symbol,
+    json_build_object(
+        'code', curr.code,
+        'name', curr.name,
+        'symbol', curr.symbol
+    ) AS currency
+FROM organizations o
+LEFT JOIN currencies curr ON o.default_currency = curr.code;
+
+CREATE OR REPLACE VIEW view_categories AS
+SELECT 
+    c.id,
+    c.parent_id,
+    p.name AS parent_name,
+    p.slug AS parent_slug,
+    c.name,
+    c.slug,
+    c.depth,
+    c.path,
+    c.description,
+    c.display_order,
+    c.is_active,
+    c.metadata,
+    c.created_at,
+    c.updated_at
+FROM categories c
+LEFT JOIN categories p ON c.parent_id = p.id;
 `;
 
 export async function resetDatabase(): Promise<void> {
@@ -412,11 +493,11 @@ export async function resetDatabase(): Promise<void> {
     try {
       await targetClient.query(SCHEMA_SQL);
 
-      // Dynamically insert company initial seed from company.ts with parameterized query
+      // Dynamically insert organization initial seed from organizations.ts with parameterized query
       await targetClient.query(
-        `INSERT INTO company (
+        `INSERT INTO organizations (
            id,
-           company_name,
+           organization_name,
            legal_name,
            tagline,
            description,
@@ -445,31 +526,101 @@ export async function resetDatabase(): Promise<void> {
          )
          ON CONFLICT (id) DO NOTHING;`,
         [
-          defaultCompanyEntity.id ?? 1,
-          defaultCompanyEntity.company_name,
-          defaultCompanyEntity.legal_name,
-          defaultCompanyEntity.tagline || null,
-          defaultCompanyEntity.description || null,
-          defaultCompanyEntity.logo_url || null,
-          defaultCompanyEntity.logo_dark_url || null,
-          defaultCompanyEntity.favicon_url || null,
-          defaultCompanyEntity.cover_banner_url || null,
-          defaultCompanyEntity.support_email,
-          defaultCompanyEntity.contact_email || null,
-          defaultCompanyEntity.support_phone || null,
-          defaultCompanyEntity.support_url || null,
-          defaultCompanyEntity.address_line1 || null,
-          defaultCompanyEntity.city || null,
-          defaultCompanyEntity.state || null,
-          defaultCompanyEntity.postal_code || null,
-          defaultCompanyEntity.country || null,
-          defaultCompanyEntity.default_currency || "USD",
-          defaultCompanyEntity.platform_fee_percent ?? 5.0,
-          defaultCompanyEntity.payout_minimum ?? 50.0,
-          JSON.stringify(defaultCompanyEntity.social_links ?? {}),
-          JSON.stringify(defaultCompanyEntity.metadata ?? {}),
+          defaultOrganizationEntity.id ?? 1,
+          defaultOrganizationEntity.organization_name,
+          defaultOrganizationEntity.legal_name,
+          defaultOrganizationEntity.tagline || null,
+          defaultOrganizationEntity.description || null,
+          defaultOrganizationEntity.logo_url || null,
+          defaultOrganizationEntity.logo_dark_url || null,
+          defaultOrganizationEntity.favicon_url || null,
+          defaultOrganizationEntity.cover_banner_url || null,
+          defaultOrganizationEntity.support_email,
+          defaultOrganizationEntity.contact_email || null,
+          defaultOrganizationEntity.support_phone || null,
+          defaultOrganizationEntity.support_url || null,
+          defaultOrganizationEntity.address_line1 || null,
+          defaultOrganizationEntity.city || null,
+          defaultOrganizationEntity.state || null,
+          defaultOrganizationEntity.postal_code || null,
+          defaultOrganizationEntity.country || null,
+          defaultOrganizationEntity.default_currency || "PKR",
+          defaultOrganizationEntity.platform_fee_percent ?? 5.0,
+          defaultOrganizationEntity.payout_minimum ?? 50.0,
+          JSON.stringify(defaultOrganizationEntity.social_links ?? {}),
+          JSON.stringify(defaultOrganizationEntity.metadata ?? {}),
         ],
       );
+
+      // Dynamically seed digital asset categories from categories.ts
+      console.log("🌱 Seeding digital asset categories from categories.ts...");
+      const flatCats = flattenCategories(defaultCategories);
+      const slugToIdMap = new Map<string, number>();
+
+      const maxDepth = Math.max(...flatCats.map((c) => c.depth));
+      for (let d = 0; d <= maxDepth; d++) {
+        const itemsAtDepth = flatCats.filter((c) => c.depth === d);
+        if (itemsAtDepth.length === 0) continue;
+
+        const chunkSize = 50;
+        for (let i = 0; i < itemsAtDepth.length; i += chunkSize) {
+          const chunk = itemsAtDepth.slice(i, i + chunkSize);
+          const valuePlaceholders: string[] = [];
+          const values: any[] = [];
+
+          chunk.forEach((cat, idx) => {
+            const parentId = cat.parentSlug
+              ? (slugToIdMap.get(cat.parentSlug) ?? null)
+              : null;
+            const offset = idx * 8;
+            valuePlaceholders.push(
+              `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}::jsonb)`,
+            );
+            values.push(
+              parentId,
+              cat.name,
+              cat.slug,
+              cat.depth,
+              cat.fullPath,
+              i + idx + 1,
+              true,
+              JSON.stringify({ pathSlugs: cat.pathSlugs }),
+            );
+          });
+
+          const insertCategoriesQuery = `
+            INSERT INTO categories (
+              parent_id,
+              name,
+              slug,
+              depth,
+              path,
+              display_order,
+              is_active,
+              metadata
+            ) VALUES ${valuePlaceholders.join(", ")}
+            ON CONFLICT (slug) DO UPDATE SET
+              parent_id = EXCLUDED.parent_id,
+              name = EXCLUDED.name,
+              depth = EXCLUDED.depth,
+              path = EXCLUDED.path,
+              display_order = EXCLUDED.display_order,
+              is_active = EXCLUDED.is_active,
+              metadata = EXCLUDED.metadata,
+              updated_at = CURRENT_TIMESTAMP
+            RETURNING id, slug;
+          `;
+
+          const result = await targetClient.query(
+            insertCategoriesQuery,
+            values,
+          );
+          for (const row of result.rows) {
+            slugToIdMap.set(row.slug, row.id);
+          }
+        }
+      }
+      console.log(`✅ Seeded ${slugToIdMap.size} digital asset categories successfully!`);
 
       await targetClient.query("COMMIT");
       console.log("✅ Schema applied successfully!");

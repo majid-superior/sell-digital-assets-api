@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const UpdateCompanySchema = z.object({
-  company_name: z.string().trim().min(1).max(150).optional(),
+export const UpdateOrganizationSchema = z.object({
+  organization_name: z.string().trim().min(1).max(150).optional(),
   legal_name: z.string().trim().min(1).max(150).optional(),
   tagline: z.string().trim().max(255).optional().nullable(),
   description: z.string().optional().nullable(),
@@ -27,4 +27,5 @@ export const UpdateCompanySchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export type UpdateCompanyInput = z.infer<typeof UpdateCompanySchema>;
+export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>;
+

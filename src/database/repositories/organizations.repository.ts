@@ -1,19 +1,19 @@
 import { BaseRepository } from "./base.repository.js";
-import type { CompanyEntity } from "../types.js";
+import type { OrganizationEntity } from "../types.js";
 
-export class CompanyRepository extends BaseRepository<CompanyEntity> {
-  async getCompany(): Promise<CompanyEntity | null> {
-    const result = await this.query<CompanyEntity>(
+export class OrganizationsRepository extends BaseRepository<OrganizationEntity> {
+  async getOrganization(): Promise<OrganizationEntity | null> {
+    const result = await this.query<OrganizationEntity>(
       `SELECT 
-         c.*,
+         o.*,
          json_build_object(
            'code', curr.code,
            'name', curr.name,
            'symbol', curr.symbol
          ) AS currency
-       FROM company c
-       LEFT JOIN currencies curr ON c.default_currency = curr.code
-       WHERE c.id = 1 
+       FROM organizations o
+       LEFT JOIN currencies curr ON o.default_currency = curr.code
+       WHERE o.id = 1 
        LIMIT 1`,
     );
     return result.rows[0] || null;
@@ -26,10 +26,10 @@ export class CompanyRepository extends BaseRepository<CompanyEntity> {
     return result.rows;
   }
 
-  async updateCompany(data: Record<string, any>): Promise<CompanyEntity> {
+  async updateOrganization(data: Record<string, any>): Promise<OrganizationEntity> {
     // Only update fields that are provided
-    const allowedFields: (keyof CompanyEntity)[] = [
-      "company_name",
+    const allowedFields: (keyof OrganizationEntity)[] = [
+      "organization_name",
       "legal_name",
       "tagline",
       "description",
@@ -72,14 +72,15 @@ export class CompanyRepository extends BaseRepository<CompanyEntity> {
     }
 
     if (updates.length === 0) {
-      const existing = await this.getCompany();
+      const existing = await this.getOrganization();
       return existing!;
     }
 
-    const queryStr = `UPDATE company SET ${updates.join(", ")} WHERE id = 1 RETURNING *`;
-    await this.query<CompanyEntity>(queryStr, values);
-    return (await this.getCompany())!;
+    const queryStr = `UPDATE organizations SET ${updates.join(", ")} WHERE id = 1 RETURNING *`;
+    await this.query<OrganizationEntity>(queryStr, values);
+    return (await this.getOrganization())!;
   }
 }
 
-export const companyRepository = new CompanyRepository();
+export const organizationsRepository = new OrganizationsRepository();
+export const organizationRepository = organizationsRepository;

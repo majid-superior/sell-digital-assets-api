@@ -1,5 +1,5 @@
 import type { SystemStatus } from "../status.service.js";
-import { company } from "../../data/company.js";
+import { organization } from "../../data/organizations.js";
 import { escapeHtml } from "../page.utils.js";
 
 export function renderHeader(data?: SystemStatus | null): string {
@@ -19,13 +19,13 @@ export function renderHeader(data?: SystemStatus | null): string {
 
   return `
     <header class="header">
-      <a href="/" class="brand-wrap" title="${escapeHtml(company.name)} Dashboard">
+      <a href="/" class="brand-wrap" title="${escapeHtml(organization.name)} Dashboard">
         <div class="brand-icon">
-          <img src="${escapeHtml(company.logo.url)}" alt="${escapeHtml(company.logo.alt)}" width="${company.logo.width}" height="${company.logo.height}" />
+          <img src="${escapeHtml(organization.logo.url)}" alt="${escapeHtml(organization.logo.alt)}" width="${organization.logo.width}" height="${organization.logo.height}" />
         </div>
         <div class="brand-info">
-          <h1>${escapeHtml(company.name)}</h1>
-          <p>${escapeHtml(company.tagline)}</p>
+          <h1>${escapeHtml(organization.name)}</h1>
+          <p>${escapeHtml(organization.tagline)}</p>
         </div>
       </a>
 

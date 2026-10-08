@@ -21,8 +21,9 @@ import { renderErrorPage } from "./pages/error.page.js";
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
-import companyRoutes from "./modules/company/company.routes.js";
-import { company } from "./data/company.js";
+import organizationsRoutes from "./modules/organizations/organizations.routes.js";
+import categoriesRoutes from "./modules/categories/categories.routes.js";
+import { organization } from "./data/organizations.js";
 
 const themeStaticPath = path.resolve(process.cwd(), "public/theme");
 
@@ -105,7 +106,7 @@ const swaggerFilePath = fs.existsSync(swaggerDistPath) ? swaggerDistPath : swagg
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
   // 1. Define your explicit order
-  const tagOrder = ["Health", "Company Branding", "Authentication", "Users"];
+  const tagOrder = ["Health", "Organization Branding", "Authentication", "Users", "Categories"];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
     swaggerFile.tags.sort((a: { name: string }, b: { name: string }) => {
@@ -119,8 +120,8 @@ if (fs.existsSync(swaggerFilePath)) {
     "/doc",
     swaggerUi.serveFiles(swaggerFile, {}),
     swaggerUi.setup(swaggerFile, {
-      customSiteTitle: `${company.title} Documentation`,
-      customfavIcon: company.favicon.url,
+      customSiteTitle: `${organization.title} Documentation`,
+      customfavIcon: organization.favicon.url,
       customCssUrl: [
         "/theme/fonts.css",
         "/theme/theme.css",
@@ -159,7 +160,8 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
 app.use("/api", generalLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
-app.use("/api/company", companyRoutes);
+app.use("/api/organizations", organizationsRoutes);
+app.use("/api/categories", categoriesRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

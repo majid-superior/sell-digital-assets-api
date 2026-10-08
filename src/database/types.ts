@@ -11,9 +11,9 @@ export interface CurrencyEntity {
   created_at?: Date | string;
 }
 
-export interface CompanyEntity {
+export interface OrganizationEntity {
   id?: number;
-  company_name: string;
+  organization_name: string;
   legal_name: string;
   tagline?: string | null;
   description?: string | null;
@@ -68,8 +68,24 @@ export interface UserEntity {
   deleted_at?: Date | string | null;
 }
 
+export interface CategoryEntity {
+  id?: number;
+  parent_id?: number | null;
+  name: string;
+  slug: string;
+  depth?: number;
+  path?: string;
+  description?: string | null;
+  display_order?: number;
+  is_active?: boolean;
+  metadata?: Record<string, unknown> | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
 export interface DatabaseSchema {
-  company: CompanyEntity;
+  organizations: OrganizationEntity;
   roles: RoleEntity;
   users: UserEntity;
+  categories: CategoryEntity;
 }

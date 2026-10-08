@@ -17,12 +17,16 @@
       "description": "API and database observability endpoints"
     },
     {
-      "name": "Company Branding",
-      "description": "Company branding, legal details, and platform settings"
+      "name": "Organization Branding",
+      "description": "Organization branding, legal details, and platform settings"
     },
     {
       "name": "Authentication",
       "description": "User registration, authentication and JWT refresh tokens"
+    },
+    {
+      "name": "Categories",
+      "description": "Digital assets category taxonomy, hierarchical trees, and CRUD management"
     },
     {
       "name": "Users",
@@ -33,18 +37,49 @@
     "/api/health": {
       "get": {
         "description": "Returns database connectivity and operational telemetry",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
-          "default": {
-            "description": ""
+          "200": {
+            "description": "System and database status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uptime": {
+                          "type": "number",
+                          "example": 120.5
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "database": {
+                          "type": "object",
+                          "properties": {
+                            "connected": {
+                              "type": "boolean",
+                              "example": true
+                            },
+                            "latency": {
+                              "type": "number",
+                              "example": 1.2
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -56,15 +91,7 @@
     "/api/auth/register": {
       "post": {
         "description": "Creates a new user account and returns JWT tokens",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "201": {
             "description": "Created"
@@ -89,15 +116,7 @@
     "/api/auth/login": {
       "post": {
         "description": "Authenticates credentials and returns access & refresh tokens",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -122,15 +141,7 @@
     "/api/auth/refresh": {
       "post": {
         "description": "Exchanges a valid refresh token for a new access token",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -155,15 +166,7 @@
     "/api/auth/logout": {
       "post": {
         "description": "Revokes active refresh token session and clears authentication cookies",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -189,13 +192,6 @@
       "get": {
         "description": "Returns paginated list of registered users",
         "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "authorization",
             "in": "header",
@@ -237,13 +233,6 @@
         "description": "Creates a new user account with designated role",
         "parameters": [
           {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -282,13 +271,6 @@
         "description": "Retrieves profile of the token owner",
         "parameters": [
           {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -314,13 +296,6 @@
       "patch": {
         "description": "Updates own profile details or password",
         "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "authorization",
             "in": "header",
@@ -353,13 +328,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "req",
-            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -399,13 +367,6 @@
             }
           },
           {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -440,13 +401,6 @@
             }
           },
           {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -470,38 +424,23 @@
         "summary": "Delete user by ID (Admin only)"
       }
     },
-    "/api/company": {
+    "/api/organizations": {
       "get": {
-        "description": "Retrieves public company details, branding, and platform settings",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "description": "Retrieves public organization details, branding, and platform settings",
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
           }
         },
         "tags": [
-          "Company Branding"
+          "Organization Branding"
         ],
-        "summary": "Get company details & platform branding"
+        "summary": "Get organization details & platform branding"
       },
       "put": {
-        "description": "Updates company profile, branding, URLs, addresses, and platform settings",
+        "description": "Updates organization profile, branding, URLs, addresses, and platform settings",
         "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "authorization",
             "in": "header",
@@ -516,9 +455,9 @@
           }
         },
         "tags": [
-          "Company Branding"
+          "Organization Branding"
         ],
-        "summary": "Update company details (Admin only)",
+        "summary": "Update organization details (Admin only)",
         "security": [
           {
             "bearerAuth": []
@@ -526,15 +465,8 @@
         ]
       },
       "patch": {
-        "description": "Partially updates company configuration",
+        "description": "Partially updates organization configuration",
         "parameters": [
-          {
-            "name": "req",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "authorization",
             "in": "header",
@@ -549,9 +481,9 @@
           }
         },
         "tags": [
-          "Company Branding"
+          "Organization Branding"
         ],
-        "summary": "Partially update company details (Admin only)",
+        "summary": "Partially update organization details (Admin only)",
         "security": [
           {
             "bearerAuth": []
@@ -559,16 +491,113 @@
         ]
       }
     },
-    "/api/company/currencies": {
+    "/api/organizations/currencies": {
       "get": {
-        "description": "Retrieves public company details, branding, and platform settings",
+        "description": "Retrieves all active platform supported currencies (PKR, USD, EUR, GBP, etc.)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of supported currencies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "example": "PKR"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Pakistani Rupee"
+                          },
+                          "symbol": {
+                            "type": "string",
+                            "example": "₨"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Organization Branding"
+        ],
+        "summary": "List supported currencies"
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "description": "Retrieves categories list or nested hierarchical tree. Supports query params: ?tree=true, ?page=, ?limit=, ?search=, ?parentId=, ?includeInactive=true",
         "parameters": [
           {
-            "name": "req",
-            "in": "header",
+            "name": "tree",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Return nested hierarchical tree structure"
+          },
+          {
+            "name": "search",
+            "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Search by category name, path, or slug"
+          },
+          {
+            "name": "parentId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by parent category ID"
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by hierarchical depth (0 = root)"
+          },
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include deactivated / soft-deleted categories"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page number for pagination"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size limit"
           }
         ],
         "responses": {
@@ -577,9 +606,220 @@
           }
         },
         "tags": [
-          "Company Branding"
+          "Categories"
         ],
-        "summary": "Get company details & platform branding"
+        "summary": "List categories or fetch category tree"
+      },
+      "post": {
+        "description": "Creates a new category. Automatically derives depth and hierarchical breadcrumb path.",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Create category (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "get": {
+        "description": "Retrieves category record with resolved parent category information",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Category ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Get category by ID"
+      },
+      "patch": {
+        "description": "Updates category properties. Automatically recalculates depth and cascades path updates to child subcategories.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Category ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Update category by ID (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryInput"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "description": "Updates category properties. Automatically recalculates depth and cascades path updates to child subcategories.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Category ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Replace/Update category by ID (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryInput"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "description": "Soft-deletes a category by toggling is_active = FALSE. Physical SQL DELETE is strictly prohibited.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Category ID"
+          },
+          {
+            "name": "cascade",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Cascade deactivation to all child subcategories"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Soft-delete category by ID (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/categories/{id}/restore": {
+      "post": {
+        "description": "Reactivates an archived category (sets is_active = TRUE) and optionally restores parent ancestor chain.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Category ID"
+          },
+          {
+            "name": "restoreParents",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Also reactivate parent ancestor categories"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "summary": "Restore soft-deleted category by ID (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     }
   },
@@ -947,6 +1187,787 @@
                   "format": {
                     "type": "string",
                     "example": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateCategoryInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "required": {
+            "type": "array",
+            "example": [
+              "name"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "UI & UX Kits"
+                  }
+                }
+              },
+              "slug": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "ui-and-ux-kits"
+                  }
+                }
+              },
+              "parentId": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 1
+                  }
+                }
+              },
+              "description": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "User interface design systems and components"
+                  }
+                }
+              },
+              "displayOrder": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 1
+                  }
+                }
+              },
+              "isActive": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "boolean"
+                  },
+                  "example": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "UpdateCategoryInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Mobile App UI Kits"
+                  }
+                }
+              },
+              "slug": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "mobile-app-ui-kits"
+                  }
+                }
+              },
+              "parentId": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 3
+                  }
+                }
+              },
+              "description": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "iOS and Android mobile app UI design kits"
+                  }
+                }
+              },
+              "displayOrder": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 2
+                  }
+                }
+              },
+              "isActive": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "boolean"
+                  },
+                  "example": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CategoryResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 3
+                  }
+                }
+              },
+              "parent_id": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 1
+                  }
+                }
+              },
+              "parent_name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Graphics & Design"
+                  }
+                }
+              },
+              "parent_slug": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "graphics-and-design"
+                  }
+                }
+              },
+              "name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "UI & UX Kits"
+                  }
+                }
+              },
+              "slug": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "ui-and-ux-kits"
+                  }
+                }
+              },
+              "depth": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 1
+                  }
+                }
+              },
+              "path": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Graphics & Design > UI & UX Kits"
+                  }
+                }
+              },
+              "description": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "nullable": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Component libraries and mobile app kits"
+                  }
+                }
+              },
+              "display_order": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "integer"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 3
+                  }
+                }
+              },
+              "is_active": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "boolean"
+                  },
+                  "example": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  }
+                }
+              },
+              "created_at": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "example": "date-time"
+                  }
+                }
+              },
+              "updated_at": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "example": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "UpdateOrganizationInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "organization_name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Sell Digital Assets"
+                  }
+                }
+              },
+              "legal_name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Sell Digital Assets Inc."
+                  }
+                }
+              },
+              "tagline": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Digital Assets Marketplace"
+                  }
+                }
+              },
+              "description": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Platform for selling digital assets"
+                  }
+                }
+              },
+              "logo_url": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "/logo.png"
+                  }
+                }
+              },
+              "logo_dark_url": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "/logo-dark.png"
+                  }
+                }
+              },
+              "favicon_url": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "/favicon.ico"
+                  }
+                }
+              },
+              "cover_banner_url": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "/banner.png"
+                  }
+                }
+              },
+              "support_email": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "example": "email"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "support@selldigitalassets.com"
+                  }
+                }
+              },
+              "contact_email": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "example": "email"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "contact@selldigitalassets.com"
+                  }
+                }
+              },
+              "support_phone": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "+00 (012) 345-6789"
+                  }
+                }
+              },
+              "support_url": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "format": {
+                    "type": "string",
+                    "example": "uri"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "https://selldigitalassets.com/support"
+                  }
+                }
+              },
+              "address_line1": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Ring Road"
+                  }
+                }
+              },
+              "address_line2": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": ""
+                  }
+                }
+              },
+              "city": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Lahore"
+                  }
+                }
+              },
+              "state": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Punjab"
+                  }
+                }
+              },
+              "postal_code": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "000000"
+                  }
+                }
+              },
+              "country": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Pakistan"
+                  }
+                }
+              },
+              "tax_id": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": ""
+                  }
+                }
+              },
+              "default_currency": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "PKR"
+                  }
+                }
+              },
+              "platform_fee_percent": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "number"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 5
+                  }
+                }
+              },
+              "payout_minimum": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "number"
+                  },
+                  "example": {
+                    "type": "number",
+                    "example": 25000
+                  }
+                }
+              },
+              "social_links": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
                   }
                 }
               }

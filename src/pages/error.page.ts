@@ -1,5 +1,5 @@
 import { escapeHtml } from "./page.utils.js";
-import { company } from "../data/company.js";
+import { organization } from "../data/organizations.js";
 import { renderHeader } from "./components/header.component.js";
 import { renderFooter } from "./components/footer.component.js";
 
@@ -7,8 +7,8 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
   const safePath = escapeHtml(urlPath);
   const is500 = statusCode >= 500;
   const pageTitle = is500
-    ? `${statusCode} - Internal Server Error | ${escapeHtml(company.title)}`
-    : `${statusCode} - Page Not Available | ${escapeHtml(company.title)}`;
+    ? `${statusCode} - Internal Server Error | ${escapeHtml(organization.title)}`
+    : `${statusCode} - Page Not Available | ${escapeHtml(organization.title)}`;
   const badgeText = is500
     ? `${statusCode} Error &bull; Internal Server Error`
     : `${statusCode} Error &bull; Route Not Found`;
@@ -23,7 +23,7 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${pageTitle}</title>
-  <link rel="icon" type="${escapeHtml(company.favicon.type)}" href="${escapeHtml(company.favicon.url)}" />
+  <link rel="icon" type="${escapeHtml(organization.favicon.type)}" href="${escapeHtml(organization.favicon.url)}" />
 
   <!-- Prevent Theme Flashing (Zero-FOUC Head Script) -->
   <script>
@@ -90,10 +90,10 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
 
         <div class="notice">
           <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <span>${escapeHtml(company.name)} &bull; All REST endpoints require client API requests and return JSON payloads.</span>
+            <span>${escapeHtml(organization.name)} &bull; All REST endpoints require client API requests and return JSON payloads.</span>
           </div>
           <div style="font-size: 0.75rem; color: var(--color-on-surface-variant); opacity: 0.85; margin-top: 4px;">
-            Support: <a href="mailto:${escapeHtml(company.contact.email)}" style="color: var(--color-primary);">${escapeHtml(company.contact.email)}</a> &bull; ${escapeHtml(company.contact.phone)}
+            Support: <a href="mailto:${escapeHtml(organization.contact.email)}" style="color: var(--color-primary);">${escapeHtml(organization.contact.email)}</a> &bull; ${escapeHtml(organization.contact.phone)}
           </div>
         </div>
       </section>

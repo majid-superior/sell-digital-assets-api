@@ -91,12 +91,12 @@ sell-digital-assets-api/
 │   │   ├── migrations/                  # Versioned SQL migration files
 │   │   ├── repositories/
 │   │   │   ├── base.repository.ts       # Abstract repository with query execution helpers
-│   │   │   ├── company.repository.ts    # Singleton company configuration & currency queries
+│   │   │   ├── organizations.repository.ts # Singleton organization configuration & currency queries
 │   │   │   └── user.repository.ts       # User account persistence & lookup
 │   │   └── reset.ts                     # Full automated schema builder and seed runner
 │   ├── modules/
 │   │   ├── auth/                        # Registration, login, token refresh, and logout
-│   │   ├── company/                     # Singleton company profile, branding, and active currencies
+│   │   ├── organizations/               # Singleton organization profile, branding, and active currencies
 │   │   ├── users/                       # User profile management and directory
 │   │   ├── products/                    # Digital asset product catalog
 │   │   ├── inventory/                   # Product files and license packages
@@ -125,9 +125,9 @@ erDiagram
         timestamptz created_at
     }
 
-    COMPANY {
+    ORGANIZATIONS {
         smallint id PK "Checked id = 1 (Singleton)"
-        varchar company_name
+        varchar organization_name
         varchar legal_name
         varchar tagline
         text description
@@ -180,7 +180,7 @@ erDiagram
         timestamptz created_at
     }
 
-    CURRENCIES ||--o{ COMPANY : "default currency"
+    CURRENCIES ||--o{ ORGANIZATIONS : "default currency"
     CURRENCIES ||--o{ PRODUCTS : "priced in"
     CURRENCIES ||--o{ SALES : "billed in"
     USERS ||--o{ PRODUCTS : "creates"
@@ -198,7 +198,7 @@ erDiagram
    - Upon verified checkout, a time-limited HMAC-SHA256 signed token is minted containing: `assetId`, `userId`, and `expiresAt` (default 15 minutes).
    - The token is verified using `crypto.timingSafeEqual` to safeguard against timing attacks. Expired or tampered links return HTTP 410 / 403.
 2. **PostgreSQL Truncation Defense**:
-   - Critical system entities (such as `company` configuration) utilize PostgreSQL triggers (`prevent_table_truncate()`) to block inadvertent or malicious table wipes.
+   - Critical system entities (such as `organizations` configuration) utilize PostgreSQL triggers (`prevent_table_truncate()`) to block inadvertent or malicious table wipes.
 3. **Password Security**:
    - Passwords must be hashed using `bcryptjs` with salt rounds set to 12. Password hashes are excluded by default in repository projection queries.
 4. **Rate Limiting Tiers**:
