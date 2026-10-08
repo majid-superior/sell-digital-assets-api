@@ -558,6 +558,29 @@
           }
         ]
       }
+    },
+    "/api/company/currencies": {
+      "get": {
+        "description": "Retrieves public company details, branding, and platform settings",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Company Branding"
+        ],
+        "summary": "Get company details & platform branding"
+      }
     }
   },
   "components": {

@@ -1,6 +1,12 @@
+import dns from "node:dns";
 import pg from "pg";
 import { env } from "./env.js";
 import { logger } from "../core/logger/index.js";
+
+// Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 const { Pool } = pg;
 
@@ -12,13 +18,44 @@ const requiresSsl =
   env.DATABASE_URL.includes("supabase.co") ||
   env.DATABASE_URL.includes("neon.tech");
 
+const publicResolver = new dns.Resolver();
+publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
+
+export const resilientDnsLookup = (
+  hostname: string,
+  options: any,
+  callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
+): void => {
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+  ) {
+    return dns.lookup(hostname, options, callback as any);
+  }
+
+  dns.lookup(hostname, options, (err, address, family) => {
+    if (err) {
+      publicResolver.resolve4(hostname, (resErr, addresses) => {
+        if (resErr || !addresses || addresses.length === 0) {
+          return callback(err);
+        }
+        return callback(null, addresses[0], 4);
+      });
+    } else {
+      callback(null, address, family);
+    }
+  });
+};
+
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+  lookup: resilientDnsLookup,
   max: 20, // Max concurrent clients in the pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-});
+} as any);
 
 pool.on("error", (err: Error) => {
   logger.error({ err }, "Unexpected error on idle PostgreSQL client");

@@ -28,6 +28,18 @@ export class CompanyController {
       next(error);
     }
   }
+
+  async getCurrencies(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await companyService.getCurrencies();
+      res.status(200).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const companyController = new CompanyController();

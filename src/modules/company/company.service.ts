@@ -23,6 +23,10 @@ export class CompanyService {
     refreshCompanyCache(updated);
     return updated;
   }
+
+  async getCurrencies() {
+    return await companyRepository.getCurrencies();
+  }
 }
 
 export const companyService = new CompanyService();

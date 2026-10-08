@@ -9,6 +9,9 @@ const router = Router();
 // Public: Get company & platform configuration
 router.get("/", companyController.getCompany.bind(companyController));
 
+// Public: Get all supported currencies from currencies table
+router.get("/currencies", companyController.getCurrencies.bind(companyController));
+
 // Protected: Only Administrator (sell-digital-assets-admin) can update company configuration
 router.put(
   "/",

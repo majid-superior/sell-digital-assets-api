@@ -19,6 +19,13 @@ export class CompanyRepository extends BaseRepository<CompanyEntity> {
     return result.rows[0] || null;
   }
 
+  async getCurrencies(): Promise<{ code: string; name: string; symbol: string }[]> {
+    const result = await this.query<{ code: string; name: string; symbol: string }>(
+      `SELECT code, name, symbol FROM currencies ORDER BY (code = 'PKR') DESC, name ASC`
+    );
+    return result.rows;
+  }
+
   async updateCompany(data: Record<string, any>): Promise<CompanyEntity> {
     // Only update fields that are provided
     const allowedFields: (keyof CompanyEntity)[] = [

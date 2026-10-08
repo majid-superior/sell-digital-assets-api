@@ -1,9 +1,15 @@
+import dns from "node:dns";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
 import { defaultCompanyEntity } from "../data/company.js";
+
+// Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 const { Client } = pg;
 
@@ -74,11 +80,7 @@ INSERT INTO currencies (code, name, symbol) VALUES
     ('EUR', 'Euro', '€'),
     ('GBP', 'British Pound', '£'),
     ('JPY', 'Japanese Yen', '¥'),
-    ('CAD', 'Canadian Dollar', 'CA$'),
-    ('AUD', 'Australian Dollar', 'A$'),
-    ('CHF', 'Swiss Franc', 'CHF'),
-    ('CNY', 'Chinese Yuan', '¥'),
-    ('AED', 'United Arab Emirates Dirham', 'AED')
+    ('CNY', 'Chinese Yuan', '¥')
 ON CONFLICT (code) DO UPDATE 
     SET name = EXCLUDED.name,
         symbol = EXCLUDED.symbol;
@@ -327,28 +329,77 @@ export async function resetDatabase(): Promise<void> {
            WHERE datname = $1 AND pid <> pg_backend_pid();`,
           [targetDbName],
         );
-        await maintenanceClient.query(`DROP DATABASE IF EXISTS "${safeDbName}";`);
+        await maintenanceClient.query(
+          `DROP DATABASE IF EXISTS "${safeDbName}";`,
+        );
       }
 
       console.log("📦 Creating fresh database...");
       await maintenanceClient.query(`CREATE DATABASE "${safeDbName}";`);
     } catch (err: any) {
-      console.warn(`⚠️  Maintenance DB drop/create skipped (${err.message}). Falling back to schema reset.`);
+      console.warn(
+        `⚠️  Maintenance DB drop/create skipped (${err.message}). Falling back to schema reset.`,
+      );
     } finally {
       await maintenanceClient.end().catch(() => {});
     }
   } else {
-    console.log("☁️  Cloud / Managed Database detected: Performing clean schema reset...");
+    console.log(
+      "☁️  Cloud / Managed Database detected: Performing clean schema reset...",
+    );
   }
+
+  const publicResolver = new dns.Resolver();
+  publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
+
+  const resilientDnsLookup = (
+    hostname: string,
+    options: any,
+    callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
+  ): void => {
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    ) {
+      return dns.lookup(hostname, options, callback as any);
+    }
+
+    dns.lookup(hostname, options, (err, address, family) => {
+      if (err) {
+        publicResolver.resolve4(hostname, (resErr, addresses) => {
+          if (resErr || !addresses || addresses.length === 0) {
+            return callback(err);
+          }
+          return callback(null, addresses[0], 4);
+        });
+      } else {
+        callback(null, address, family);
+      }
+    });
+  };
 
   // Step 2: Connect to the target database and execute the schema DDL in a transaction
   const targetClient = new Client({
     connectionString: databaseUrl,
     ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-  });
+    lookup: resilientDnsLookup,
+  } as any);
 
   try {
-    await targetClient.connect();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await targetClient.connect();
+        break;
+      } catch (connErr: any) {
+        if (attempt < 3) {
+          console.warn(`⚠️  Database connection attempt ${attempt} failed (${connErr.message}). Retrying in 2s...`);
+          await new Promise((r) => setTimeout(r, 2000));
+        } else {
+          throw connErr;
+        }
+      }
+    }
 
     if (isCloudDb) {
       await targetClient.query(
