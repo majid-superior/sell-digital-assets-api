@@ -202,20 +202,13 @@ erDiagram
         serial id PK
         varchar(100) name
         varchar(100) slug UK
-        text description
+        varchar(20) mode
         boolean is_active
-        boolean is_default
         jsonb color_hex_map
+        jsonb color_tokens
+        jsonb typography
+        varchar(50) border_radius
         jsonb metadata
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    THEME_SETTINGS {
-        smallint id PK "Checked id = 1 (Singleton)"
-        integer active_theme_id FK
-        boolean is_dark_mode_default
-        text custom_css
         timestamptz created_at
         timestamptz updated_at
     }
@@ -223,7 +216,6 @@ erDiagram
     CURRENCIES ||--o{ ORGANIZATIONS : "default currency"
     ROLES ||--o{ USERS : "assigned to"
     CATEGORIES ||--o{ CATEGORIES : "parent of"
-    THEMES ||--o{ THEME_SETTINGS : "active theme"
 ```
 
 ---

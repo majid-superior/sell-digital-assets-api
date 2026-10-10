@@ -335,14 +335,17 @@ SELECT
 FROM categories c
 LEFT JOIN categories p ON c.parent_id = p.id;
 
--- Step 9: Themes Table (Dynamic Theme Tokens & Palette)
+-- Step 9: Themes Table (Unified Dynamic Theme Tokens, Palette, Mode & Typography)
 CREATE TABLE IF NOT EXISTS themes (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL DEFAULT 'Default Theme',
     slug VARCHAR(100) NOT NULL UNIQUE DEFAULT 'default',
+    mode VARCHAR(20) NOT NULL DEFAULT 'dark',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     color_hex_map JSONB NOT NULL,
     color_tokens JSONB NOT NULL,
+    typography JSONB NOT NULL DEFAULT '{}'::jsonb,
+    border_radius VARCHAR(50) NOT NULL DEFAULT 'rounded-lg',
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -361,69 +364,53 @@ BEFORE UPDATE ON themes
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
+-- Drop legacy theme_settings table if it exists
+DROP TABLE IF EXISTS theme_settings CASCADE;
+
 -- Seed Default Theme Palette and Tokens (sourced from src/data/themes.ts)
 INSERT INTO themes (
     name,
     slug,
+    mode,
     is_active,
     color_hex_map,
     color_tokens,
+    typography,
+    border_radius,
     metadata
 ) VALUES (
     '${defaultTheme.name.replace(/'/g, "''")}',
     '${defaultTheme.slug.replace(/'/g, "''")}',
+    'dark',
     ${defaultTheme.is_active ? "TRUE" : "FALSE"},
     '${JSON.stringify(defaultTheme.color_hex_map).replace(/'/g, "''")}'::jsonb,
     '${JSON.stringify(defaultTheme.color_tokens).replace(/'/g, "''")}'::jsonb,
+    '${JSON.stringify(defaultTheme.metadata?.typography ?? {}).replace(/'/g, "''")}'::jsonb,
+    'rounded-lg',
     '${JSON.stringify(defaultTheme.metadata ?? {}).replace(/'/g, "''")}'::jsonb
 )
 ON CONFLICT (slug) DO UPDATE
-    SET color_hex_map = EXCLUDED.color_hex_map,
+    SET name = EXCLUDED.name,
+        mode = EXCLUDED.mode,
+        color_hex_map = EXCLUDED.color_hex_map,
         color_tokens = EXCLUDED.color_tokens,
+        typography = EXCLUDED.typography,
+        border_radius = EXCLUDED.border_radius,
         metadata = EXCLUDED.metadata,
         updated_at = CURRENT_TIMESTAMP;
 
--- Step 10: Dynamic Theme Settings Table (Single Active Theme with Custom Mode & Typography)
-CREATE TABLE IF NOT EXISTS theme_settings (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL DEFAULT 'Default Theme',
-    mode VARCHAR(20) NOT NULL DEFAULT 'dark',
-    color_hex_map JSONB NOT NULL,
-    typography JSONB NOT NULL DEFAULT '{}'::jsonb,
-    border_radius VARCHAR(50) NOT NULL DEFAULT 'rounded-lg',
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_theme_settings_active 
-    ON theme_settings (is_active, updated_at DESC);
-
--- Seed Initial Active Theme Setting
-INSERT INTO theme_settings (
-    name,
-    mode,
-    color_hex_map,
-    typography,
-    border_radius,
-    is_active
-) VALUES (
-    '${defaultTheme.name.replace(/'/g, "''")}',
-    'dark',
-    '${JSON.stringify(defaultTheme.color_hex_map).replace(/'/g, "''")}'::jsonb,
-    '${JSON.stringify(defaultTheme.metadata?.typography ?? {}).replace(/'/g, "''")}'::jsonb,
-    'rounded-lg',
-    TRUE
-);
-
--- Step 11: Unified View for Themes
+-- Step 10: Unified View for Themes
 CREATE OR REPLACE VIEW view_themes AS
 SELECT 
     t.id,
     t.name,
     t.slug,
+    t.mode,
     t.is_active,
     t.color_hex_map,
     t.color_tokens,
+    t.typography,
+    t.border_radius,
     t.metadata,
     t.created_at,
     t.updated_at

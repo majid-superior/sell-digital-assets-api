@@ -272,9 +272,12 @@ ${darkLines.join("\n")}
     const created = await themeRepository.createTheme({
       name: input.name,
       slug: input.slug,
+      mode: input.mode || "dark",
       is_active: input.is_active ?? input.isActive ?? false,
       color_hex_map: rawHex as any,
       color_tokens: rawTokens as any,
+      typography: input.typography,
+      border_radius: input.border_radius || input.borderRadius || "rounded-lg",
       metadata: input.metadata,
     });
 

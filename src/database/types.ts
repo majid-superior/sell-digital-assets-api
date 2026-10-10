@@ -91,23 +91,17 @@ export interface ThemeEntity {
   is_active: boolean;
   color_hex_map: Record<string, any>;
   color_tokens?: Record<string, string>;
-  typography?: Record<string, unknown> | null;
-  border_radius?: string | null;
+  typography?: Record<string, unknown> | null | undefined;
+  border_radius?: string | null | undefined;
   metadata?: Record<string, unknown> | null | undefined;
-  created_at?: Date | string;
-  updated_at?: Date | string;
+  created_at?: Date | string | undefined;
+  updated_at?: Date | string | undefined;
 }
 
-export interface ThemeSettingsEntity {
-  id?: number | string;
-  name: string;
-  mode?: string;
-  color_hex_map: Record<string, any>;
-  typography?: Record<string, unknown> | null;
-  border_radius?: string | null;
-  is_active: boolean;
-  updated_at?: Date | string;
-}
+/**
+ * @deprecated Legacy type alias; unified into ThemeEntity
+ */
+export type ThemeSettingsEntity = ThemeEntity;
 
 export interface DatabaseSchema {
   organizations: OrganizationEntity;
@@ -115,6 +109,4 @@ export interface DatabaseSchema {
   users: UserEntity;
   categories: CategoryEntity;
   themes: ThemeEntity;
-  theme_settings: ThemeSettingsEntity;
 }
-

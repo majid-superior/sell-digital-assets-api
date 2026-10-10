@@ -24,7 +24,7 @@ graph TB
     end
 
     subgraph "Persistence Layer (PostgreSQL 16+ Database)"
-        PG[("PostgreSQL 16+<br/>Extensions: citext, pgcrypto<br/>Tables: currencies, organizations, roles,<br/>users, categories, themes, theme_settings")]
+        PG[("PostgreSQL 16+<br/>Extensions: citext, pgcrypto<br/>Tables: currencies, organizations, roles,<br/>users, categories, themes")]
     end
 
     WebClient -->|Catalog, Dynamic Theme, Auth| API
@@ -68,7 +68,7 @@ graph TB
 * Setting the default currency in `sell-digital-assets-admin` propagates across the entire platform.
 
 ### D. Dynamic Theme & Design Tokens Synchronization
-* The `themes` and `theme_settings` tables store platform design tokens, color hex maps (primary, secondary, surface, background, outline), and active theme metadata.
+* The unified `themes` table stores platform design tokens, color hex maps (primary, secondary, surface, background, outline), mode, typography, and active theme metadata.
 * **Backend Compilation**: The API dynamically compiles and serves CSS variables from `/theme/theme.css` and `/api/theme/css`.
 * **Admin Appearance Editor**: Administrators adjust colors and select palettes in `sell-digital-assets-admin` under the **Appearance** tab, committing updates to `/api/theme`.
 * **Zero-FOUC Frontends**: Both the website and the admin console fetch the active theme via `themeService` (`GET /api/theme/active`), applying CSS custom properties directly to the document root (`:root` / `.dark`).

@@ -57,18 +57,18 @@ A modern, robust, and enterprise-ready modular backend REST API built with **Nod
 
 ## 🛠 Tech Stack
 
-| Category | Technology | Description |
-| :--- | :--- | :--- |
-| **Runtime** | [Node.js](https://nodejs.org/) (v22+ LTS recommended) | JavaScript runtime environment |
-| **Language** | [TypeScript](https://www.typescriptlang.org/) | Type-safe programming with NodeNext ESM |
-| **Framework** | [Express 5](https://expressjs.com/) | Next-generation fast web framework |
-| **Database** | [PostgreSQL](https://www.postgresql.org/) via [`pg`](https://node-postgres.com/) | Relational database with pooled connections and SSL |
-| **Validation** | [Zod 4](https://zod.dev/) | Runtime schema declaration and validation |
-| **Authentication** | [`jsonwebtoken`](https://github.com/auth0/node-jsonwebtoken) & [`bcryptjs`](https://github.com/dcodeIO/bcrypt.js) | JWT access/refresh tokens and bcrypt password hashing |
-| **Security** | [Helmet](https://helmetjs.github.io/), [CORS](https://github.com/expressjs/cors), [express-rate-limit](https://express-rate-limit.mintlify.app/) | HTTP headers, origin whitelisting, and rate limiters |
-| **Logging** | [Pino](https://getpino.io/) & `pino-http` | Ultra-fast structured JSON logger |
-| **Documentation** | [Swagger UI Express](https://github.com/scottie1984/swagger-ui-express) | Interactive API exploration portal |
-| **Dev & Watch** | [`tsx`](https://tsx.is/) | Fast TypeScript execution and hot-reloading |
+| Category           | Technology                                                                                                                                       | Description                                           |
+| :----------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------- |
+| **Runtime**        | [Node.js](https://nodejs.org/) (v22+ LTS recommended)                                                                                            | JavaScript runtime environment                        |
+| **Language**       | [TypeScript](https://www.typescriptlang.org/)                                                                                                    | Type-safe programming with NodeNext ESM               |
+| **Framework**      | [Express 5](https://expressjs.com/)                                                                                                              | Next-generation fast web framework                    |
+| **Database**       | [PostgreSQL](https://www.postgresql.org/) via [`pg`](https://node-postgres.com/)                                                                 | Relational database with pooled connections and SSL   |
+| **Validation**     | [Zod 4](https://zod.dev/)                                                                                                                        | Runtime schema declaration and validation             |
+| **Authentication** | [`jsonwebtoken`](https://github.com/auth0/node-jsonwebtoken) & [`bcryptjs`](https://github.com/dcodeIO/bcrypt.js)                                | JWT access/refresh tokens and bcrypt password hashing |
+| **Security**       | [Helmet](https://helmetjs.github.io/), [CORS](https://github.com/expressjs/cors), [express-rate-limit](https://express-rate-limit.mintlify.app/) | HTTP headers, origin whitelisting, and rate limiters  |
+| **Logging**        | [Pino](https://getpino.io/) & `pino-http`                                                                                                        | Ultra-fast structured JSON logger                     |
+| **Documentation**  | [Swagger UI Express](https://github.com/scottie1984/swagger-ui-express)                                                                          | Interactive API exploration portal                    |
+| **Dev & Watch**    | [`tsx`](https://tsx.is/)                                                                                                                         | Fast TypeScript execution and hot-reloading           |
 
 ---
 
@@ -183,19 +183,19 @@ The API will start on `http://localhost:5000`. Access the interactive documentat
 
 ## 🔐 Environment Variables
 
-| Variable | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `PORT` | `number` | `5000` | Port on which the Express server listens |
-| `NODE_ENV` | `string` | `development` | Application mode (`development` or `production`) |
-| `DATABASE_URL` | `string` | — | PostgreSQL connection URI string |
-| `CLIENT_URL` | `string` | `http://localhost:5173` | Primary frontend client URL |
-| `ALLOWED_ORIGINS` | `string` | — | Comma-separated CORS allowed origins whitelist |
-| `JWT_SECRET` | `string` | — | Secret key for signing short-lived access tokens (min 32 chars) |
-| `JWT_REFRESH_SECRET` | `string` | — | Secret key for signing long-lived refresh tokens (min 32 chars) |
-| `DOWNLOAD_TOKEN_SECRET`| `string` | — | Secret for signing time-limited download links (min 32 chars) |
-| `BODY_LIMIT` | `string` | `10kb` | Maximum accepted request payload size |
-| `EXPOSE_STACK` | `boolean` | `false` | Whether to expose stack traces in error responses (dev only) |
-| `REDIS_URL` | `string` | — | Optional Redis connection string for distributed rate limiting |
+| Variable                | Type      | Default                 | Description                                                     |
+| :---------------------- | :-------- | :---------------------- | :-------------------------------------------------------------- |
+| `PORT`                  | `number`  | `5000`                  | Port on which the Express server listens                        |
+| `NODE_ENV`              | `string`  | `development`           | Application mode (`development` or `production`)                |
+| `DATABASE_URL`          | `string`  | —                       | PostgreSQL connection URI string                                |
+| `CLIENT_URL`            | `string`  | `http://localhost:5173` | Primary frontend client URL                                     |
+| `ALLOWED_ORIGINS`       | `string`  | —                       | Comma-separated CORS allowed origins whitelist                  |
+| `JWT_SECRET`            | `string`  | —                       | Secret key for signing short-lived access tokens (min 32 chars) |
+| `JWT_REFRESH_SECRET`    | `string`  | —                       | Secret key for signing long-lived refresh tokens (min 32 chars) |
+| `DOWNLOAD_TOKEN_SECRET` | `string`  | —                       | Secret for signing time-limited download links (min 32 chars)   |
+| `BODY_LIMIT`            | `string`  | `10kb`                  | Maximum accepted request payload size                           |
+| `EXPOSE_STACK`          | `boolean` | `false`                 | Whether to expose stack traces in error responses (dev only)    |
+| `REDIS_URL`             | `string`  | —                       | Optional Redis connection string for distributed rate limiting  |
 
 ---
 
@@ -211,21 +211,20 @@ The database schema and seeds are managed in [`src/database/reset.ts`](src/datab
   3. `roles`: Access control roles (`admin`, `creator`, `user`).
   4. `users`: User directory with case-insensitive unique email and hashed passwords.
   5. `categories`: Hierarchical category taxonomy with materialized path and depth.
-  6. `themes`: Preset theme design tokens and color hex maps.
-  7. `theme_settings`: Singleton active theme pointer and custom CSS overrides.
+  6. `themes`: Unified design tokens, color hex maps, mode ('dark'/'light'), typography, border radius, and active theme.
 
 ---
 
 ## 📜 Available Scripts
 
-| Script | Command | Description |
-| :--- | :--- | :--- |
-| `dev` | `npm run dev` | Runs the development server in watch mode using `tsx` |
-| `build` | `npm run build` | Regenerates Swagger documentation and compiles TypeScript |
-| `start` | `npm start` | Launches the compiled production server from `dist/server.js` |
-| `db:reset` | `npm run db:reset` | Resets PostgreSQL schema and seeds initial records |
-| `swagger` | `npm run swagger` | Regenerates `swagger.json` OpenAPI specification |
-| `test` | `npm test` | Runs the test suite via Node.js test runner |
+| Script     | Command            | Description                                                   |
+| :--------- | :----------------- | :------------------------------------------------------------ |
+| `dev`      | `npm run dev`      | Runs the development server in watch mode using `tsx`         |
+| `build`    | `npm run build`    | Regenerates Swagger documentation and compiles TypeScript     |
+| `start`    | `npm start`        | Launches the compiled production server from `dist/server.js` |
+| `db:reset` | `npm run db:reset` | Resets PostgreSQL schema and seeds initial records            |
+| `swagger`  | `npm run swagger`  | Regenerates `swagger.json` OpenAPI specification              |
+| `test`     | `npm test`         | Runs the test suite via Node.js test runner                   |
 
 ---
 
@@ -233,63 +232,63 @@ The database schema and seeds are managed in [`src/database/reset.ts`](src/datab
 
 ### 1. Authentication Module
 
-| Method | Endpoint | Rate Limit | Auth | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | 5 failed / 15m | Public | Register a new platform user account |
-| `POST` | `/api/auth/login` | 5 failed / 15m | Public | Authenticate and obtain JWT access + refresh tokens |
-| `POST` | `/api/auth/refresh` | General | Public | Refresh expired access token using refresh token |
-| `POST` | `/api/auth/logout` | General | Public | Terminate active user session |
+| Method | Endpoint             | Rate Limit     | Auth   | Description                                         |
+| :----- | :------------------- | :------------- | :----- | :-------------------------------------------------- |
+| `POST` | `/api/auth/register` | 5 failed / 15m | Public | Register a new platform user account                |
+| `POST` | `/api/auth/login`    | 5 failed / 15m | Public | Authenticate and obtain JWT access + refresh tokens |
+| `POST` | `/api/auth/refresh`  | General        | Public | Refresh expired access token using refresh token    |
+| `POST` | `/api/auth/logout`   | General        | Public | Terminate active user session                       |
 
 ### 2. Users Module
 
-| Method | Endpoint | Auth | Role | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/users` | Bearer Token | `admin` | Paginated user directory |
-| `GET` | `/api/users/me` | Bearer Token | Any | Retrieve current authenticated user profile |
-| `PATCH` | `/api/users/me` | Bearer Token | Any | Update profile details (display name, password) |
-| `GET` | `/api/users/:id` | Bearer Token | `admin` | Retrieve detailed user profile by UUID |
-| `PATCH` | `/api/users/:id` | Bearer Token | `admin` | Update user status, role, or metadata |
-| `DELETE` | `/api/users/:id` | Bearer Token | `admin` | Deactivate user account |
-| `POST` | `/api/users` | Bearer Token | `admin` | Administrator create user |
+| Method   | Endpoint         | Auth         | Role    | Description                                     |
+| :------- | :--------------- | :----------- | :------ | :---------------------------------------------- |
+| `GET`    | `/api/users`     | Bearer Token | `admin` | Paginated user directory                        |
+| `GET`    | `/api/users/me`  | Bearer Token | Any     | Retrieve current authenticated user profile     |
+| `PATCH`  | `/api/users/me`  | Bearer Token | Any     | Update profile details (display name, password) |
+| `GET`    | `/api/users/:id` | Bearer Token | `admin` | Retrieve detailed user profile by UUID          |
+| `PATCH`  | `/api/users/:id` | Bearer Token | `admin` | Update user status, role, or metadata           |
+| `DELETE` | `/api/users/:id` | Bearer Token | `admin` | Deactivate user account                         |
+| `POST`   | `/api/users`     | Bearer Token | `admin` | Administrator create user                       |
 
 ### 3. Organizations & Currencies Module
 
-| Method | Endpoint | Auth | Role | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/organizations` | Public | None | Retrieve organization branding and platform configuration |
-| `GET` | `/api/organizations/currencies` | Public | None | List all supported currencies and Unicode symbols |
-| `PUT` | `/api/organizations` | Bearer Token | `admin` | Update organization branding, currency, fee, or contacts |
-| `PATCH` | `/api/organizations` | Bearer Token | `admin` | Partial update of organization configuration |
+| Method  | Endpoint                        | Auth         | Role    | Description                                               |
+| :------ | :------------------------------ | :----------- | :------ | :-------------------------------------------------------- |
+| `GET`   | `/api/organizations`            | Public       | None    | Retrieve organization branding and platform configuration |
+| `GET`   | `/api/organizations/currencies` | Public       | None    | List all supported currencies and Unicode symbols         |
+| `PUT`   | `/api/organizations`            | Bearer Token | `admin` | Update organization branding, currency, fee, or contacts  |
+| `PATCH` | `/api/organizations`            | Bearer Token | `admin` | Partial update of organization configuration              |
 
 ### 4. Categories & Taxonomy Module
 
-| Method | Endpoint | Auth | Role | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/categories` | Public | None | List categories (supports `?tree=true`, `?includeInactive=true`) |
-| `GET` | `/api/categories/:id` | Public | None | Retrieve single category details |
-| `POST` | `/api/categories` | Bearer Token | `admin` | Create new category in taxonomy |
-| `PATCH` | `/api/categories/:id` | Bearer Token | `admin` | Update category details or position |
-| `DELETE` | `/api/categories/:id` | Bearer Token | `admin` | Soft-delete category (`is_active = false`) |
-| `POST` | `/api/categories/:id/restore` | Bearer Token | `admin` | Restore soft-deleted category |
+| Method   | Endpoint                      | Auth         | Role    | Description                                                      |
+| :------- | :---------------------------- | :----------- | :------ | :--------------------------------------------------------------- |
+| `GET`    | `/api/categories`             | Public       | None    | List categories (supports `?tree=true`, `?includeInactive=true`) |
+| `GET`    | `/api/categories/:id`         | Public       | None    | Retrieve single category details                                 |
+| `POST`   | `/api/categories`             | Bearer Token | `admin` | Create new category in taxonomy                                  |
+| `PATCH`  | `/api/categories/:id`         | Bearer Token | `admin` | Update category details or position                              |
+| `DELETE` | `/api/categories/:id`         | Bearer Token | `admin` | Soft-delete category (`is_active = false`)                       |
+| `POST`   | `/api/categories/:id/restore` | Bearer Token | `admin` | Restore soft-deleted category                                    |
 
 ### 5. Theme & Dynamic CSS Module
 
-| Method | Endpoint | Auth | Role | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/theme` | Public | None | Retrieve currently active theme palette & tokens (JSON) |
-| `GET` | `/api/theme/active` | Public | None | Alias for active theme palette |
-| `PUT` | `/api/theme` | Bearer Token | `admin` | Update active theme colors and tokens |
-| `GET` | `/api/theme/css` | Public | None | Dynamic compiled CSS stylesheet (`:root` and `.dark` variables) |
-| `GET` | `/theme/theme.css` | Public | None | Static-served compiled CSS stylesheet with caching headers |
+| Method | Endpoint            | Auth         | Role    | Description                                                     |
+| :----- | :------------------ | :----------- | :------ | :-------------------------------------------------------------- |
+| `GET`  | `/api/theme`        | Public       | None    | Retrieve currently active theme palette & tokens (JSON)         |
+| `GET`  | `/api/theme/active` | Public       | None    | Alias for active theme palette                                  |
+| `PUT`  | `/api/theme`        | Bearer Token | `admin` | Update active theme colors and tokens                           |
+| `GET`  | `/api/theme/css`    | Public       | None    | Dynamic compiled CSS stylesheet (`:root` and `.dark` variables) |
+| `GET`  | `/theme/theme.css`  | Public       | None    | Static-served compiled CSS stylesheet with caching headers      |
 
 ### 6. Documentation & Health
 
-| Method | Endpoint | Auth | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/doc` | Public | Interactive Swagger UI API documentation |
-| `GET` | `/docs` | Public | Redirect to `/doc/` |
-| `GET` | `/openapi.json` | Public | Raw OpenAPI 3.0 specification |
-| `GET` | `/` | Public | Dynamic SSR system status and health view |
+| Method | Endpoint        | Auth   | Description                               |
+| :----- | :-------------- | :----- | :---------------------------------------- |
+| `GET`  | `/doc`          | Public | Interactive Swagger UI API documentation  |
+| `GET`  | `/docs`         | Public | Redirect to `/doc/`                       |
+| `GET`  | `/openapi.json` | Public | Raw OpenAPI 3.0 specification             |
+| `GET`  | `/`             | Public | Dynamic SSR system status and health view |
 
 ---
 
@@ -307,6 +306,7 @@ The database schema and seeds are managed in [`src/database/reset.ts`](src/datab
 All REST endpoints return standardized JSON responses:
 
 ### Success Response (`200 OK`, `201 Created`):
+
 ```json
 {
   "success": true,
@@ -316,6 +316,7 @@ All REST endpoints return standardized JSON responses:
 ```
 
 ### Error Response (`400`, `401`, `403`, `404`, `409`, `500`):
+
 ```json
 {
   "success": false,

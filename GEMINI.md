@@ -52,7 +52,7 @@
    - The consolidated schema migration and automated seed script is `src/database/reset.ts` (`npm run db:reset`).
    - Critical configuration tables (`organizations` singleton `id = 1`) are protected against accidental truncation via the trigger `prevent_table_truncate()` and deletion via `no_delete_organizations`.
    - Always use `CITEXT` for email columns to enforce case-insensitive uniqueness at the database level.
-   - Active database tables: `currencies`, `organizations`, `roles`, `users`, `categories`, `themes`, `theme_settings`.
+   - Active database tables: `currencies`, `organizations`, `roles`, `users`, `categories`, `themes`.
 
 3. **Taxonomy & Soft-Delete Principle**:
    - Category deletions are strictly soft-deletes toggling `is_active = false`.
@@ -60,7 +60,7 @@
    - Categories can be restored by operators via `POST /api/categories/:id/restore`.
 
 4. **Theme Module & Dynamic CSS Compilation**:
-   - The theme repository stores design tokens and active palettes in `themes` and `theme_settings`.
+   - The theme repository stores design tokens, mode, typography, and active palettes in the unified `themes` table.
    - Dynamic CSS stylesheets are compiled and served directly from `GET /theme/theme.css` and `GET /api/theme/css` with caching headers.
 
 ---
@@ -70,6 +70,7 @@
 All REST endpoints must return responses adhering to this uniform JSON envelope:
 
 ### Success Response (`200 OK`, `201 Created`):
+
 ```json
 {
   "success": true,
@@ -79,6 +80,7 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 ```
 
 ### Error Response (`400`, `401`, `403`, `404`, `409`, `500`):
+
 ```json
 {
   "success": false,
@@ -94,6 +96,7 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 ## 4. Verification Checklist for AI Agents
 
 Before declaring any backend task complete, verify:
+
 1. `npx tsc --noEmit` passes with **0 errors**.
 2. All database queries use parameterized placeholders (`$1, $2, ...`) without string interpolation.
 3. Any new routes are properly mounted in `src/app.ts` and documented in Swagger (`npm run swagger`).
