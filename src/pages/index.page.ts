@@ -14,7 +14,7 @@ export function renderIndexPage(data: SystemStatus): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="${escapeHtml(organization.description)}" />
-  <title>System Status | ${escapeHtml(organization.title)}</title>
+  <title>${escapeHtml(organization.title)} | API</title>
   <link rel="icon" type="${escapeHtml(organization.favicon.type)}" href="${escapeHtml(organization.favicon.url)}" />
 
   <!-- Prevent Theme Flashing (Zero-FOUC Head Script) -->
