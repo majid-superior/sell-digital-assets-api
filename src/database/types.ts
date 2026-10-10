@@ -83,9 +83,38 @@ export interface CategoryEntity {
   updated_at?: Date | string;
 }
 
+export interface ThemeEntity {
+  id?: number | string;
+  name: string;
+  slug?: string;
+  mode?: string;
+  is_active: boolean;
+  color_hex_map: Record<string, any>;
+  color_tokens?: Record<string, string>;
+  typography?: Record<string, unknown> | null;
+  border_radius?: string | null;
+  metadata?: Record<string, unknown> | null | undefined;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
+export interface ThemeSettingsEntity {
+  id?: number | string;
+  name: string;
+  mode?: string;
+  color_hex_map: Record<string, any>;
+  typography?: Record<string, unknown> | null;
+  border_radius?: string | null;
+  is_active: boolean;
+  updated_at?: Date | string;
+}
+
 export interface DatabaseSchema {
   organizations: OrganizationEntity;
   roles: RoleEntity;
   users: UserEntity;
   categories: CategoryEntity;
+  themes: ThemeEntity;
+  theme_settings: ThemeSettingsEntity;
 }
+

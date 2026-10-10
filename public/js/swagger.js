@@ -30,12 +30,12 @@
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
-      <a href="/" class="brand-wrap" title="Sell Digital Assets API Dashboard">
+      <a href="/" class="brand-wrap" title="AssetDrop API Dashboard">
         <div class="brand-icon">
-          <img src="/logo.png" alt="Sell Digital Assets Logo" width="48" height="48" />
+          <img src="/logo.png" alt="AssetDrop Logo" width="48" height="48" />
         </div>
         <div class="brand-info">
-          <h1>Sell Digital Assets API</h1>
+          <h1>Asset<span style="color: var(--color-primary); font-weight: 800;">Drop</span> <span style="font-weight: 500; font-size: 0.9em; opacity: 0.85;">API</span></h1>
           <p>System Status & Observability Dashboard</p>
         </div>
       </a>

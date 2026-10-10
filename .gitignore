@@ -31,11 +31,13 @@ assets_storage/
 *.zip
 *.tar.gz
 
-# Database local storage & dumps
+# Database local storage, backups & dumps
+backups/
+*.sql
+*.sql.gz
 *.sqlite
 *.sqlite3
 *.db
-*.sql.gz
 
 # Certificates, Keys & Secrets
 *.pem

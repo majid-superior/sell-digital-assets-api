@@ -1,7 +1,7 @@
 # Backend Engineering Guidelines & Architecture Standards
 
-> **Applies to**: `sell-digital-assets-api` and all backend microservices.
-> **Scope**: Express 5 REST API, PostgreSQL database operations, authentication, security, and data validation.
+> **Applies to**: `sell-digital-assets-api` and all backend microservices.  
+> **Scope**: Express 5 REST API, PostgreSQL database operations, authentication, security, theming, categories taxonomy, and data validation.  
 > **Target Audience**: AI Agents and Backend Engineers.
 
 ---
@@ -11,7 +11,7 @@
 1. **Zero Mock Data Principle**:
    - Never use fake in-memory mock objects, hardcoded user lists, or simulated JSON responses for business entities.
    - All persistence must strictly execute against the live PostgreSQL database via connection pooling (`src/config/database.ts`).
-   - All tests and endpoints must interact with real database records or properly seeded test fixtures.
+   - All tests and endpoints must interact with real database records or properly seeded fixtures.
 
 2. **Strict Layered Architecture (SOC)**:
    - Every module under `src/modules/` must follow the decoupled 4-tier pattern:
@@ -25,18 +25,19 @@
 
 3. **Strict Runtime Schema Validation (Zod)**:
    - Never trust incoming client payloads.
-   - Every mutation (`POST`, `PUT`, `PATCH`) and sensitive query must be strictly validated using Zod schemas (`*.schema.ts`) via `validate()` middleware before hitting the controller.
+   - Every mutation (`POST`, `PUT`, `PATCH`) and sensitive query must be strictly validated using Zod schemas (`*.schema.ts`) via `validateBody()`, `validateQuery()`, or `validateParams()` middleware before hitting the controller.
 
 4. **Operational Error Sanitization**:
    - All operational failures must be thrown as instances of `AppError` (`src/core/errors/app-error.ts`) with appropriate HTTP status codes.
    - Centralized error middleware (`src/core/middleware/error.middleware.ts`) intercepts all exceptions, sanitizes database constraint violations (e.g., PostgreSQL `23505` to 409 Conflict), and attaches a unique `requestId`.
-   - Never leak database connection strings, table schemas, or stack traces in production responses.
+   - Never leak database connection strings, table schemas, or raw stack traces in production responses.
 
 5. **Security & Cryptographic Standards**:
    - **Password Security**: Passwords must be hashed using `bcryptjs` with a work factor of 12 (`src/core/security/password.ts`).
    - **Dual-Token JWT**: Short-lived access tokens (15m) and long-lived refresh tokens (7d) signed with secrets of at least 32 characters.
-   - **Digital Asset Downloads**: Asset binaries are protected by HMAC-SHA256 signed expiring tokens and verified using constant-time string comparisons (`crypto.timingSafeEqual`) to prevent timing attacks.
-   - **Rate Limiting**: Enforce tiered limits (general API limiter, strict auth brute-force limiter, and download scraping limiter).
+   - **Direct IP Defense**: `ipGuardMiddleware` blocks raw IP access in production, mandating routing through verified hostnames.
+   - **Rate Limiting**: Tiered limiters (general: 100/15m, auth brute-force defense: 5 failed attempts/15m with `skipSuccessfulRequests: true`, and download limiter: 25/1h) with optional Redis clustering (`REDIS_URL`).
+   - **Payload Limit**: Enforce strict `10kb` limit on JSON and URL-encoded request bodies (`env.BODY_LIMIT`).
 
 ---
 
@@ -44,24 +45,23 @@
 
 1. **Connection Pooling**:
    - All database interactions use the centralized singleton pool (`src/config/database.ts`).
-   - Always prioritize IPv4 DNS lookups (`dns.setDefaultResultOrder("ipv4first")`) to prevent Windows/Node.js timeout issues (`EAI_AGAIN`) when connecting to remote cloud databases (Render, Supabase, Neon).
+   - Always prioritize IPv4 DNS lookups (`dns.setDefaultResultOrder("ipv4first")`) to prevent timeout issues (`EAI_AGAIN`) when connecting to remote cloud databases (Render, Supabase, Neon).
    - In production, enforce SSL with `rejectUnauthorized: false` for managed cloud certificates.
 
 2. **Database Schema & Migrations**:
-   - Schema definitions and migrations live in `src/database/migrations/`.
-   - The consolidated schema migration and automated seed script is `src/database/reset.ts`.
-   - Critical configuration tables (such as the `organizations` singleton table) are protected against accidental truncation via PostgreSQL trigger `prevent_table_truncate()`.
+   - The consolidated schema migration and automated seed script is `src/database/reset.ts` (`npm run db:reset`).
+   - Critical configuration tables (`organizations` singleton `id = 1`) are protected against accidental truncation via the trigger `prevent_table_truncate()` and deletion via `no_delete_organizations`.
    - Always use `CITEXT` for email columns to enforce case-insensitive uniqueness at the database level.
+   - Active database tables: `currencies`, `organizations`, `roles`, `users`, `categories`, `themes`, `theme_settings`.
 
-3. **Currency & Financial Data**:
-   - All monetary values must be stored as integers representing cents/minor units (e.g., `price_cents INTEGER`) to prevent floating-point rounding errors.
-   - Active currencies are managed centrally in the `currencies` table (`PKR`, `USD`, `EUR`, `GBP`, etc.).
+3. **Taxonomy & Soft-Delete Principle**:
+   - Category deletions are strictly soft-deletes toggling `is_active = false`.
+   - Category repository read queries filter for active records (`is_active = true`) by default unless inactive items are explicitly requested via `?includeInactive=true`.
+   - Categories can be restored by operators via `POST /api/categories/:id/restore`.
 
-4. **Soft Delete Principle (Never Hard Delete)**:
-   - Physical SQL `DELETE` operations on category records and core business entities are strictly prohibited.
-   - Deletions must always be executed as soft-deletes by toggling `is_active = false` (or `deleted_at = CURRENT_TIMESTAMP`).
-   - Category repository methods (`delete()`, `softDelete()`) strictly update `is_active = false`, never executing physical SQL deletions.
-   - All repository read queries must filter for active records (`is_active = true`) by default unless inactive items are explicitly requested.
+4. **Theme Module & Dynamic CSS Compilation**:
+   - The theme repository stores design tokens and active palettes in `themes` and `theme_settings`.
+   - Dynamic CSS stylesheets are compiled and served directly from `GET /theme/theme.css` and `GET /api/theme/css` with caching headers.
 
 ---
 
@@ -96,7 +96,6 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 Before declaring any backend task complete, verify:
 1. `npx tsc --noEmit` passes with **0 errors**.
 2. All database queries use parameterized placeholders (`$1, $2, ...`) without string interpolation.
-3. Any new routes are properly mounted in `src/app.ts` or corresponding route modules.
-4. Security middleware (CORS, Rate Limiter, Helmet) is not bypassed.
+3. Any new routes are properly mounted in `src/app.ts` and documented in Swagger (`npm run swagger`).
+4. Security middleware (IP Guard, Helmet, CORS, Rate Limiter) is not bypassed.
 5. In-memory data structures are not used as pseudo-databases; all data changes persist to PostgreSQL.
-

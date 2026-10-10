@@ -19,12 +19,12 @@ export function renderHeader(data?: SystemStatus | null): string {
 
   return `
     <header class="header">
-      <a href="/" class="brand-wrap" title="${escapeHtml(organization.name)} Dashboard">
+      <a href="/" class="brand-wrap" title="${escapeHtml(organization.title)}">
         <div class="brand-icon">
           <img src="${escapeHtml(organization.logo.url)}" alt="${escapeHtml(organization.logo.alt)}" width="${organization.logo.width}" height="${organization.logo.height}" />
         </div>
         <div class="brand-info">
-          <h1>${escapeHtml(organization.name)}</h1>
+          <h1>Asset<span style="color: var(--color-primary); font-weight: 800;">Drop</span> <span style="font-weight: 500; font-size: 0.9em; opacity: 0.85;">API</span></h1>
           <p>${escapeHtml(organization.tagline)}</p>
         </div>
       </a>

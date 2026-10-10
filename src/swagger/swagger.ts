@@ -42,6 +42,10 @@ const doc = {
       name: "Users",
       description: "User account management and role-based access",
     },
+    {
+      name: "Theme",
+      description: "Dynamic database theme styling, color tokens, and CSS variables",
+    },
   ],
   components: {
     securitySchemes: {
@@ -204,8 +208,8 @@ const doc = {
       UpdateOrganizationInput: {
         type: "object",
         properties: {
-          organization_name: { type: "string", example: "Sell Digital Assets" },
-          legal_name: { type: "string", example: "Sell Digital Assets Inc." },
+          organization_name: { type: "string", example: "AssetDrop" },
+          legal_name: { type: "string", example: "AssetDrop Inc." },
           tagline: { type: "string", example: "Digital Assets Marketplace" },
           description: { type: "string", example: "Platform for selling digital assets" },
           logo_url: { type: "string", example: "/logo.png" },
@@ -230,6 +234,34 @@ const doc = {
           metadata: { type: "object", example: {} },
         },
       },
+      UpdateThemeInput: {
+        type: "object",
+        properties: {
+          name: { type: "string", example: "Cyber Violet" },
+          mode: { type: "string", enum: ["light", "dark"], example: "dark" },
+          color_hex_map: {
+            type: "object",
+            example: {
+              light: { primary: "#6d28d9", secondary: "#0284c7" },
+              dark: { primary: "#a78bfa", secondary: "#38bdf8" },
+            },
+          },
+          border_radius: { type: "string", example: "rounded-lg" },
+          typography: { type: "object", example: {} },
+        },
+      },
+      CreateThemeInput: {
+        type: "object",
+        required: ["name", "slug"],
+        properties: {
+          name: { type: "string", example: "Emerald City" },
+          slug: { type: "string", example: "emerald-city" },
+          is_active: { type: "boolean", example: false },
+          color_hex_map: { type: "object", example: {} },
+          color_tokens: { type: "object", example: {} },
+          metadata: { type: "object", example: {} },
+        },
+      },
     },
   },
 };
@@ -242,6 +274,7 @@ const routes = [
   "./src/modules/users/users.routes.ts",
   "./src/modules/organizations/organizations.routes.ts",
   "./src/modules/categories/categories.routes.ts",
+  "./src/modules/theme/theme.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -260,6 +293,17 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
       routePath.endsWith("/") && routePath.length > 1
         ? routePath.slice(0, -1)
         : routePath;
+
+    // Skip redundant alias endpoints to keep docs clean
+    if (
+      normalizedPath.startsWith("/api/themes") ||
+      normalizedPath.startsWith("/api/v1/theme") ||
+      normalizedPath.startsWith("/api/v1/themes") ||
+      normalizedPath === "/api/theme/active" ||
+      normalizedPath === "/api/theme/styles.css"
+    ) {
+      continue;
+    }
 
     cleanedPaths[normalizedPath] = methods;
 
@@ -652,6 +696,39 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           },
         };
       }
+    } else if (normalizedPath.startsWith("/api/theme")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Theme"];
+      }
+      if (normalizedPath === "/api/theme") {
+        if (methods.get) {
+          methods.get.summary = "Get active theme styling & tokens";
+          methods.get.description =
+            "Retrieves currently active database theme palette with conditional ETag validation";
+          methods.get.parameters = [];
+        }
+        if (methods.put) {
+          methods.put.summary = "Update active theme (Admin only)";
+          methods.put.description =
+            "Updates database theme styling, invalidates caches, and synchronizes CSS tokens";
+          methods.put.security = [{ bearerAuth: [] }];
+          methods.put.requestBody = {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UpdateThemeInput" },
+              },
+            },
+          };
+        }
+      } else if (normalizedPath === "/api/theme/css") {
+        if (methods.get) {
+          methods.get.summary = "Get dynamic compiled CSS stylesheet";
+          methods.get.description =
+            "Generates pure CSS variables (:root and .dark) compiled directly from the active database theme";
+          methods.get.parameters = [];
+        }
+      }
     }
   }
 
@@ -694,5 +771,15 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
 
   spec.paths = cleanedPaths;
   fs.writeFileSync(outputFile, JSON.stringify(spec, null, 2), "utf8");
+
+  const distDir = path.resolve(process.cwd(), "dist");
+  if (fs.existsSync(distDir)) {
+    const distSwaggerDir = path.join(distDir, "swagger");
+    if (!fs.existsSync(distSwaggerDir)) {
+      fs.mkdirSync(distSwaggerDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(distSwaggerDir, "swagger.json"), JSON.stringify(spec, null, 2), "utf8");
+  }
+
   console.log("Swagger-autogen: Cleaned and optimized swagger.json");
 });

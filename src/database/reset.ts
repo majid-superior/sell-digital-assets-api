@@ -1,11 +1,14 @@
 import dns from "node:dns";
 import fs from "node:fs";
 import path from "node:path";
+import child_process from "node:child_process";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
 import { defaultOrganizationEntity } from "../data/organizations.js";
 import { defaultCategories, flattenCategories } from "../data/categories.js";
+import { defaultCurrencies } from "../data/currencies.js";
+import { defaultTheme } from "../data/themes.js";
 
 // Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
 if (typeof dns.setDefaultResultOrder === "function") {
@@ -74,18 +77,9 @@ CREATE TABLE IF NOT EXISTS currencies (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Seed Top 10 Currencies (including Pakistan as default)
+-- Seed Supported Currencies (sourced from src/data/currencies.ts)
 INSERT INTO currencies (code, name, symbol) VALUES
-    ('PKR', 'Pakistani Rupee', '₨'),
-    ('USD', 'United States Dollar', '$'),
-    ('EUR', 'Euro', '€'),
-    ('GBP', 'British Pound', '£'),
-    ('JPY', 'Japanese Yen', '¥'),
-    ('CAD', 'Canadian Dollar', 'CA$'),
-    ('AUD', 'Australian Dollar', 'A$'),
-    ('CHF', 'Swiss Franc', 'CHF'),
-    ('CNY', 'Chinese Yuan', '¥'),
-    ('AED', 'United Arab Emirates Dirham', 'AED')
+${defaultCurrencies.map((c) => `    ('${c.code}', '${c.name.replace(/'/g, "''")}', '${c.symbol.replace(/'/g, "''")}')`).join(",\n")}
 ON CONFLICT (code) DO UPDATE 
     SET name = EXCLUDED.name,
         symbol = EXCLUDED.symbol;
@@ -340,7 +334,347 @@ SELECT
     c.updated_at
 FROM categories c
 LEFT JOIN categories p ON c.parent_id = p.id;
+
+-- Step 9: Themes Table (Dynamic Theme Tokens & Palette)
+CREATE TABLE IF NOT EXISTS themes (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL DEFAULT 'Default Theme',
+    slug VARCHAR(100) NOT NULL UNIQUE DEFAULT 'default',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    color_hex_map JSONB NOT NULL,
+    color_tokens JSONB NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_themes_single_active 
+    ON themes (is_active) 
+    WHERE is_active = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_themes_slug 
+    ON themes (slug);
+
+DROP TRIGGER IF EXISTS trg_themes_updated_at ON themes;
+CREATE TRIGGER trg_themes_updated_at
+BEFORE UPDATE ON themes
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Seed Default Theme Palette and Tokens (sourced from src/data/themes.ts)
+INSERT INTO themes (
+    name,
+    slug,
+    is_active,
+    color_hex_map,
+    color_tokens,
+    metadata
+) VALUES (
+    '${defaultTheme.name.replace(/'/g, "''")}',
+    '${defaultTheme.slug.replace(/'/g, "''")}',
+    ${defaultTheme.is_active ? "TRUE" : "FALSE"},
+    '${JSON.stringify(defaultTheme.color_hex_map).replace(/'/g, "''")}'::jsonb,
+    '${JSON.stringify(defaultTheme.color_tokens).replace(/'/g, "''")}'::jsonb,
+    '${JSON.stringify(defaultTheme.metadata ?? {}).replace(/'/g, "''")}'::jsonb
+)
+ON CONFLICT (slug) DO UPDATE
+    SET color_hex_map = EXCLUDED.color_hex_map,
+        color_tokens = EXCLUDED.color_tokens,
+        metadata = EXCLUDED.metadata,
+        updated_at = CURRENT_TIMESTAMP;
+
+-- Step 10: Dynamic Theme Settings Table (Single Active Theme with Custom Mode & Typography)
+CREATE TABLE IF NOT EXISTS theme_settings (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL DEFAULT 'Default Theme',
+    mode VARCHAR(20) NOT NULL DEFAULT 'dark',
+    color_hex_map JSONB NOT NULL,
+    typography JSONB NOT NULL DEFAULT '{}'::jsonb,
+    border_radius VARCHAR(50) NOT NULL DEFAULT 'rounded-lg',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_theme_settings_active 
+    ON theme_settings (is_active, updated_at DESC);
+
+-- Seed Initial Active Theme Setting
+INSERT INTO theme_settings (
+    name,
+    mode,
+    color_hex_map,
+    typography,
+    border_radius,
+    is_active
+) VALUES (
+    '${defaultTheme.name.replace(/'/g, "''")}',
+    'dark',
+    '${JSON.stringify(defaultTheme.color_hex_map).replace(/'/g, "''")}'::jsonb,
+    '${JSON.stringify(defaultTheme.metadata?.typography ?? {}).replace(/'/g, "''")}'::jsonb,
+    'rounded-lg',
+    TRUE
+);
+
+-- Step 11: Unified View for Themes
+CREATE OR REPLACE VIEW view_themes AS
+SELECT 
+    t.id,
+    t.name,
+    t.slug,
+    t.is_active,
+    t.color_hex_map,
+    t.color_tokens,
+    t.metadata,
+    t.created_at,
+    t.updated_at
+FROM themes t;
 `;
+
+/**
+ * Resolves the location of pg_dump on the host system.
+ * Checks PG_DUMP_PATH environment variable, system PATH, and
+ * standard PostgreSQL installation directories on Windows.
+ */
+function findPgDumpBinary(): string | null {
+  if (process.env.PG_DUMP_PATH && fs.existsSync(process.env.PG_DUMP_PATH)) {
+    return process.env.PG_DUMP_PATH;
+  }
+
+  // Check system PATH
+  try {
+    const testCmd = process.platform === "win32" ? "where pg_dump" : "which pg_dump";
+    const out = child_process
+      .execSync(testCmd, { stdio: ["pipe", "pipe", "ignore"], encoding: "utf8" })
+      .trim();
+    if (out) {
+      const firstLine = out.split(/\r?\n/)[0]?.trim();
+      if (firstLine && fs.existsSync(firstLine)) return firstLine;
+      return "pg_dump";
+    }
+  } catch {
+    // pg_dump not found in PATH
+  }
+
+  // Windows standard installation directories (e.g. C:\Program Files\PostgreSQL\<version>\bin\pg_dump.exe)
+  if (process.platform === "win32") {
+    const programFilesDirs = [
+      process.env.ProgramFiles,
+      process.env["ProgramFiles(x86)"],
+      "C:\\Program Files",
+      "C:\\Program Files (x86)",
+    ].filter(Boolean) as string[];
+
+    for (const pf of programFilesDirs) {
+      const pgRoot = path.join(pf, "PostgreSQL");
+      if (fs.existsSync(pgRoot)) {
+        try {
+          const versions = fs
+            .readdirSync(pgRoot)
+            .filter((v) => /^\d+/.test(v))
+            .sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
+
+          for (const ver of versions) {
+            const candidate = path.join(pgRoot, ver, "bin", "pg_dump.exe");
+            if (fs.existsSync(candidate)) {
+              return candidate;
+            }
+          }
+        } catch {
+          // ignore directory read errors
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resilient Node.js SQL dumper fallback if pg_dump binary is absent in the host environment.
+ */
+async function fallbackDatabaseBackup(
+  databaseUrl: string,
+  backupFilePath: string,
+  requiresSsl: boolean,
+): Promise<void> {
+  const dumpClient = new Client({
+    connectionString: databaseUrl,
+    ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+  });
+  await dumpClient.connect();
+  try {
+    const lines: string[] = [
+      `-- Fallback database backup generated at ${new Date().toISOString()}`,
+      "BEGIN;",
+    ];
+
+    const tablesRes = await dumpClient.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      ORDER BY table_name;
+    `);
+
+    for (const row of tablesRes.rows) {
+      const tableName = row.table_name;
+      const dataRes = await dumpClient.query(`SELECT * FROM "${tableName}"`);
+      if (dataRes.rows.length > 0) {
+        lines.push(`\n-- Data for table: ${tableName}`);
+        for (const dataRow of dataRes.rows) {
+          const cols = Object.keys(dataRow);
+          const vals = cols.map((col) => {
+            const val = dataRow[col];
+            if (val === null || val === undefined) return "NULL";
+            if (typeof val === "number" || typeof val === "boolean") return String(val);
+            if (typeof val === "object") return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+            return `'${String(val).replace(/'/g, "''")}'`;
+          });
+          lines.push(
+            `INSERT INTO "${tableName}" ("${cols.join('", "')}") VALUES (${vals.join(", ")}) ON CONFLICT DO NOTHING;`,
+          );
+        }
+      }
+    }
+
+    lines.push("\nCOMMIT;");
+    fs.writeFileSync(backupFilePath, lines.join("\n"), "utf8");
+  } finally {
+    await dumpClient.end().catch(() => {});
+  }
+}
+
+/**
+ * Takes an automated backup of the target database before dropping or resetting schemas.
+ * Dumps are placed in the backups/ directory.
+ */
+async function backupDatabase(
+  databaseUrl: string,
+  targetDbName: string,
+  isCloudDb: boolean,
+  requiresSsl: boolean,
+): Promise<string | null> {
+  const backupsDir = path.resolve(__dirname, "../../backups");
+  if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir, { recursive: true });
+  }
+
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const backupFileName = `${targetDbName}_backup_${timestamp}.sql`;
+  const backupFilePath = path.join(backupsDir, backupFileName);
+
+  // Check if database exists before attempting backup
+  if (!isCloudDb) {
+    const maintenanceUrl = new URL(databaseUrl);
+    maintenanceUrl.pathname = "/postgres";
+    const checkClient = new Client({ connectionString: maintenanceUrl.toString() });
+    try {
+      await checkClient.connect();
+      const res = await checkClient.query(
+        "SELECT 1 FROM pg_database WHERE datname = $1",
+        [targetDbName],
+      );
+      if (res.rows.length === 0) {
+        console.log(`ℹ️  Target database "${targetDbName}" does not exist yet; skipping pre-drop backup.`);
+        return null;
+      }
+    } catch {
+      // If maintenance client connection fails, proceed and attempt backup directly
+    } finally {
+      await checkClient.end().catch(() => {});
+    }
+  } else {
+    const testClient = new Client({
+      connectionString: databaseUrl,
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+    });
+    try {
+      await testClient.connect();
+      const res = await testClient.query(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' LIMIT 1",
+      );
+      if (res.rows.length === 0) {
+        console.log(`ℹ️  Target database "${targetDbName}" has no existing tables; skipping pre-drop backup.`);
+        return null;
+      }
+    } catch (err: any) {
+      console.log(`ℹ️  Could not connect to target database (${err.message}); skipping pre-drop backup.`);
+      return null;
+    } finally {
+      await testClient.end().catch(() => {});
+    }
+  }
+
+  console.log(`💾 Taking pre-drop backup of database "${targetDbName}"...`);
+
+  const pgDumpPath = findPgDumpBinary();
+  const parsed = new URL(databaseUrl);
+  const host = parsed.hostname || "localhost";
+  const port = parsed.port || "5432";
+  const username = parsed.username || "postgres";
+  const password = decodeURIComponent(parsed.password || "");
+
+  if (pgDumpPath) {
+    try {
+      const args = [
+        "-h", host,
+        "-p", port,
+        "-U", username,
+        "-d", targetDbName,
+        "-f", backupFilePath,
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-privileges",
+      ];
+
+      await new Promise<void>((resolve, reject) => {
+        const child = child_process.spawn(pgDumpPath, args, {
+          env: {
+            ...process.env,
+            PGPASSWORD: password,
+            ...(requiresSsl ? { PGSSLMODE: "require" } : {}),
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+        let stderr = "";
+        child.stderr?.on("data", (data) => {
+          stderr += data.toString();
+        });
+
+        child.on("close", (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`pg_dump exited with code ${code}: ${stderr.trim()}`));
+          }
+        });
+
+        child.on("error", (err) => reject(err));
+      });
+
+      const stats = fs.statSync(backupFilePath);
+      const sizeKb = (stats.size / 1024).toFixed(1);
+      console.log(`✅ Pre-drop backup saved: backups/${backupFileName} (${sizeKb} KB)`);
+      return backupFilePath;
+    } catch (dumpErr: any) {
+      console.warn(`⚠️  pg_dump encountered an error (${dumpErr.message}). Falling back to Node.js table exporter...`);
+    }
+  }
+
+  try {
+    await fallbackDatabaseBackup(databaseUrl, backupFilePath, requiresSsl);
+    const stats = fs.statSync(backupFilePath);
+    const sizeKb = (stats.size / 1024).toFixed(1);
+    console.log(`✅ Pre-drop backup saved via fallback: backups/${backupFileName} (${sizeKb} KB)`);
+    return backupFilePath;
+  } catch (fallbackErr: any) {
+    console.warn(`⚠️  Pre-drop backup fallback failed: ${fallbackErr.message}`);
+    return null;
+  }
+}
 
 export async function resetDatabase(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -381,6 +715,13 @@ export async function resetDatabase(): Promise<void> {
     databaseUrl.includes("supabase.co") ||
     databaseUrl.includes("neon.tech") ||
     databaseUrl.includes("amazonaws.com");
+
+  // Step 0: Take an automated pre-drop backup of the database into the backups/ folder
+  try {
+    await backupDatabase(databaseUrl, targetDbName, isCloudDb, requiresSsl);
+  } catch (backupErr: any) {
+    console.warn(`⚠️  Database pre-drop backup encountered an issue: ${backupErr.message}`);
+  }
 
   if (!isCloudDb) {
     // Step 1: For local PostgreSQL, connect to maintenance database to drop and recreate the target database

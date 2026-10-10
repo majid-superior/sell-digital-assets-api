@@ -23,6 +23,8 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
 import organizationsRoutes from "./modules/organizations/organizations.routes.js";
 import categoriesRoutes from "./modules/categories/categories.routes.js";
+import themeRoutes from "./modules/theme/theme.routes.js";
+import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
 
 const themeStaticPath = path.resolve(process.cwd(), "public/theme");
@@ -80,6 +82,7 @@ app.use(cookieParser());
 // Static Assets & Centralized Theme
 // ============================================================================
 const isProduction = env.NODE_ENV === "production";
+app.get("/theme/theme.css", themeController.getCssVariables.bind(themeController));
 app.use(
   "/theme",
   express.static(themeStaticPath, {
@@ -106,7 +109,7 @@ const swaggerFilePath = fs.existsSync(swaggerDistPath) ? swaggerDistPath : swagg
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
   // 1. Define your explicit order
-  const tagOrder = ["Health", "Organization Branding", "Authentication", "Users", "Categories"];
+  const tagOrder = ["Health", "Organization Branding", "Authentication", "Users", "Categories", "Theme"];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
     swaggerFile.tags.sort((a: { name: string }, b: { name: string }) => {
@@ -134,7 +137,7 @@ if (fs.existsSync(swaggerFilePath)) {
       swaggerOptions: {
         persistAuthorization: true,
         displayRequestDuration: true,
-        docExpansion: "list",
+        docExpansion: "none",
         filter: true,
       },
     })
@@ -162,6 +165,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/organizations", organizationsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/theme", themeRoutes);
+app.use("/api/themes", themeRoutes);
+app.use("/api/v1/theme", themeRoutes);
+app.use("/api/v1/themes", themeRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

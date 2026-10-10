@@ -1,4 +1,5 @@
 import { organizationsRepository } from "../database/repositories/organizations.repository.js";
+import { themeService } from "../modules/theme/theme.service.js";
 import type { OrganizationEntity } from "../database/types.js";
 import { COLOR_HEX_MAP, TOKENS } from "../theme/index.js";
 
@@ -46,30 +47,15 @@ export interface OrganizationCopyright {
   text: string;
 }
 
-export interface CurrencyInfo {
-  code: string;
-  name: string;
-  symbol: string;
-}
+import {
+  type CurrencyInfo,
+  TOP_CURRENCIES,
+  defaultCurrency,
+} from "./currencies.js";
+import { defaultTheme } from "./themes.js";
 
-export const TOP_CURRENCIES: CurrencyInfo[] = [
-  { code: "PKR", name: "Pakistani Rupee", symbol: "₨" },
-  { code: "USD", name: "United States Dollar", symbol: "$" },
-  { code: "EUR", name: "Euro", symbol: "€" },
-  { code: "GBP", name: "British Pound", symbol: "£" },
-  { code: "JPY", name: "Japanese Yen", symbol: "¥" },
-  { code: "CAD", name: "Canadian Dollar", symbol: "CA$" },
-  { code: "AUD", name: "Australian Dollar", symbol: "A$" },
-  { code: "CHF", name: "Swiss Franc", symbol: "CHF" },
-  { code: "CNY", name: "Chinese Yuan", symbol: "¥" },
-  { code: "AED", name: "United Arab Emirates Dirham", symbol: "AED" },
-];
-
-export const defaultCurrency: CurrencyInfo = {
-  code: "PKR",
-  name: "Pakistani Rupee",
-  symbol: "₨",
-};
+export type { CurrencyInfo };
+export { TOP_CURRENCIES, defaultCurrency };
 
 export interface OrganizationInfo {
   name: string;
@@ -92,15 +78,15 @@ export interface OrganizationInfo {
 }
 
 export const defaultOrganization: OrganizationInfo = {
-  name: "Sell Digital Assets",
-  shortName: "Sell Digital Assets",
-  title: "Sell Digital Assets",
+  name: "AssetDrop",
+  shortName: "AssetDrop",
+  title: "AssetDrop API",
   tagline: "System Status & Observability Dashboard",
   description:
     "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
   logo: {
     url: "/logo.png",
-    alt: "Sell Digital Assets Logo",
+    alt: "AssetDrop Logo",
     width: 48,
     height: 48,
   },
@@ -126,8 +112,8 @@ export const defaultOrganization: OrganizationInfo = {
   },
   copyright: {
     year: new Date().getFullYear(),
-    holder: "Sell Digital Assets Inc.",
-    text: "Sell Digital Assets • Digital Assets Marketplace",
+    holder: "AssetDrop Inc.",
+    text: "AssetDrop • Digital Assets Marketplace",
   },
   defaultCurrency: defaultCurrency.code,
   currency: defaultCurrency,
@@ -264,9 +250,15 @@ export async function getOrganizationInfo(
   }
 
   try {
-    const entity = await organizationsRepository.getOrganization();
+    const [entity, activeTheme] = await Promise.all([
+      organizationsRepository.getOrganization(),
+      themeService.getActiveTheme(forceRefresh),
+    ]);
     if (entity) {
       cachedOrganization = mapEntityToOrganizationInfo(entity);
+      if (activeTheme?.color_hex_map) {
+        cachedOrganization.theme.palette = activeTheme.color_hex_map as any;
+      }
       lastFetched = now;
     }
   } catch (_err) {

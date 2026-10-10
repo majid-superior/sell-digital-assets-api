@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "Sell Digital Assets Documentation",
+    "title": "AssetDrop API Documentation",
     "version": "1.0.0",
     "description": "Enterprise-grade digital assets marketplace and license distribution REST API platform."
   },
@@ -31,6 +31,10 @@
     {
       "name": "Users",
       "description": "User account management and role-based access"
+    },
+    {
+      "name": "Theme",
+      "description": "Dynamic database theme styling, color tokens, and CSS variables"
     }
   ],
   "paths": {
@@ -820,6 +824,78 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/api/theme": {
+      "get": {
+        "description": "Retrieves currently active database theme palette with conditional ETag validation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "304": {
+            "description": "Not Modified"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Get active theme styling & tokens"
+      },
+      "put": {
+        "description": "Updates database theme styling, invalidates caches, and synchronizes CSS tokens",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Update active theme (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateThemeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/theme/css": {
+      "get": {
+        "description": "Generates pure CSS variables (:root and .dark) compiled directly from the active database theme",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "304": {
+            "description": "Not Modified"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Get dynamic compiled CSS stylesheet"
       }
     }
   },
@@ -1656,7 +1732,7 @@
                   },
                   "example": {
                     "type": "string",
-                    "example": "Sell Digital Assets"
+                    "example": "AssetDrop"
                   }
                 }
               },
@@ -1669,7 +1745,7 @@
                   },
                   "example": {
                     "type": "string",
-                    "example": "Sell Digital Assets Inc."
+                    "example": "AssetDrop Inc."
                   }
                 }
               },
@@ -1946,6 +2022,224 @@
                 }
               },
               "social_links": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "UpdateThemeInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Cyber Violet"
+                  }
+                }
+              },
+              "mode": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "enum": {
+                    "type": "array",
+                    "example": [
+                      "light",
+                      "dark"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "dark"
+                  }
+                }
+              },
+              "color_hex_map": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {
+                      "light": {
+                        "type": "object",
+                        "properties": {
+                          "primary": {
+                            "type": "string",
+                            "example": "#6d28d9"
+                          },
+                          "secondary": {
+                            "type": "string",
+                            "example": "#0284c7"
+                          }
+                        }
+                      },
+                      "dark": {
+                        "type": "object",
+                        "properties": {
+                          "primary": {
+                            "type": "string",
+                            "example": "#a78bfa"
+                          },
+                          "secondary": {
+                            "type": "string",
+                            "example": "#38bdf8"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "border_radius": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "rounded-lg"
+                  }
+                }
+              },
+              "typography": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateThemeInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "object"
+          },
+          "required": {
+            "type": "array",
+            "example": [
+              "name",
+              "slug"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "Emerald City"
+                  }
+                }
+              },
+              "slug": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "string"
+                  },
+                  "example": {
+                    "type": "string",
+                    "example": "emerald-city"
+                  }
+                }
+              },
+              "is_active": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "boolean"
+                  },
+                  "example": {
+                    "type": "boolean",
+                    "example": false
+                  }
+                }
+              },
+              "color_hex_map": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "object"
+                  },
+                  "example": {
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              },
+              "color_tokens": {
                 "type": "object",
                 "properties": {
                   "type": {
