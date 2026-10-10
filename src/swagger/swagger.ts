@@ -13,7 +13,7 @@ if (!fs.existsSync(targetDir)) {
 const doc = {
   openapi: "3.0.0",
   info: {
-    title: `${organization.title} Documentation`,
+    title: `${organization.title}`,
     version: "1.0.0",
     description: organization.description,
   },
@@ -27,7 +27,8 @@ const doc = {
     { name: "Health", description: "API and database observability endpoints" },
     {
       name: "Organization Branding",
-      description: "Organization branding, legal details, and platform settings",
+      description:
+        "Organization branding, legal details, and platform settings",
     },
     {
       name: "Authentication",
@@ -44,7 +45,8 @@ const doc = {
     },
     {
       name: "Theme",
-      description: "Dynamic database theme styling, color tokens, and CSS variables",
+      description:
+        "Dynamic database theme styling, color tokens, and CSS variables",
     },
   ],
   components: {
@@ -211,15 +213,30 @@ const doc = {
           organization_name: { type: "string", example: "AssetDrop" },
           legal_name: { type: "string", example: "AssetDrop Inc." },
           tagline: { type: "string", example: "Digital Assets Marketplace" },
-          description: { type: "string", example: "Platform for selling digital assets" },
+          description: {
+            type: "string",
+            example: "Platform for selling digital assets",
+          },
           logo_url: { type: "string", example: "/logo.png" },
           logo_dark_url: { type: "string", example: "/logo-dark.png" },
           favicon_url: { type: "string", example: "/favicon.ico" },
           cover_banner_url: { type: "string", example: "/banner.png" },
-          support_email: { type: "string", format: "email", example: "support@selldigitalassets.com" },
-          contact_email: { type: "string", format: "email", example: "contact@selldigitalassets.com" },
+          support_email: {
+            type: "string",
+            format: "email",
+            example: "support@selldigitalassets.com",
+          },
+          contact_email: {
+            type: "string",
+            format: "email",
+            example: "contact@selldigitalassets.com",
+          },
           support_phone: { type: "string", example: "+00 (012) 345-6789" },
-          support_url: { type: "string", format: "uri", example: "https://selldigitalassets.com/support" },
+          support_url: {
+            type: "string",
+            format: "uri",
+            example: "https://selldigitalassets.com/support",
+          },
           address_line1: { type: "string", example: "Ring Road" },
           address_line2: { type: "string", example: "" },
           city: { type: "string", example: "Lahore" },
@@ -311,7 +328,8 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
     for (const method of Object.values<any>(methods)) {
       if (Array.isArray(method.parameters)) {
         method.parameters = method.parameters.filter(
-          (p: any) => p && p.name !== "req" && p.name !== "res" && p.name !== "next"
+          (p: any) =>
+            p && p.name !== "req" && p.name !== "res" && p.name !== "next",
         );
       }
     }
@@ -476,8 +494,10 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         }
       }
       if (methods.patch) {
-        methods.patch.summary = "Partially update organization details (Admin only)";
-        methods.patch.description = "Partially updates organization configuration";
+        methods.patch.summary =
+          "Partially update organization details (Admin only)";
+        methods.patch.description =
+          "Partially updates organization configuration";
         methods.patch.security = [{ bearerAuth: [] }];
         if (methods.patch.requestBody?.content?.["application/json"]) {
           methods.patch.requestBody.content["application/json"].schema = {
@@ -778,7 +798,11 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
     if (!fs.existsSync(distSwaggerDir)) {
       fs.mkdirSync(distSwaggerDir, { recursive: true });
     }
-    fs.writeFileSync(path.join(distSwaggerDir, "swagger.json"), JSON.stringify(spec, null, 2), "utf8");
+    fs.writeFileSync(
+      path.join(distSwaggerDir, "swagger.json"),
+      JSON.stringify(spec, null, 2),
+      "utf8",
+    );
   }
 
   console.log("Swagger-autogen: Cleaned and optimized swagger.json");

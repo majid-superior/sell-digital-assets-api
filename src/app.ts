@@ -1,5 +1,9 @@
 // src/app.ts
-import express, { type Request, type Response, type NextFunction } from "express";
+import express, {
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import fs from "node:fs";
@@ -82,7 +86,10 @@ app.use(cookieParser());
 // Static Assets & Centralized Theme
 // ============================================================================
 const isProduction = env.NODE_ENV === "production";
-app.get("/theme/theme.css", themeController.getCssVariables.bind(themeController));
+app.get(
+  "/theme/theme.css",
+  themeController.getCssVariables.bind(themeController),
+);
 app.use(
   "/theme",
   express.static(themeStaticPath, {
@@ -102,14 +109,26 @@ app.use(
 // ============================================================================
 // Automated Swagger UI Documentation (/doc, /docs, /openapi.json)
 // ============================================================================
-const swaggerDistPath = path.resolve(process.cwd(), "dist/swagger/swagger.json");
+const swaggerDistPath = path.resolve(
+  process.cwd(),
+  "dist/swagger/swagger.json",
+);
 const swaggerSrcPath = path.resolve(process.cwd(), "src/swagger/swagger.json");
-const swaggerFilePath = fs.existsSync(swaggerDistPath) ? swaggerDistPath : swaggerSrcPath;
+const swaggerFilePath = fs.existsSync(swaggerDistPath)
+  ? swaggerDistPath
+  : swaggerSrcPath;
 
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
   // 1. Define your explicit order
-  const tagOrder = ["Health", "Organization Branding", "Authentication", "Users", "Categories", "Theme"];
+  const tagOrder = [
+    "Health",
+    "Organization Branding",
+    "Authentication",
+    "Users",
+    "Categories",
+    "Theme",
+  ];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
     swaggerFile.tags.sort((a: { name: string }, b: { name: string }) => {
@@ -123,29 +142,32 @@ if (fs.existsSync(swaggerFilePath)) {
     "/doc",
     swaggerUi.serveFiles(swaggerFile, {}),
     swaggerUi.setup(swaggerFile, {
-      customSiteTitle: `${organization.title} Documentation`,
+      customSiteTitle: `${organization.title} | API`,
       customfavIcon: organization.favicon.url,
       customCssUrl: [
         "/theme/fonts.css",
         "/theme/theme.css",
         "/css/style.css",
       ] as unknown as string,
-      customJs: [
-        "/js/theme.js",
-        "/js/swagger.js",
-      ],
+      customJs: ["/js/theme.js", "/js/swagger.js"],
       swaggerOptions: {
         persistAuthorization: true,
         displayRequestDuration: true,
         docExpansion: "none",
         filter: true,
       },
-    })
+    }),
   );
-  app.get("/docs", (_req: Request, res: Response) => res.redirect(301, "/doc/"));
-  app.get("/openapi.json", (_req: Request, res: Response) => res.json(swaggerFile));
+  app.get("/docs", (_req: Request, res: Response) =>
+    res.redirect(301, "/doc/"),
+  );
+  app.get("/openapi.json", (_req: Request, res: Response) =>
+    res.json(swaggerFile),
+  );
 } else {
-  console.warn("⚠️ Warning: swagger.json not found. Run 'npm run swagger' to generate API docs.");
+  console.warn(
+    "⚠️ Warning: swagger.json not found. Run 'npm run swagger' to generate API docs.",
+  );
 }
 
 // ============================================================================
@@ -157,7 +179,10 @@ app.use("/", pagesRoutes);
 // PIPELINE STEPS 6-10: Domain Modules (REST APIs), Scoped CSP & Rate Limiting
 // ============================================================================
 app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
-  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'",
+  );
   next();
 });
 app.use("/api", generalLimiter);

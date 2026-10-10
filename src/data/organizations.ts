@@ -80,7 +80,7 @@ export interface OrganizationInfo {
 export const defaultOrganization: OrganizationInfo = {
   name: "AssetDrop",
   shortName: "AssetDrop",
-  title: "AssetDrop API",
+  title: "AssetDrop",
   tagline: "System Status & Observability Dashboard",
   description:
     "Enterprise-grade digital assets marketplace and license distribution REST API platform.",
@@ -155,7 +155,9 @@ export const defaultOrganizationEntity: OrganizationEntity = {
   },
 };
 
-export function mapEntityToOrganizationInfo(entity: OrganizationEntity): OrganizationInfo {
+export function mapEntityToOrganizationInfo(
+  entity: OrganizationEntity,
+): OrganizationInfo {
   const metadata = (
     entity.metadata &&
     typeof entity.metadata === "object" &&
@@ -220,7 +222,8 @@ export function mapEntityToOrganizationInfo(entity: OrganizationEntity): Organiz
     currency:
       entity.currency && typeof entity.currency === "object"
         ? (entity.currency as CurrencyInfo)
-        : (TOP_CURRENCIES.find((c) => c.code === entity.default_currency) ?? defaultCurrency),
+        : (TOP_CURRENCIES.find((c) => c.code === entity.default_currency) ??
+          defaultCurrency),
     platformFeePercent:
       entity.platform_fee_percent !== undefined
         ? Number(entity.platform_fee_percent)

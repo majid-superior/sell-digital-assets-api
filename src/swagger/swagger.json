@@ -86,9 +86,7 @@
             }
           }
         },
-        "tags": [
-          "Health"
-        ],
+        "tags": ["Health"],
         "summary": "System health status"
       }
     },
@@ -101,9 +99,7 @@
             "description": "Created"
           }
         },
-        "tags": [
-          "Authentication"
-        ],
+        "tags": ["Authentication"],
         "summary": "Register a new user",
         "requestBody": {
           "required": true,
@@ -126,9 +122,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Authentication"
-        ],
+        "tags": ["Authentication"],
         "summary": "User login",
         "requestBody": {
           "required": true,
@@ -151,9 +145,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Authentication"
-        ],
+        "tags": ["Authentication"],
         "summary": "Refresh access token",
         "requestBody": {
           "required": true,
@@ -176,9 +168,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Authentication"
-        ],
+        "tags": ["Authentication"],
         "summary": "User logout",
         "requestBody": {
           "required": false,
@@ -223,9 +213,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -249,9 +237,7 @@
             "description": "Created"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -287,9 +273,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -313,9 +297,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -349,9 +331,7 @@
             "description": ""
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -383,9 +363,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -417,9 +395,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Users"
-        ],
+        "tags": ["Users"],
         "security": [
           {
             "bearerAuth": []
@@ -437,9 +413,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Organization Branding"
-        ],
+        "tags": ["Organization Branding"],
         "summary": "Get organization details & platform branding"
       },
       "put": {
@@ -458,9 +432,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Organization Branding"
-        ],
+        "tags": ["Organization Branding"],
         "summary": "Update organization details (Admin only)",
         "security": [
           {
@@ -484,9 +456,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Organization Branding"
-        ],
+        "tags": ["Organization Branding"],
         "summary": "Partially update organization details (Admin only)",
         "security": [
           {
@@ -537,9 +507,7 @@
             }
           }
         },
-        "tags": [
-          "Organization Branding"
-        ],
+        "tags": ["Organization Branding"],
         "summary": "List supported currencies"
       }
     },
@@ -609,9 +577,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "List categories or fetch category tree"
       },
       "post": {
@@ -630,9 +596,7 @@
             "description": "Created"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Create category (Admin only)",
         "security": [
           {
@@ -670,9 +634,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Get category by ID"
       },
       "patch": {
@@ -693,9 +655,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Update category by ID (Admin only)",
         "security": [
           {
@@ -731,9 +691,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Replace/Update category by ID (Admin only)",
         "security": [
           {
@@ -777,9 +735,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Soft-delete category by ID (Admin only)",
         "security": [
           {
@@ -815,9 +771,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Categories"
-        ],
+        "tags": ["Categories"],
         "summary": "Restore soft-deleted category by ID (Admin only)",
         "security": [
           {
@@ -838,9 +792,7 @@
             "description": "Not Modified"
           }
         },
-        "tags": [
-          "Theme"
-        ],
+        "tags": ["Theme"],
         "summary": "Get active theme styling & tokens"
       },
       "put": {
@@ -859,9 +811,7 @@
             "description": "OK"
           }
         },
-        "tags": [
-          "Theme"
-        ],
+        "tags": ["Theme"],
         "summary": "Update active theme (Admin only)",
         "security": [
           {
@@ -892,9 +842,7 @@
             "description": "Not Modified"
           }
         },
-        "tags": [
-          "Theme"
-        ],
+        "tags": ["Theme"],
         "summary": "Get dynamic compiled CSS stylesheet"
       }
     }
@@ -918,11 +866,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "name",
-              "email",
-              "password"
-            ],
+            "example": ["name", "email", "password"],
             "items": {
               "type": "string"
             }
@@ -990,10 +934,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "email",
-              "password"
-            ],
+            "example": ["email", "password"],
             "items": {
               "type": "string"
             }
@@ -1048,9 +989,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "refreshToken"
-            ],
+            "example": ["refreshToken"],
             "items": {
               "type": "string"
             }
@@ -1084,10 +1023,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "name",
-              "email"
-            ],
+            "example": ["name", "email"],
             "items": {
               "type": "string"
             }
@@ -1151,11 +1087,7 @@
                   },
                   "enum": {
                     "type": "array",
-                    "example": [
-                      "user",
-                      "creator",
-                      "admin"
-                    ],
+                    "example": ["user", "creator", "admin"],
                     "items": {
                       "type": "string"
                     }
@@ -1279,9 +1211,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "name"
-            ],
+            "example": ["name"],
             "items": {
               "type": "string"
             }
@@ -2083,10 +2013,7 @@
                   },
                   "enum": {
                     "type": "array",
-                    "example": [
-                      "light",
-                      "dark"
-                    ],
+                    "example": ["light", "dark"],
                     "items": {
                       "type": "string"
                     }
@@ -2176,10 +2103,7 @@
           },
           "required": {
             "type": "array",
-            "example": [
-              "name",
-              "slug"
-            ],
+            "example": ["name", "slug"],
             "items": {
               "type": "string"
             }
