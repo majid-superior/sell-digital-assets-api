@@ -18,9 +18,9 @@ export class AuthController {
     }
   }
 
-  async login(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await authService.login(req.body);
+      const result = await authService.signIn(req.body);
       res.status(200).json({
         success: true,
         message: "Authentication successful",
@@ -52,17 +52,52 @@ export class AuthController {
     }
   }
 
-  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const refreshToken = req.body?.refreshToken || req.cookies?.refreshToken;
-      await authService.logout(refreshToken);
+      await authService.signOut(refreshToken);
 
       res.clearCookie("accessToken", { httpOnly: true, secure: true, sameSite: "strict" });
       res.clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "strict" });
 
       res.status(200).json({
         success: true,
-        message: "Successfully logged out",
+        message: "Successfully signed out",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AppError("Authentication required", 401);
+      }
+
+      const user = await authService.getMe(req.user.id);
+      res.status(200).json({
+        success: true,
+        data: user,
+        user,
+        ...user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateMe(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AppError("Authentication required", 401);
+      }
+
+      const user = await authService.updateMe(req.user.id, req.body);
+      res.status(200).json({
+        success: true,
+        message: "Profile updated successfully",
+        data: user,
       });
     } catch (error) {
       next(error);

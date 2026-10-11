@@ -83,7 +83,7 @@ const doc = {
           },
         },
       },
-      LoginInput: {
+      SignInInput: {
         type: "object",
         required: ["email", "password"],
         properties: {
@@ -109,37 +109,9 @@ const doc = {
           },
         },
       },
-      CreateUserInput: {
-        type: "object",
-        required: ["name", "email"],
-        properties: {
-          name: { type: "string", example: "Jane Doe" },
-          email: {
-            type: "string",
-            format: "email",
-            example: "jane@example.com",
-          },
-          password: {
-            type: "string",
-            format: "password",
-            example: "StrongP@ssw0rd!",
-          },
-          role: {
-            type: "string",
-            enum: ["user", "creator", "admin"],
-            example: "user",
-          },
-        },
-      },
       UpdateUserInput: {
         type: "object",
         properties: {
-          name: { type: "string", example: "John Doe" },
-          password: {
-            type: "string",
-            format: "password",
-            example: "NewSecureP@ssw0rd!",
-          },
           status: {
             type: "string",
             enum: ["active", "deactive", "pending", "suspended", "banned"],
@@ -373,14 +345,14 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           },
         };
       } else if (normalizedPath === "/api/v1/auth/signin" && methods.post) {
-        methods.post.summary = "User login";
+        methods.post.summary = "User sign in";
         methods.post.description =
           "Authenticates credentials and returns access & refresh tokens";
         methods.post.requestBody = {
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/LoginInput" },
+              schema: { $ref: "#/components/schemas/SignInInput" },
             },
           },
         };
@@ -396,8 +368,8 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
-      } else if (normalizedPath === "/api/v1/auth/logout" && methods.post) {
-        methods.post.summary = "User logout";
+      } else if (normalizedPath === "/api/v1/auth/signout" && methods.post) {
+        methods.post.summary = "User sign out";
         methods.post.description =
           "Revokes active refresh token session and clears authentication cookies";
         methods.post.requestBody = {
@@ -408,6 +380,15 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
+      } else if (normalizedPath === "/api/v1/auth/me") {
+        if (methods.get) {
+          methods.get.summary = "Get current authenticated profile";
+          methods.get.description = "Retrieves profile of the token owner";
+        }
+        if (methods.patch) {
+          methods.patch.summary = "Update current profile";
+          methods.patch.description = "Updates own profile details or password";
+        }
       }
     } else if (normalizedPath.startsWith("/api/v1/users")) {
       for (const method of Object.values<any>(methods)) {
@@ -420,39 +401,17 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           methods.get.description =
             "Returns paginated list of registered users";
         }
-        if (methods.post) {
-          methods.post.summary = "Create user (Admin only)";
-          methods.post.description =
-            "Creates a new user account with designated role";
-          methods.post.requestBody = {
-            required: true,
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/CreateUserInput" },
-              },
-            },
-          };
-        }
-      } else if (normalizedPath === "/api/v1/users/me") {
-        if (methods.get) {
-          methods.get.summary = "Get current authenticated profile";
-          methods.get.description = "Retrieves profile of the token owner";
-        }
-        if (methods.patch) {
-          methods.patch.summary = "Update current profile";
-          methods.patch.description = "Updates own profile details or password";
-        }
       } else if (normalizedPath === "/api/v1/users/{id}") {
         if (methods.get) {
           methods.get.summary = "Get user by ID (Admin only)";
           methods.get.description = "Retrieves user record by UUID";
         }
         if (methods.patch) {
-          methods.patch.summary = "Update user by ID (Admin only)";
+          methods.patch.summary = "Update user status by ID (Admin only)";
           methods.patch.description =
-            "Updates user name, password, or status (role and email cannot be changed after registration)";
+            "Updates user status (active, deactive, suspended)";
           methods.patch.requestBody = {
-            required: false,
+            required: true,
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/UpdateUserInput" },
@@ -461,9 +420,9 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           };
         }
         if (methods.delete) {
-          methods.delete.summary = "Delete user by ID (Admin only)";
+          methods.delete.summary = "Deactivate user by ID (Admin only)";
           methods.delete.description =
-            "Deactivates / Soft-deletes user account by UUID";
+            "Deactivates user account by UUID";
         }
       }
     } else if (normalizedPath === "/api/v1/organizations/currencies") {

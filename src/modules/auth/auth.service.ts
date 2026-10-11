@@ -2,7 +2,7 @@ import { userRepository } from "../../database/repositories/user.repository.js";
 import { hashPassword, comparePassword } from "../../core/security/password.js";
 import { generateTokens, verifyRefreshToken, type AuthUserPayload } from "../../core/security/tokens.js";
 import { AppError } from "../../core/errors/app-error.js";
-import type { RegisterUserInput, LoginUserInput } from "./auth.schema.js";
+import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.schema.js";
 
 // Pre-computed dummy hash to mitigate user enumeration via timing attack
 const DUMMY_HASH = "$2a$12$K8aUoQZJj4Ptw4q69E/f0u86P4FvL.8Qy/nZgK8Zl3wzMkm1w2KWW";
@@ -43,13 +43,13 @@ export class AuthService {
     };
   }
 
-  async login(input: LoginUserInput) {
+  async signIn(input: SignInUserInput) {
     const user = await userRepository.findByEmail(input.email);
 
     // 1. Check account lockout BEFORE evaluating credentials
     if (user?.locked_until && new Date(user.locked_until) > new Date()) {
       throw new AppError(
-        "Your account is temporarily locked due to multiple failed login attempts. Please try again later.",
+        "Your account is temporarily locked due to multiple failed sign-in attempts. Please try again later.",
         403,
       );
     }
@@ -60,7 +60,7 @@ export class AuthService {
 
     if (!user || !user.password_hash || !isValid) {
       if (user) {
-        await userRepository.recordFailedLogin(user.id);
+        await userRepository.recordFailedSignIn(user.id);
       }
       throw new AppError("Invalid email or password", 401);
     }
@@ -70,8 +70,8 @@ export class AuthService {
       throw new AppError(`Your account is currently ${user.status}. Please contact support.`, 403);
     }
 
-    // 4. Record successful login and reset failure counter
-    await userRepository.updateLastLogin(user.id);
+    // 4. Record successful sign-in and reset failure counter
+    await userRepository.updateLastSignIn(user.id);
 
     const tokens = generateTokens({
       id: user.id,
@@ -122,8 +122,48 @@ export class AuthService {
     };
   }
 
-  async logout(_refreshToken?: string): Promise<void> {
+  async signOut(_refreshToken?: string): Promise<void> {
     // Stateless token invalidation handled via cookie clearance in controller
+  }
+
+  async getMe(userId: string) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+    const { password_hash, ...safeUser } = user;
+    return safeUser;
+  }
+
+  async updateMe(userId: string, data: UpdateMeInput) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+
+    let passwordHash: string | undefined;
+    if (data.password) {
+      if (data.currentPassword) {
+        const hashToCompare = user.password_hash || "";
+        const isValid = await comparePassword(data.currentPassword, hashToCompare);
+        if (!isValid) {
+          throw new AppError("Current password does not match", 400);
+        }
+      }
+      passwordHash = await hashPassword(data.password);
+    }
+
+    const updated = await userRepository.update(userId, {
+      name: data.name,
+      passwordHash,
+    });
+
+    if (!updated) {
+      throw new AppError("Failed to update user profile", 500);
+    }
+
+    const { password_hash, ...safeUser } = updated;
+    return safeUser;
   }
 }
 

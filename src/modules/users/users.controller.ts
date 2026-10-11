@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { usersService } from "./users.service.js";
-import { AppError } from "../../core/errors/app-error.js";
-import type { CreateUserInput, PaginationQueryInput, UuidParamInput, UpdateMeInput, UpdateUserInput } from "./users.schema.js";
+import type { PaginationQueryInput, UuidParamInput, UpdateUserInput } from "./users.schema.js";
 
 export class UsersController {
   async getAllUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -20,64 +19,12 @@ export class UsersController {
     }
   }
 
-  async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      if (!req.user) {
-        throw new AppError("Authentication required", 401);
-      }
-
-      const user = await usersService.getUserById(req.user.id);
-      res.status(200).json({
-        success: true,
-        data: user,
-        user,
-        ...user,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async updateMe(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      if (!req.user) {
-        throw new AppError("Authentication required", 401);
-      }
-
-      const body = req.body as UpdateMeInput;
-      const user = await usersService.updateMe(req.user.id, body);
-
-      res.status(200).json({
-        success: true,
-        message: "Profile updated successfully",
-        data: user,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   async getUserById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params as unknown as UuidParamInput;
       const user = await usersService.getUserById(id);
       res.status(200).json({
         success: true,
-        data: user,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async createUser(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const body = req.body as CreateUserInput;
-      const user = await usersService.createUser(body);
-
-      res.status(201).json({
-        success: true,
-        message: "User created successfully",
         data: user,
       });
     } catch (error) {

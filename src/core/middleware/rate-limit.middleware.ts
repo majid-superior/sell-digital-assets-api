@@ -52,7 +52,7 @@ export const generalLimiter = rateLimit({
 });
 
 // 2. Strict Rate Limiter for Authentication Endpoints (Brute-Force Defense)
-// Only failed attempts (status >= 400) count towards the limit; successful logins are not counted.
+// Only failed attempts (status >= 400) count towards the limit; successful sign-ins are not counted.
 const authStore = createRateLimitStore("auth");
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -64,7 +64,7 @@ export const authLimiter = rateLimit({
   message: {
     success: false,
     status: "fail",
-    message: "Too many login/registration attempts. Account access throttled for 15 minutes.",
+    message: "Too many sign-in/registration attempts. Account access throttled for 15 minutes.",
   },
 });
 

@@ -143,14 +143,14 @@ export class UserRepository extends BaseRepository<UserEntity> {
     return createdUser!;
   }
 
-  async updateLastLogin(id: string): Promise<void> {
+  async updateLastSignIn(id: string): Promise<void> {
     await this.query(
       "UPDATE users SET last_login_at = CURRENT_TIMESTAMP, failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
       [id],
     );
   }
 
-  async recordFailedLogin(
+  async recordFailedSignIn(
     id: string,
     maxAttempts = 5,
     lockDurationMinutes = 15,

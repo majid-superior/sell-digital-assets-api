@@ -1,10 +1,9 @@
 import { Router } from "express";
 import { authController } from "./auth.controller.js";
 import { validateBody } from "../../core/validation/validate.middleware.js";
-import { RegisterUserSchema, LoginUserSchema, RefreshTokenSchema } from "./auth.schema.js";
+import { RegisterUserSchema, SignInUserSchema, RefreshTokenSchema, UpdateMeSchema } from "./auth.schema.js";
 import { authLimiter } from "../../core/middleware/rate-limit.middleware.js";
 import { authenticate } from "../../core/middleware/auth.middleware.js";
-import { usersController } from "../users/users.controller.js";
 
 const router = Router();
 
@@ -20,8 +19,8 @@ router.post(
 router.post(
   "/signin",
   authLimiter,
-  validateBody(LoginUserSchema),
-  authController.login.bind(authController),
+  validateBody(SignInUserSchema),
+  authController.signIn.bind(authController),
 );
 
 // Refresh token
@@ -31,17 +30,24 @@ router.post(
   authController.refresh.bind(authController),
 );
 
-// Logout
+// Signout
 router.post(
-  "/logout",
-  authController.logout.bind(authController),
+  "/signout",
+  authController.signOut.bind(authController),
 );
 
 // Current User Profile: /me under auth route
 router.get(
   "/me",
   authenticate,
-  usersController.getMe.bind(usersController),
+  authController.getMe.bind(authController),
+);
+
+router.patch(
+  "/me",
+  authenticate,
+  validateBody(UpdateMeSchema),
+  authController.updateMe.bind(authController),
 );
 
 export default router;

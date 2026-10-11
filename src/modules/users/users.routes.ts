@@ -2,7 +2,7 @@ import { Router } from "express";
 import { usersController } from "./users.controller.js";
 import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import { validateBody, validateQuery, validateParams } from "../../core/validation/validate.middleware.js";
-import { CreateUserSchema, PaginationQuerySchema, UuidParamSchema, UpdateMeSchema, UpdateUserSchema } from "./users.schema.js";
+import { PaginationQuerySchema, UuidParamSchema, UpdateUserSchema } from "./users.schema.js";
 
 const router = Router();
 
@@ -15,17 +15,6 @@ router.get(
   usersController.getAllUsers.bind(usersController),
 );
 
-// Authenticated user gets own profile
-router.get("/me", authenticate, usersController.getMe.bind(usersController));
-
-// Authenticated user updates own profile
-router.patch(
-  "/me",
-  authenticate,
-  validateBody(UpdateMeSchema),
-  usersController.updateMe.bind(usersController),
-);
-
 // Get user by ID (admin only)
 router.get(
   "/:id",
@@ -35,7 +24,7 @@ router.get(
   usersController.getUserById.bind(usersController),
 );
 
-// Update user by ID (admin only)
+// Update user status (active/deactive) by ID (admin only)
 router.patch(
   "/:id",
   authenticate,
@@ -45,22 +34,13 @@ router.patch(
   usersController.updateUser.bind(usersController),
 );
 
-// Deactivate / Delete user by ID (admin only)
+// Deactivate user by ID (admin only)
 router.delete(
   "/:id",
   authenticate,
   authorize("admin"),
   validateParams(UuidParamSchema),
   usersController.deleteUser.bind(usersController),
-);
-
-// Create user (admin only)
-router.post(
-  "/",
-  authenticate,
-  authorize("admin"),
-  validateBody(CreateUserSchema),
-  usersController.createUser.bind(usersController),
 );
 
 export default router;
