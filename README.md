@@ -230,65 +230,67 @@ The database schema and seeds are managed in [`src/database/reset.ts`](src/datab
 
 ## 📡 API Endpoints
 
+> **Strict API Versioning:** All endpoints strictly require the `/api/v1/*` prefix. Unversioned legacy prefixes have been deprecated and removed.
+
 ### 1. Authentication Module
 
-| Method | Endpoint             | Rate Limit     | Auth   | Description                                         |
-| :----- | :------------------- | :------------- | :----- | :-------------------------------------------------- |
-| `POST` | `/api/auth/register` | 5 failed / 15m | Public | Register a new platform user account                |
-| `POST` | `/api/auth/login`    | 5 failed / 15m | Public | Authenticate and obtain JWT access + refresh tokens |
-| `POST` | `/api/auth/refresh`  | General        | Public | Refresh expired access token using refresh token    |
-| `POST` | `/api/auth/logout`   | General        | Public | Terminate active user session                       |
+| Method | Endpoint                | Rate Limit     | Auth   | Description                                         |
+| :----- | :---------------------- | :------------- | :----- | :-------------------------------------------------- |
+| `POST` | `/api/v1/auth/signup`  | 5 failed / 15m | Public | Register a new platform user account                |
+| `POST` | `/api/v1/auth/signin`  | 5 failed / 15m | Public | Authenticate and obtain JWT access + refresh tokens |
+| `POST` | `/api/v1/auth/refresh`  | General        | Public | Refresh expired access token using refresh token    |
+| `POST` | `/api/v1/auth/logout`   | General        | Public | Terminate active user session                       |
 
 ### 2. Users Module
 
-| Method   | Endpoint         | Auth         | Role    | Description                                     |
-| :------- | :--------------- | :----------- | :------ | :---------------------------------------------- |
-| `GET`    | `/api/users`     | Bearer Token | `admin` | Paginated user directory                        |
-| `GET`    | `/api/users/me`  | Bearer Token | Any     | Retrieve current authenticated user profile     |
-| `PATCH`  | `/api/users/me`  | Bearer Token | Any     | Update profile details (display name, password) |
-| `GET`    | `/api/users/:id` | Bearer Token | `admin` | Retrieve detailed user profile by UUID          |
-| `PATCH`  | `/api/users/:id` | Bearer Token | `admin` | Update user status, role, or metadata           |
-| `DELETE` | `/api/users/:id` | Bearer Token | `admin` | Deactivate user account                         |
-| `POST`   | `/api/users`     | Bearer Token | `admin` | Administrator create user                       |
+| Method   | Endpoint            | Auth         | Role    | Description                                     |
+| :------- | :------------------ | :----------- | :------ | :---------------------------------------------- |
+| `GET`    | `/api/v1/users`     | Bearer Token | `admin` | Paginated user directory                        |
+| `GET`    | `/api/v1/users/me`  | Bearer Token | Any     | Retrieve current authenticated user profile     |
+| `PATCH`  | `/api/v1/users/me`  | Bearer Token | Any     | Update profile details (display name, password) |
+| `GET`    | `/api/v1/users/:id` | Bearer Token | `admin` | Retrieve detailed user profile by UUID          |
+| `PATCH`  | `/api/v1/users/:id` | Bearer Token | `admin` | Update user status, role, or metadata           |
+| `DELETE` | `/api/v1/users/:id` | Bearer Token | `admin` | Deactivate user account                         |
+| `POST`   | `/api/v1/users`     | Bearer Token | `admin` | Administrator create user                       |
 
 ### 3. Organizations & Currencies Module
 
-| Method  | Endpoint                        | Auth         | Role    | Description                                               |
-| :------ | :------------------------------ | :----------- | :------ | :-------------------------------------------------------- |
-| `GET`   | `/api/organizations`            | Public       | None    | Retrieve organization branding and platform configuration |
-| `GET`   | `/api/organizations/currencies` | Public       | None    | List all supported currencies and Unicode symbols         |
-| `PUT`   | `/api/organizations`            | Bearer Token | `admin` | Update organization branding, currency, fee, or contacts  |
-| `PATCH` | `/api/organizations`            | Bearer Token | `admin` | Partial update of organization configuration              |
+| Method  | Endpoint                           | Auth         | Role    | Description                                               |
+| :------ | :--------------------------------- | :----------- | :------ | :-------------------------------------------------------- |
+| `GET`   | `/api/v1/organizations`            | Public       | None    | Retrieve organization branding and platform configuration |
+| `GET`   | `/api/v1/organizations/currencies` | Public       | None    | List all supported currencies and Unicode symbols         |
+| `PUT`   | `/api/v1/organizations`            | Bearer Token | `admin` | Update organization branding, currency, fee, or contacts  |
+| `PATCH` | `/api/v1/organizations`            | Bearer Token | `admin` | Partial update of organization configuration              |
 
 ### 4. Categories & Taxonomy Module
 
-| Method   | Endpoint                      | Auth         | Role    | Description                                                      |
-| :------- | :---------------------------- | :----------- | :------ | :--------------------------------------------------------------- |
-| `GET`    | `/api/categories`             | Public       | None    | List categories (supports `?tree=true`, `?includeInactive=true`) |
-| `GET`    | `/api/categories/:id`         | Public       | None    | Retrieve single category details                                 |
-| `POST`   | `/api/categories`             | Bearer Token | `admin` | Create new category in taxonomy                                  |
-| `PATCH`  | `/api/categories/:id`         | Bearer Token | `admin` | Update category details or position                              |
-| `DELETE` | `/api/categories/:id`         | Bearer Token | `admin` | Soft-delete category (`is_active = false`)                       |
-| `POST`   | `/api/categories/:id/restore` | Bearer Token | `admin` | Restore soft-deleted category                                    |
+| Method   | Endpoint                         | Auth         | Role    | Description                                                      |
+| :------- | :------------------------------- | :----------- | :------ | :--------------------------------------------------------------- |
+| `GET`    | `/api/v1/categories`             | Public       | None    | List categories (supports `?tree=true`, `?includeInactive=true`) |
+| `GET`    | `/api/v1/categories/:id`         | Public       | None    | Retrieve single category details                                 |
+| `POST`   | `/api/v1/categories`             | Bearer Token | `admin` | Create new category in taxonomy                                  |
+| `PATCH`  | `/api/v1/categories/:id`         | Bearer Token | `admin` | Update category details or position                              |
+| `DELETE` | `/api/v1/categories/:id`         | Bearer Token | `admin` | Soft-delete category (`is_active = false`)                       |
+| `POST`   | `/api/v1/categories/:id/restore` | Bearer Token | `admin` | Restore soft-deleted category                                    |
 
 ### 5. Theme & Dynamic CSS Module
 
-| Method | Endpoint            | Auth         | Role    | Description                                                     |
-| :----- | :------------------ | :----------- | :------ | :-------------------------------------------------------------- |
-| `GET`  | `/api/theme`        | Public       | None    | Retrieve currently active theme palette & tokens (JSON)         |
-| `GET`  | `/api/theme/active` | Public       | None    | Alias for active theme palette                                  |
-| `PUT`  | `/api/theme`        | Bearer Token | `admin` | Update active theme colors and tokens                           |
-| `GET`  | `/api/theme/css`    | Public       | None    | Dynamic compiled CSS stylesheet (`:root` and `.dark` variables) |
-| `GET`  | `/theme/theme.css`  | Public       | None    | Static-served compiled CSS stylesheet with caching headers      |
+| Method | Endpoint               | Auth         | Role    | Description                                                     |
+| :----- | :--------------------- | :----------- | :------ | :-------------------------------------------------------------- |
+| `GET`  | `/api/v1/theme`        | Public       | None    | Retrieve currently active theme palette & tokens (JSON)         |
+| `PUT`  | `/api/v1/theme`        | Bearer Token | `admin` | Update active theme colors and tokens                           |
+| `GET`  | `/api/v1/theme/css`    | Public       | None    | Dynamic compiled CSS stylesheet (`:root` and `.dark` variables) |
+| `GET`  | `/theme/theme.css`     | Public       | None    | Static-served compiled CSS stylesheet with caching headers      |
 
 ### 6. Documentation & Health
 
-| Method | Endpoint        | Auth   | Description                               |
-| :----- | :-------------- | :----- | :---------------------------------------- |
-| `GET`  | `/doc`          | Public | Interactive Swagger UI API documentation  |
-| `GET`  | `/docs`         | Public | Redirect to `/doc/`                       |
-| `GET`  | `/openapi.json` | Public | Raw OpenAPI 3.0 specification             |
-| `GET`  | `/`             | Public | Dynamic SSR system status and health view |
+| Method | Endpoint         | Auth   | Description                               |
+| :----- | :--------------- | :----- | :---------------------------------------- |
+| `GET`  | `/api/v1/health` | Public | JSON API system health & DB connectivity  |
+| `GET`  | `/doc`           | Public | Interactive Swagger UI API documentation  |
+| `GET`  | `/docs`          | Public | Redirect to `/doc/`                       |
+| `GET`  | `/openapi.json`  | Public | Raw OpenAPI 3.0 specification             |
+| `GET`  | `/`              | Public | Dynamic SSR system status and health view |
 
 ---
 

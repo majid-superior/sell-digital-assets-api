@@ -74,6 +74,13 @@ const doc = {
             format: "password",
             example: "StrongP@ssw0rd!",
           },
+          role: {
+            type: "string",
+            enum: ["buyer", "seller"],
+            example: "buyer",
+            default: "buyer",
+            description: "Role to assign to the new account (buyer or seller)",
+          },
         },
       },
       LoginInput: {
@@ -121,6 +128,22 @@ const doc = {
             type: "string",
             enum: ["user", "creator", "admin"],
             example: "user",
+          },
+        },
+      },
+      UpdateUserInput: {
+        type: "object",
+        properties: {
+          name: { type: "string", example: "John Doe" },
+          password: {
+            type: "string",
+            format: "password",
+            example: "NewSecureP@ssw0rd!",
+          },
+          status: {
+            type: "string",
+            enum: ["active", "deactive", "pending", "suspended", "banned"],
+            example: "active",
           },
         },
       },
@@ -302,10 +325,10 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
   const cleanedPaths: Record<string, any> = {};
 
   for (const [routePath, methods] of Object.entries<any>(spec.paths || {})) {
-    // Only keep real /api routes
-    if (!routePath.startsWith("/api/")) continue;
+    // Only keep real /api/v1 routes
+    if (!routePath.startsWith("/api/v1/")) continue;
 
-    // Normalize trailing slash e.g. /api/users/ -> /api/users
+    // Normalize trailing slash e.g. /api/v1/users/ -> /api/v1/users
     const normalizedPath =
       routePath.endsWith("/") && routePath.length > 1
         ? routePath.slice(0, -1)
@@ -313,11 +336,9 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
 
     // Skip redundant alias endpoints to keep docs clean
     if (
-      normalizedPath.startsWith("/api/themes") ||
-      normalizedPath.startsWith("/api/v1/theme") ||
       normalizedPath.startsWith("/api/v1/themes") ||
-      normalizedPath === "/api/theme/active" ||
-      normalizedPath === "/api/theme/styles.css"
+      normalizedPath === "/api/v1/theme/active" ||
+      normalizedPath === "/api/v1/theme/styles.css"
     ) {
       continue;
     }
@@ -335,11 +356,11 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
     }
 
     // Enhance operation metadata
-    if (normalizedPath.startsWith("/api/auth")) {
+    if (normalizedPath.startsWith("/api/v1/auth")) {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Authentication"];
       }
-      if (normalizedPath === "/api/auth/register" && methods.post) {
+      if (normalizedPath === "/api/v1/auth/signup" && methods.post) {
         methods.post.summary = "Register a new user";
         methods.post.description =
           "Creates a new user account and returns JWT tokens";
@@ -351,7 +372,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
-      } else if (normalizedPath === "/api/auth/login" && methods.post) {
+      } else if (normalizedPath === "/api/v1/auth/signin" && methods.post) {
         methods.post.summary = "User login";
         methods.post.description =
           "Authenticates credentials and returns access & refresh tokens";
@@ -363,7 +384,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
-      } else if (normalizedPath === "/api/auth/refresh" && methods.post) {
+      } else if (normalizedPath === "/api/v1/auth/refresh" && methods.post) {
         methods.post.summary = "Refresh access token";
         methods.post.description =
           "Exchanges a valid refresh token for a new access token";
@@ -375,7 +396,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
-      } else if (normalizedPath === "/api/auth/logout" && methods.post) {
+      } else if (normalizedPath === "/api/v1/auth/logout" && methods.post) {
         methods.post.summary = "User logout";
         methods.post.description =
           "Revokes active refresh token session and clears authentication cookies";
@@ -388,12 +409,12 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           },
         };
       }
-    } else if (normalizedPath.startsWith("/api/users")) {
+    } else if (normalizedPath.startsWith("/api/v1/users")) {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Users"];
         method.security = [{ bearerAuth: [] }];
       }
-      if (normalizedPath === "/api/users") {
+      if (normalizedPath === "/api/v1/users") {
         if (methods.get) {
           methods.get.summary = "List users (Admin only)";
           methods.get.description =
@@ -412,7 +433,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           };
         }
-      } else if (normalizedPath === "/api/users/me") {
+      } else if (normalizedPath === "/api/v1/users/me") {
         if (methods.get) {
           methods.get.summary = "Get current authenticated profile";
           methods.get.description = "Retrieves profile of the token owner";
@@ -421,14 +442,23 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           methods.patch.summary = "Update current profile";
           methods.patch.description = "Updates own profile details or password";
         }
-      } else if (normalizedPath === "/api/users/{id}") {
+      } else if (normalizedPath === "/api/v1/users/{id}") {
         if (methods.get) {
           methods.get.summary = "Get user by ID (Admin only)";
           methods.get.description = "Retrieves user record by UUID";
         }
         if (methods.patch) {
           methods.patch.summary = "Update user by ID (Admin only)";
-          methods.patch.description = "Updates user role, name, or status";
+          methods.patch.description =
+            "Updates user name, password, or status (role and email cannot be changed after registration)";
+          methods.patch.requestBody = {
+            required: false,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UpdateUserInput" },
+              },
+            },
+          };
         }
         if (methods.delete) {
           methods.delete.summary = "Delete user by ID (Admin only)";
@@ -436,7 +466,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             "Deactivates / Soft-deletes user account by UUID";
         }
       }
-    } else if (normalizedPath === "/api/organizations/currencies") {
+    } else if (normalizedPath === "/api/v1/organizations/currencies") {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Organization Branding"];
       }
@@ -472,7 +502,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           },
         };
       }
-    } else if (normalizedPath === "/api/organizations") {
+    } else if (normalizedPath === "/api/v1/organizations") {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Organization Branding"];
       }
@@ -505,11 +535,11 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           };
         }
       }
-    } else if (normalizedPath.startsWith("/api/categories")) {
+    } else if (normalizedPath.startsWith("/api/v1/categories")) {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Categories"];
       }
-      if (normalizedPath === "/api/categories") {
+      if (normalizedPath === "/api/v1/categories") {
         if (methods.get) {
           methods.get.summary = "List categories or fetch category tree";
           methods.get.description =
@@ -573,7 +603,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           };
         }
-      } else if (normalizedPath === "/api/categories/{id}") {
+      } else if (normalizedPath === "/api/v1/categories/{id}") {
         if (methods.get) {
           methods.get.summary = "Get category by ID";
           methods.get.description =
@@ -655,7 +685,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           ];
         }
-      } else if (normalizedPath === "/api/categories/{id}/restore") {
+      } else if (normalizedPath === "/api/v1/categories/{id}/restore") {
         if (methods.post) {
           methods.post.summary =
             "Restore soft-deleted category by ID (Admin only)";
@@ -679,7 +709,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           ];
         }
       }
-    } else if (normalizedPath === "/api/health") {
+    } else if (normalizedPath === "/api/v1/health") {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Health"];
         method.summary = "System health status";
@@ -716,11 +746,11 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           },
         };
       }
-    } else if (normalizedPath.startsWith("/api/theme")) {
+    } else if (normalizedPath.startsWith("/api/v1/theme")) {
       for (const method of Object.values<any>(methods)) {
         method.tags = ["Theme"];
       }
-      if (normalizedPath === "/api/theme") {
+      if (normalizedPath === "/api/v1/theme") {
         if (methods.get) {
           methods.get.summary = "Get active theme styling & tokens";
           methods.get.description =
@@ -741,7 +771,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           };
         }
-      } else if (normalizedPath === "/api/theme/css") {
+      } else if (normalizedPath === "/api/v1/theme/css") {
         if (methods.get) {
           methods.get.summary = "Get dynamic compiled CSS stylesheet";
           methods.get.description =
@@ -752,12 +782,13 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
     }
   }
 
-  if (cleanedPaths["/api/users/{id}"]) {
-    if (!cleanedPaths["/api/users/{id}"].patch) {
-      cleanedPaths["/api/users/{id}"].patch = {
+  if (cleanedPaths["/api/v1/users/{id}"]) {
+    if (!cleanedPaths["/api/v1/users/{id}"].patch) {
+      cleanedPaths["/api/v1/users/{id}"].patch = {
         tags: ["Users"],
         summary: "Update user by ID (Admin only)",
-        description: "Updates user role, name, or status by UUID",
+        description:
+          "Updates user name, password, or status by UUID (role and email cannot be changed after registration)",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -767,11 +798,19 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             schema: { type: "string", format: "uuid" },
           },
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UpdateUserInput" },
+            },
+          },
+        },
         responses: { 200: { description: "User updated successfully" } },
       };
     }
-    if (!cleanedPaths["/api/users/{id}"].delete) {
-      cleanedPaths["/api/users/{id}"].delete = {
+    if (!cleanedPaths["/api/v1/users/{id}"].delete) {
+      cleanedPaths["/api/v1/users/{id}"].delete = {
         tags: ["Users"],
         summary: "Delete user by ID (Admin only)",
         description: "Deactivates / Soft-deletes user account by UUID",

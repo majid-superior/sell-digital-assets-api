@@ -14,12 +14,15 @@ export class AuthService {
       throw new AppError("An account with this email address already exists.", 409);
     }
 
+    const name = input.name.trim();
+    const role = input.role === "seller" ? "seller" : "buyer";
+
     const passwordHash = await hashPassword(input.password);
     const user = await userRepository.create({
-      name: input.name,
+      name,
       email: input.email,
       passwordHash,
-      role: "customer",
+      role,
     });
 
     const tokens = generateTokens({
@@ -107,7 +110,16 @@ export class AuthService {
       role: user.role,
     });
 
-    return { tokens };
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      },
+      tokens,
+    };
   }
 
   async logout(_refreshToken?: string): Promise<void> {

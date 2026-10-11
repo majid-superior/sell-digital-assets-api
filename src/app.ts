@@ -178,22 +178,23 @@ app.use("/", pagesRoutes);
 // ============================================================================
 // PIPELINE STEPS 6-10: Domain Modules (REST APIs), Scoped CSP & Rate Limiting
 // ============================================================================
-app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
+app.use("/api/v1", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'none'; frame-ancestors 'none'",
   );
   next();
 });
-app.use("/api", generalLimiter);
-app.use("/api/auth", authRoutes);
-app.use("/api/users", usersRoutes);
-app.use("/api/organizations", organizationsRoutes);
-app.use("/api/categories", categoriesRoutes);
-app.use("/api/theme", themeRoutes);
-app.use("/api/themes", themeRoutes);
+app.use("/api/v1", generalLimiter);
+
+// ----------------------------------------------------------------------------
+// Strict API v1 Routes (/api/v1/*)
+// ----------------------------------------------------------------------------
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/users", usersRoutes);
+app.use("/api/v1/organizations", organizationsRoutes);
+app.use("/api/v1/categories", categoriesRoutes);
 app.use("/api/v1/theme", themeRoutes);
-app.use("/api/v1/themes", themeRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

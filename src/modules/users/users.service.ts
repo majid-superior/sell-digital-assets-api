@@ -80,13 +80,18 @@ export class UsersService {
       throw new AppError("User not found", 404);
     }
 
+    let passwordHash: string | undefined;
+    if (data.password) {
+      passwordHash = await hashPassword(data.password);
+    }
+
     const normalizedStatus =
       data.status === "deactive" ? "suspended" : data.status;
 
     const updated = await userRepository.update(id, {
       name: data.name,
+      passwordHash,
       status: normalizedStatus,
-      role: data.role,
     });
 
     if (!updated) {

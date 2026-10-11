@@ -36,21 +36,7 @@ router.get("/favicon.ico", (_req: Request, res: Response) => {
 // ============================================================================
 // JSON API Health Check (Always returns JSON)
 // ============================================================================
-router.get("/api/health", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const status = await getSystemStatus();
-    const statusCode = status.database.connected ? 200 : 503;
-    res.status(statusCode).json({
-      success: status.database.connected,
-      data: status,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Legacy /health alias (Always returns JSON)
-router.get("/health", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+router.get("/api/v1/health", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const status = await getSystemStatus();
     const statusCode = status.database.connected ? 200 : 503;

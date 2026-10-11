@@ -4,7 +4,9 @@ export const RegisterUserSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().trim().email("Invalid email address").max(255),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  role: z.enum(["buyer", "seller", "customer", "guest"]).optional().default("buyer"),
 });
+
 
 export const LoginUserSchema = z.object({
   email: z.string().email("Invalid email address"),

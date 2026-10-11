@@ -116,7 +116,7 @@
     }
 
     // Check live API health to update status badge
-    fetch('/api/health')
+    fetch('/api/v1/health')
       .then(function (res) { return res.json(); })
       .then(function (data) {
         const isOk = data.status === 'ok' || data.success === true || (data.data && data.data.overallStatus === 'operational');

@@ -57,11 +57,11 @@
 3. **Taxonomy & Soft-Delete Principle**:
    - Category deletions are strictly soft-deletes toggling `is_active = false`.
    - Category repository read queries filter for active records (`is_active = true`) by default unless inactive items are explicitly requested via `?includeInactive=true`.
-   - Categories can be restored by operators via `POST /api/categories/:id/restore`.
+   - Categories can be restored by operators via `POST /api/v1/categories/:id/restore`.
 
 4. **Theme Module & Dynamic CSS Compilation**:
    - The theme repository stores design tokens, mode, typography, and active palettes in the unified `themes` table.
-   - Dynamic CSS stylesheets are compiled and served directly from `GET /theme/theme.css` and `GET /api/theme/css` with caching headers.
+   - Dynamic CSS stylesheets are compiled and served directly from `GET /theme/theme.css` and `GET /api/v1/theme/css` with caching headers.
 
 ---
 

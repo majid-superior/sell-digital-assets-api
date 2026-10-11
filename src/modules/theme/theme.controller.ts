@@ -41,7 +41,7 @@ function buildCombinedColorHexMap(rawMap: any, mode: string = "dark"): Record<st
 
 export class ThemeController {
   /**
-   * GET /api/theme or /api/theme/active
+   * GET /api/v1/theme or /api/v1/theme/active
    * Retrieves active theme colors and tokens as JSON with conditional ETag validation.
    * HTTP Headers: Cache-Control: public, max-age=30, stale-while-revalidate=86400
    */
@@ -90,7 +90,7 @@ export class ThemeController {
   }
 
   /**
-   * GET /api/theme/css or /api/theme/styles.css
+   * GET /api/v1/theme/css or /api/v1/theme/styles.css
    * Generates dynamic CSS stylesheet (:root and .dark CSS variables) from database colors.
    */
   async getCssVariables(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -115,7 +115,7 @@ export class ThemeController {
   }
 
   /**
-   * PUT /api/theme or PATCH /api/theme
+   * PUT /api/v1/theme or PATCH /api/v1/theme
    * Updates active theme colors, mode, and tokens in PostgreSQL.
    */
   async updateActiveTheme(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -155,7 +155,7 @@ export class ThemeController {
   }
 
   /**
-   * GET /api/theme/all
+   * GET /api/v1/theme/all
    * Lists all registered themes in the database.
    */
   async getAllThemes(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -191,7 +191,7 @@ export class ThemeController {
   }
 
   /**
-   * POST /api/theme/:id/activate
+   * POST /api/v1/theme/:id/activate
    * Activates a specific theme.
    */
   async activateTheme(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -236,7 +236,7 @@ export class ThemeController {
   }
 
   /**
-   * POST /api/theme
+   * POST /api/v1/theme
    * Creates a new theme.
    */
   async createTheme(req: Request, res: Response, next: NextFunction): Promise<void> {

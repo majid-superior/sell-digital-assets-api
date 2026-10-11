@@ -9,6 +9,8 @@ export class AuthController {
       res.status(201).json({
         success: true,
         message: "User registered successfully",
+        token: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
         ...result,
       });
     } catch (error) {
@@ -22,6 +24,8 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: "Authentication successful",
+        token: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
         ...result,
       });
     } catch (error) {
@@ -39,6 +43,8 @@ export class AuthController {
       const result = await authService.refresh(refreshToken);
       res.status(200).json({
         success: true,
+        token: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
         ...result,
       });
     } catch (error) {

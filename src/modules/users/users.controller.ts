@@ -30,6 +30,8 @@ export class UsersController {
       res.status(200).json({
         success: true,
         data: user,
+        user,
+        ...user,
       });
     } catch (error) {
       next(error);

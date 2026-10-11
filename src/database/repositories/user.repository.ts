@@ -36,18 +36,19 @@ export interface PaginatedResult<T> {
 
 export function resolveRoleId(roleOrId?: string | number): number {
   if (typeof roleOrId === "number") return roleOrId;
-  const normalized = (roleOrId || "guest").toLowerCase().trim();
+  const normalized = (roleOrId || "buyer").toLowerCase().trim();
   switch (normalized) {
     case "admin":
       return 1;
     case "seller":
       return 2;
     case "buyer":
+    case "customer":
       return 3;
     case "guest":
       return 4;
     default:
-      return 4; // Default to 'guest' role ID
+      return 3; // Default registered user to 'buyer' role ID
   }
 }
 

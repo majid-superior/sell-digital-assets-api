@@ -47,35 +47,35 @@ graph TB
 ## 3. Cross-Repository Data Contracts & Flows
 
 ### A. Authentication & Role Segregation
-* **Unified JWT Standard**: Both client portals consume JSON Web Tokens issued by `sell-digital-assets-api` (`POST /api/auth/login` or `POST /api/auth/register`).
+* **Unified JWT Standard**: Both client portals consume JSON Web Tokens issued by `sell-digital-assets-api` (`POST /api/v1/auth/signin` or `POST /api/v1/auth/signup`).
 * **Token Lifecycle**: Short-lived access tokens (15m) paired with long-lived refresh tokens (7d).
 * **Storage Strategy**:
   * **Remember Me Enabled**: Persistent storage in `localStorage`.
   * **Remember Me Disabled**: Session storage in `sessionStorage`.
 * **Roles**:
-  * `admin`: Full administrative access to `sell-digital-assets-admin` and protected `/api/*` administrative mutation endpoints.
+  * `admin`: Full administrative access to `sell-digital-assets-admin` and protected `/api/v1/*` administrative mutation endpoints.
   * `creator` / `seller`: Permitted to manage digital assets and inspect sales performance.
   * `user` / `buyer`: Standard customer role for browsing and accessing digital assets.
 
 ### B. Organization Branding & Singleton Configuration
 * The `organizations` singleton table (`id = 1`) in PostgreSQL stores the platform title, legal entity name, tagline, description, support contact, logo URLs, favicon, default currency, platform fee percentage, and payout threshold.
 * The table is guarded against accidental `DELETE` operations via a PostgreSQL rule (`no_delete_organizations`) and against `TRUNCATE` via a security trigger (`prevent_table_truncate()`).
-* Administrators configure organization details through `sell-digital-assets-admin` (under the **Branding** and **Settings** tabs), mutating `/api/organizations`. Both frontends and Swagger documentation reflect these branding updates in real time.
+* Administrators configure organization details through `sell-digital-assets-admin` (under the **Branding** and **Settings** tabs), mutating `/api/v1/organizations`. Both frontends and Swagger documentation reflect these branding updates in real time.
 
 ### C. PostgreSQL-Driven Dynamic Currency Engine
 * Active global currencies (`PKR`, `USD`, `EUR`, `GBP`, `CAD`, `AUD`, `JPY`, `CNY`, `AED`, `SAR`) reside in the `currencies` table.
-* The currency options endpoint (`GET /api/organizations/currencies`) dynamically supplies currency codes and Unicode symbols (`₨`, `$`, `€`, `£`, `¥`).
+* The currency options endpoint (`GET /api/v1/organizations/currencies`) dynamically supplies currency codes and Unicode symbols (`₨`, `$`, `€`, `£`, `¥`).
 * Setting the default currency in `sell-digital-assets-admin` propagates across the entire platform.
 
 ### D. Dynamic Theme & Design Tokens Synchronization
 * The unified `themes` table stores platform design tokens, color hex maps (primary, secondary, surface, background, outline), mode, typography, and active theme metadata.
-* **Backend Compilation**: The API dynamically compiles and serves CSS variables from `/theme/theme.css` and `/api/theme/css`.
-* **Admin Appearance Editor**: Administrators adjust colors and select palettes in `sell-digital-assets-admin` under the **Appearance** tab, committing updates to `/api/theme`.
-* **Zero-FOUC Frontends**: Both the website and the admin console fetch the active theme via `themeService` (`GET /api/theme/active`), applying CSS custom properties directly to the document root (`:root` / `.dark`).
+* **Backend Compilation**: The API dynamically compiles and serves CSS variables from `/theme/theme.css` and `/api/v1/theme/css`.
+* **Admin Appearance Editor**: Administrators adjust colors and select palettes in `sell-digital-assets-admin` under the **Appearance** tab, committing updates to `/api/v1/theme`.
+* **Zero-FOUC Frontends**: Both the website and the admin console fetch the active theme via `themeService` (`GET /api/v1/theme`), applying CSS custom properties directly to the document root (`:root` / `.dark`).
 
 ### E. Categories & Taxonomy Tree Management
 * Hierarchical digital asset taxonomy is managed in the PostgreSQL `categories` table with adjacency references (`parent_id`), path materialized slugs, and depths.
-* Admin operators create, update, reorder, soft-delete (`is_active = false`), and restore categories via `sell-digital-assets-admin` (`/api/categories`).
+* Admin operators create, update, reorder, soft-delete (`is_active = false`), and restore categories via `sell-digital-assets-admin` (`/api/v1/categories`).
 * `sell-digital-assets-website` consumes categories for marketplace filtering, catalog browsing, and discovery.
 
 ---

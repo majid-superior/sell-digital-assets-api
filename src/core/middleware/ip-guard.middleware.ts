@@ -43,8 +43,8 @@ export function ipGuardMiddleware(
     return next();
   }
 
-  // Exempt health checks to ensure internal container/cloud orchestrator probes succeed
-  if (req.path === "/api/health" || req.path === "/health") {
+  // Exempt health check to ensure internal container/cloud orchestrator probes succeed
+  if (req.path === "/api/v1/health") {
     return next();
   }
 

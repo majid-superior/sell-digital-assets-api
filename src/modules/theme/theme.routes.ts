@@ -9,11 +9,11 @@ import { UpdateActiveThemeSchema } from "./theme.schema.js";
 
 const router = Router();
 
-// 1. GET /api/theme: Get currently active theme colors & design tokens (JSON)
+// 1. GET /api/v1/theme: Get currently active theme colors & design tokens (JSON)
 router.get("/", themeController.getActiveTheme.bind(themeController));
 router.get("/active", themeController.getActiveTheme.bind(themeController));
 
-// 2. PUT /api/theme: Administrator updates active theme colors in PostgreSQL
+// 2. PUT /api/v1/theme: Administrator updates active theme colors in PostgreSQL
 router.put(
   "/",
   authenticate,
@@ -29,7 +29,7 @@ router.put(
   themeController.updateActiveTheme.bind(themeController),
 );
 
-// 3. GET /api/theme/css: Get dynamic compiled CSS stylesheet (:root and .dark CSS variables)
+// 3. GET /api/v1/theme/css: Get dynamic compiled CSS stylesheet (:root and .dark CSS variables)
 router.get("/css", themeController.getCssVariables.bind(themeController));
 
 export default router;
