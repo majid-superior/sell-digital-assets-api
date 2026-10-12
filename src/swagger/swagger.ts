@@ -48,6 +48,26 @@ const doc = {
       description:
         "Dynamic database theme styling, color tokens, and CSS variables",
     },
+    {
+      name: "Assets - Public",
+      description: "Marketplace public discovery and asset catalog",
+    },
+    {
+      name: "Assets - Seller",
+      description: "Seller asset creation, updates, and lifecycle management",
+    },
+    {
+      name: "Downloads",
+      description: "Secure fulfillment and signed download tokens",
+    },
+    {
+      name: "Licenses",
+      description: "Cryptographic license keys, activations, and seat checks",
+    },
+    {
+      name: "Storage",
+      description: "Local storage simulator and presigned direct delivery endpoints",
+    },
   ],
   components: {
     securitySchemes: {

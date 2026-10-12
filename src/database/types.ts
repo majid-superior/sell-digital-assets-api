@@ -103,10 +103,132 @@ export interface ThemeEntity {
  */
 export type ThemeSettingsEntity = ThemeEntity;
 
+export interface AssetTierEntity {
+  id?: string;
+  asset_id: string;
+  tier_type: "personal" | "commercial" | "extended";
+  price: number;
+  license_terms_summary?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
+export interface AssetFileEntity {
+  id?: string;
+  asset_id: string;
+  version: string;
+  storage_key: string;
+  file_name: string;
+  file_size_bytes: number;
+  file_checksum_sha256?: string | null;
+  manifest_tree?: unknown[] | null;
+  is_active?: boolean;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
+export interface AssetMediaEntity {
+  id?: string;
+  asset_id: string;
+  media_type: "thumbnail" | "screenshot" | "preview_audio" | "preview_video";
+  storage_key: string;
+  url: string;
+  display_order?: number;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
+export interface AssetEntity {
+  id?: string;
+  seller_id: string;
+  category_id: number;
+  title: string;
+  slug: string;
+  short_description: string;
+  full_description: string;
+  status: "draft" | "under_review" | "published" | "archived";
+  tags?: string[];
+  technical_specs?: Record<string, unknown>;
+  view_count?: number;
+  download_count?: number;
+  is_active?: boolean;
+  deleted_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  // Joins
+  seller?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  category?: {
+    id: number;
+    name: string;
+    slug: string;
+  };
+  tiers?: AssetTierEntity[];
+  media?: AssetMediaEntity[];
+  files?: AssetFileEntity[];
+}
+
+export interface LicenseEntity {
+  id?: string;
+  license_key: string;
+  asset_id: string;
+  buyer_id: string;
+  tier: "personal" | "commercial" | "extended";
+  status: "active" | "revoked" | "expired";
+  max_activations?: number;
+  activation_count?: number;
+  issued_at?: Date | string;
+  expires_at?: Date | string | null;
+  asset?: {
+    id: string;
+    title: string;
+    slug: string;
+    status: string;
+  };
+  buyer?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  activations?: LicenseActivationEntity[];
+}
+
+export interface LicenseActivationEntity {
+  id?: string;
+  license_id: string;
+  domain_or_machine_id: string;
+  ip_address?: string | null;
+  activated_at?: Date | string;
+}
+
+export interface DownloadAuditEntity {
+  id?: string;
+  asset_id: string;
+  asset_file_id?: string | null;
+  user_id?: string | null;
+  license_key?: string | null;
+  ip_address: string;
+  user_agent?: string | null;
+  signed_url_token: string;
+  expires_at: Date | string;
+  downloaded_at?: Date | string | null;
+  created_at?: Date | string;
+}
+
 export interface DatabaseSchema {
   organizations: OrganizationEntity;
   roles: RoleEntity;
   users: UserEntity;
   categories: CategoryEntity;
   themes: ThemeEntity;
+  assets: AssetEntity;
+  asset_tiers: AssetTierEntity;
+  asset_files: AssetFileEntity;
+  asset_media: AssetMediaEntity;
+  licenses: LicenseEntity;
+  license_activations: LicenseActivationEntity;
+  download_audits: DownloadAuditEntity;
 }

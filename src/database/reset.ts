@@ -415,6 +415,150 @@ SELECT
     t.created_at,
     t.updated_at
 FROM themes t;
+
+-- Step 11: Assets & Digital Products Module
+CREATE TABLE IF NOT EXISTS assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id INT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    title VARCHAR(200) NOT NULL,
+    slug VARCHAR(200) NOT NULL UNIQUE,
+    short_description VARCHAR(500) NOT NULL,
+    full_description TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'under_review', 'published', 'archived')),
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    technical_specs JSONB NOT NULL DEFAULT '{}'::jsonb,
+    view_count INT NOT NULL DEFAULT 0,
+    download_count INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    deleted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_assets_seller_id ON assets (seller_id);
+CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets (category_id);
+CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
+CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
+CREATE INDEX IF NOT EXISTS idx_assets_active ON assets (is_active) WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trg_assets_updated_at ON assets;
+CREATE TRIGGER trg_assets_updated_at
+BEFORE UPDATE ON assets
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 12: Asset Pricing Tiers
+CREATE TABLE IF NOT EXISTS asset_tiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    tier_type VARCHAR(20) NOT NULL CHECK (tier_type IN ('personal', 'commercial', 'extended')),
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    license_terms_summary TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_asset_tier UNIQUE (asset_id, tier_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_tiers_asset_id ON asset_tiers (asset_id);
+
+DROP TRIGGER IF EXISTS trg_asset_tiers_updated_at ON asset_tiers;
+CREATE TRIGGER trg_asset_tiers_updated_at
+BEFORE UPDATE ON asset_tiers
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 13: Asset Deliverable Files
+CREATE TABLE IF NOT EXISTS asset_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
+    storage_key TEXT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_size_bytes BIGINT NOT NULL DEFAULT 0,
+    file_checksum_sha256 VARCHAR(64),
+    manifest_tree JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_files_asset_id ON asset_files (asset_id);
+CREATE INDEX IF NOT EXISTS idx_asset_files_active ON asset_files (asset_id, is_active);
+
+DROP TRIGGER IF EXISTS trg_asset_files_updated_at ON asset_files;
+CREATE TRIGGER trg_asset_files_updated_at
+BEFORE UPDATE ON asset_files
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 14: Asset Showcase Media
+CREATE TABLE IF NOT EXISTS asset_media (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    media_type VARCHAR(30) NOT NULL CHECK (media_type IN ('thumbnail', 'screenshot', 'preview_audio', 'preview_video')),
+    storage_key TEXT NOT NULL,
+    url TEXT NOT NULL,
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_media_asset_id ON asset_media (asset_id);
+
+DROP TRIGGER IF EXISTS trg_asset_media_updated_at ON asset_media;
+CREATE TRIGGER trg_asset_media_updated_at
+BEFORE UPDATE ON asset_media
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 15: Licensing Engine
+CREATE TABLE IF NOT EXISTS licenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    license_key VARCHAR(50) NOT NULL UNIQUE,
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tier VARCHAR(20) NOT NULL DEFAULT 'personal' CHECK (tier IN ('personal', 'commercial', 'extended')),
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked', 'expired')),
+    max_activations INT NOT NULL DEFAULT 1,
+    activation_count INT NOT NULL DEFAULT 0,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_licenses_asset_id ON licenses (asset_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_buyer_id ON licenses (buyer_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses (license_key);
+
+-- Step 16: License Activations
+CREATE TABLE IF NOT EXISTS license_activations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    license_id UUID NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+    domain_or_machine_id VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(50),
+    activated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_license_domain UNIQUE (license_id, domain_or_machine_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_license_activations_license_id ON license_activations (license_id);
+
+-- Step 17: Download Audits
+CREATE TABLE IF NOT EXISTS download_audits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    asset_file_id UUID REFERENCES asset_files(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    license_key VARCHAR(50),
+    ip_address VARCHAR(50) NOT NULL,
+    user_agent TEXT,
+    signed_url_token VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    downloaded_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_audits_asset_id ON download_audits (asset_id);
+CREATE INDEX IF NOT EXISTS idx_download_audits_token ON download_audits (signed_url_token);
 `;
 
 /**

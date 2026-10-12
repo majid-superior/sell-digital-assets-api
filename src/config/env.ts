@@ -19,6 +19,8 @@ export interface EnvConfig {
   AWS_ACCESS_KEY_ID?: string | undefined;
   AWS_SECRET_ACCESS_KEY?: string | undefined;
   AWS_ENDPOINT?: string | undefined;
+  STORAGE_DRIVER: "local" | "r2" | "s3";
+  LOCAL_STORAGE_PATH: string;
 }
 
 function getRequiredEnv(key: string): string {
@@ -109,4 +111,6 @@ export const env: EnvConfig = {
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID?.trim() || undefined,
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY?.trim() || undefined,
   AWS_ENDPOINT: process.env.AWS_ENDPOINT?.trim() || undefined,
+  STORAGE_DRIVER: (process.env.STORAGE_DRIVER?.trim() as "local" | "r2" | "s3") || "local",
+  LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH?.trim() || "C:\\GH\\sell-digital-assets-storage",
 };
