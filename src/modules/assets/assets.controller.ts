@@ -7,6 +7,8 @@ import type {
   UpdateAssetStatusInput,
   AssetQueryInput,
   SellerAssetQueryInput,
+  AdminReviewAssetInput,
+  AdminAssetQueryInput,
   PresignFileUploadInput,
   ConfirmFileUploadInput,
   PresignMediaUploadInput,
@@ -343,6 +345,72 @@ export class AssetsController {
       res.status(200).json({
         success: true,
         data: licenses,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ============================================================================
+  // ADMIN REVIEW & GOVERNANCE
+  // ============================================================================
+
+  private getAdminId(req: Request): string {
+    const adminId = req.user?.id || (req.headers["x-admin-id"] as string);
+    if (!adminId) {
+      throw new AppError("Authentication required: Admin identity is missing.", 401);
+    }
+    return adminId;
+  }
+
+  async getAdminAssets(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = (req.query as unknown as AdminAssetQueryInput) || {};
+      const result = await assetsService.getAdminAssets(query);
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAdminAssetById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const asset = await assetsService.getAdminAssetById(id);
+
+      res.status(200).json({
+        success: true,
+        data: asset,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async adminReviewAsset(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = this.getAdminId(req);
+      const { id } = req.params as { id: string };
+      const body = req.body as AdminReviewAssetInput;
+
+      const updated = await assetsService.adminReviewAsset(id, adminId, body);
+
+      const actionMessage =
+        body.action === "approve"
+          ? "Asset approved and published to the marketplace successfully"
+          : body.action === "reject"
+            ? "Asset rejected successfully"
+            : "Asset marked as needing update; feedback dispatched to seller";
+
+      res.status(200).json({
+        success: true,
+        message: actionMessage,
+        data: updated,
       });
     } catch (error) {
       next(error);

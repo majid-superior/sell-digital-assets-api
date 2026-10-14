@@ -57,6 +57,14 @@ const doc = {
       description: "Seller asset creation, updates, and lifecycle management",
     },
     {
+      name: "Assets - Admin",
+      description: "Admin asset moderation, approval, rejection, and review feedback",
+    },
+    {
+      name: "Notifications",
+      description: "In-app notifications for admins and sellers regarding asset submissions & decisions",
+    },
+    {
       name: "Downloads",
       description: "Secure fulfillment and signed download tokens",
     },

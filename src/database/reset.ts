@@ -462,7 +462,11 @@ CREATE TABLE IF NOT EXISTS assets (
     slug VARCHAR(200) NOT NULL UNIQUE,
     short_description VARCHAR(500) NOT NULL,
     full_description TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'under_review', 'published', 'archived')),
+    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'needs_update', 'published', 'rejected', 'archived', 'under_review')),
+    admin_feedback TEXT,
+    reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
     tags TEXT[] NOT NULL DEFAULT '{}',
     technical_specs JSONB NOT NULL DEFAULT '{}'::jsonb,
     view_count INT NOT NULL DEFAULT 0,
@@ -596,6 +600,22 @@ CREATE TABLE IF NOT EXISTS download_audits (
 
 CREATE INDEX IF NOT EXISTS idx_download_audits_asset_id ON download_audits (asset_id);
 CREATE INDEX IF NOT EXISTS idx_download_audits_token ON download_audits (signed_url_token);
+
+-- Step 19: Notifications System
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id) WHERE is_read = FALSE;
 `;
 
 /**

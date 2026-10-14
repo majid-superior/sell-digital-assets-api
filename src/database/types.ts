@@ -160,7 +160,18 @@ export interface AssetEntity {
   slug: string;
   short_description: string;
   full_description: string;
-  status: "draft" | "under_review" | "published" | "archived";
+  status:
+    | "draft"
+    | "pending"
+    | "needs_update"
+    | "published"
+    | "rejected"
+    | "archived"
+    | "under_review";
+  admin_feedback?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: Date | string | null;
+  submitted_at?: Date | string | null;
   tags?: string[];
   technical_specs?: Record<string, unknown>;
   view_count?: number;
@@ -232,6 +243,18 @@ export interface DownloadAuditEntity {
   created_at?: Date | string;
 }
 
+export interface NotificationEntity {
+  id?: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, unknown> | null;
+  is_read?: boolean;
+  read_at?: Date | string | null;
+  created_at?: Date | string;
+}
+
 export interface DatabaseSchema {
   currencies: CurrencyEntity;
   organizations: OrganizationEntity;
@@ -247,4 +270,5 @@ export interface DatabaseSchema {
   licenses: LicenseEntity;
   license_activations: LicenseActivationEntity;
   download_audits: DownloadAuditEntity;
+  notifications: NotificationEntity;
 }

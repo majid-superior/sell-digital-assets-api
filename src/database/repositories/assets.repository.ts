@@ -32,7 +32,14 @@ export interface CreateAssetDto {
   slug: string;
   shortDescription: string;
   fullDescription: string;
-  status?: "draft" | "under_review" | "published" | "archived";
+  status?:
+    | "draft"
+    | "pending"
+    | "needs_update"
+    | "published"
+    | "rejected"
+    | "archived"
+    | "under_review";
   tags?: string[];
   technicalSpecs?: Record<string, unknown>;
   tiers: Array<{
@@ -365,6 +372,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.slug,
         a.short_description,
         a.status,
+        a.admin_feedback,
+        a.reviewed_at,
+        a.submitted_at,
         a.tags,
         a.view_count,
         a.download_count,
@@ -428,8 +438,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
           full_description,
           status,
           tags,
-          technical_specs
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          technical_specs,
+          submitted_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::varchar, $8, $9, CASE WHEN $7::varchar = 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END)
         RETURNING *;
       `;
 
@@ -554,7 +565,10 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   async updateStatus(id: string, sellerId: string, status: string): Promise<AssetEntity | null> {
     const sql = `
       UPDATE assets
-      SET status = $1, updated_at = CURRENT_TIMESTAMP
+      SET 
+        status = $1::varchar,
+        submitted_at = CASE WHEN $1::varchar = 'pending' THEN CURRENT_TIMESTAMP ELSE submitted_at END,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = $2 AND seller_id = $3 AND deleted_at IS NULL
       RETURNING *;
     `;
@@ -571,6 +585,190 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     `;
     const res = await this.query(sql, [id, sellerId]);
     return res.rows.length > 0;
+  }
+
+  async findForAdmin(filter: {
+    status?: string | undefined;
+    sellerId?: string | undefined;
+    categoryId?: number | undefined;
+    search?: string | undefined;
+    page?: number | undefined;
+    limit?: number | undefined;
+  }) {
+    const page = Math.max(1, filter.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filter.limit ?? 20));
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = ["a.deleted_at IS NULL"];
+    const params: unknown[] = [];
+
+    if (filter.status) {
+      params.push(filter.status);
+      conditions.push(`a.status = $${params.length}`);
+    }
+
+    if (filter.sellerId) {
+      params.push(filter.sellerId);
+      conditions.push(`a.seller_id = $${params.length}`);
+    }
+
+    if (filter.categoryId) {
+      params.push(filter.categoryId);
+      conditions.push(`a.category_id = $${params.length}`);
+    }
+
+    if (filter.search) {
+      params.push(`%${filter.search}%`);
+      conditions.push(
+        `(a.title ILIKE $${params.length} OR a.slug ILIKE $${params.length} OR u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`,
+      );
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countSql = `
+      SELECT COUNT(*)::int AS total
+      FROM assets a
+      JOIN users u ON a.seller_id = u.id
+      WHERE ${whereClause};
+    `;
+    const countResult = await this.query<{ total: number }>(countSql, params);
+    const total = countResult.rows[0]?.total ?? 0;
+
+    const dataParams = [...params, limit, offset];
+    const dataSql = `
+      SELECT 
+        a.id,
+        a.seller_id,
+        a.category_id,
+        a.title,
+        a.slug,
+        a.short_description,
+        a.full_description,
+        a.status,
+        a.admin_feedback,
+        a.reviewed_by,
+        a.reviewed_at,
+        a.submitted_at,
+        a.tags,
+        a.technical_specs,
+        a.view_count,
+        a.download_count,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        json_build_object('id', c.id, 'name', c.name, 'slug', c.slug) AS category,
+        json_build_object('id', u.id, 'name', u.name, 'email', u.email) AS seller,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', at.id,
+                'tier_type', at.tier_type,
+                'price', at.price::float,
+                'license_terms_summary', at.license_terms_summary
+              ) ORDER BY at.price ASC
+            )
+            FROM asset_tiers at
+            WHERE at.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS tiers,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', am.id,
+                'media_type', am.media_type,
+                'url', am.url,
+                'display_order', am.display_order
+              ) ORDER BY am.display_order ASC
+            )
+            FROM asset_media am
+            WHERE am.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS media,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', af.id,
+                'version', af.version,
+                'file_name', af.file_name,
+                'file_size_bytes', af.file_size_bytes::bigint,
+                'file_checksum_sha256', af.file_checksum_sha256,
+                'is_active', af.is_active,
+                'created_at', af.created_at
+              ) ORDER BY af.created_at DESC
+            )
+            FROM asset_files af
+            WHERE af.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS files
+      FROM assets a
+      JOIN categories c ON a.category_id = c.id
+      JOIN users u ON a.seller_id = u.id
+      WHERE ${whereClause}
+      ORDER BY 
+        CASE WHEN a.status = 'pending' THEN 0 ELSE 1 END,
+        a.updated_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2};
+    `;
+
+    const dataResult = await this.query<any>(dataSql, dataParams);
+
+    return {
+      data: dataResult.rows,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  async adminReview(
+    id: string,
+    adminId: string,
+    action: "approve" | "reject" | "needs_update",
+    feedback?: string,
+  ): Promise<AssetEntity | null> {
+    let newStatus: string;
+    let finalFeedback: string | null = null;
+
+    if (action === "approve") {
+      newStatus = "published";
+      finalFeedback = null;
+    } else if (action === "reject") {
+      newStatus = "rejected";
+      finalFeedback = feedback || null;
+    } else {
+      newStatus = "needs_update";
+      finalFeedback = feedback || null;
+    }
+
+    const sql = `
+      UPDATE assets
+      SET 
+        status = $1,
+        admin_feedback = $2,
+        reviewed_by = $3,
+        reviewed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4 AND deleted_at IS NULL
+      RETURNING *;
+    `;
+
+    const res = await this.query<AssetEntity>(sql, [
+      newStatus,
+      finalFeedback,
+      adminId,
+      id,
+    ]);
+    return res.rows[0] || null;
   }
 
   // --- File & Media Management Sub-Operations ---

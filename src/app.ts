@@ -29,9 +29,11 @@ import organizationsRoutes from "./modules/organizations/organizations.routes.js
 import categoriesRoutes from "./modules/categories/categories.routes.js";
 import themeRoutes from "./modules/theme/theme.routes.js";
 import assetsRoutes from "./modules/assets/assets.routes.js";
+import adminAssetsRoutes from "./modules/assets/admin-assets.routes.js";
 import downloadsRoutes from "./modules/assets/downloads.routes.js";
 import licensesRoutes from "./modules/assets/licenses.routes.js";
 import storageRoutes from "./modules/assets/storage.routes.js";
+import notificationsRoutes from "./modules/notifications/notifications.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
 
@@ -134,6 +136,8 @@ if (fs.existsSync(swaggerFilePath)) {
     "Theme",
     "Assets - Public",
     "Assets - Seller",
+    "Assets - Admin",
+    "Notifications",
     "Downloads",
     "Licenses",
     "Storage",
@@ -206,9 +210,11 @@ app.use("/api/v1/categories", categoriesRoutes);
 app.use("/api/v1/theme", themeRoutes);
 app.use("/api/v1/assets", assetsRoutes);
 app.use("/api/v1/seller/assets", assetsRoutes);
+app.use("/api/v1/admin/assets", adminAssetsRoutes);
 app.use("/api/v1/downloads", downloadsRoutes);
 app.use("/api/v1/licenses", licensesRoutes);
 app.use("/api/v1/storage", storageRoutes);
+app.use("/api/v1/notifications", notificationsRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

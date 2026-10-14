@@ -5,11 +5,16 @@ import { categoriesService } from "../categories/categories.service.js";
 import { storageService, localStorageService } from "../../core/storage/index.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
+import { notificationsService } from "../notifications/notifications.service.js";
+import { userRepository } from "../../database/repositories/user.repository.js";
+import { CreateAssetSchema } from "./assets.schema.js";
 import type {
   CreateAssetInput,
   UpdateAssetInput,
   AssetQueryInput,
   SellerAssetQueryInput,
+  AdminReviewAssetInput,
+  AdminAssetQueryInput,
   PresignFileUploadInput,
   ConfirmFileUploadInput,
   PresignMediaUploadInput,
@@ -55,7 +60,7 @@ export class AssetsService {
 
   async getAssetBySlug(slug: string) {
     const asset = await assetsRepository.findBySlug(slug);
-    if (!asset || (asset.status !== "published" && asset.status !== "under_review")) {
+    if (!asset || asset.status !== "published") {
       throw new AppError(`Asset '${slug}' not found`, 404);
     }
     return asset;
@@ -69,7 +74,8 @@ export class AssetsService {
   // SELLER MANAGEMENT
   // ============================================================================
 
-  async createDraftAsset(sellerId: string, input: CreateAssetInput) {
+  async createDraftAsset(sellerId: string, rawInput: CreateAssetInput) {
+    const input = CreateAssetSchema.parse(rawInput);
     let baseSlug = input.slug ? slugify(input.slug) : slugify(input.title);
     let slug = baseSlug;
     let counter = 1;
@@ -78,18 +84,33 @@ export class AssetsService {
       slug = `${baseSlug}-${counter++}`;
     }
 
-    return assetsRepository.create({
+    const initialStatus = input.status === "pending" ? "pending" : "draft";
+
+    const asset = await assetsRepository.create({
       sellerId,
       categoryId: input.categoryId,
       title: input.title,
       slug,
       shortDescription: input.shortDescription,
       fullDescription: input.fullDescription,
-      status: "draft",
+      status: initialStatus,
       tags: input.tags,
       technicalSpecs: input.technicalSpecs,
       tiers: input.tiers,
     });
+
+    if (initialStatus === "pending") {
+      const seller = await userRepository.findById(sellerId);
+      const sellerName = seller?.name || "A seller";
+      await notificationsService.notifyAdmins({
+        type: "asset_submitted",
+        title: "New Digital Asset Submitted",
+        message: `${sellerName} submitted a new digital asset for approval: "${asset.title}".`,
+        data: { assetId: asset.id, slug: asset.slug, sellerId, title: asset.title },
+      });
+    }
+
+    return asset;
   }
 
   async getSellerAssets(sellerId: string, query: Partial<SellerAssetQueryInput> = {}) {
@@ -133,12 +154,27 @@ export class AssetsService {
       throw new AppError("Asset not found or unauthorized", 404);
     }
 
-    // Validation before publishing
+    // Sellers cannot directly publish assets
     if (status === "published") {
+      throw new AppError(
+        "Sellers cannot directly publish assets. Please submit your asset for admin review by setting status to 'pending'.",
+        403,
+      );
+    }
+
+    if (status !== "draft" && status !== "pending" && status !== "archived") {
+      throw new AppError(
+        `Invalid status '${status}'. Sellers can only set status to 'draft', 'pending' (submit for review), or 'archived'.`,
+        400,
+      );
+    }
+
+    // When submitting for review, ensure at least one active file upload exists
+    if (status === "pending") {
       const activeFile = await licensesRepository.findActiveFile(id);
       if (!activeFile) {
         throw new AppError(
-          "Cannot publish an asset without at least one active downloadable payload file uploaded",
+          "Cannot submit asset for review without at least one active deliverable payload file uploaded.",
           400,
         );
       }
@@ -147,6 +183,117 @@ export class AssetsService {
     const updated = await assetsRepository.updateStatus(id, sellerId, status);
     if (!updated) {
       throw new AppError("Failed to transition asset status", 500);
+    }
+
+    // If submitted or resubmitted for review, notify admins
+    if (status === "pending") {
+      const isResubmit =
+        existing.status === "needs_update" || existing.status === "rejected";
+      const seller = await userRepository.findById(sellerId);
+      const sellerName = seller?.name || "A seller";
+
+      await notificationsService.notifyAdmins({
+        type: isResubmit ? "asset_resubmitted" : "asset_submitted",
+        title: isResubmit
+          ? "Digital Asset Resubmitted for Review"
+          : "New Digital Asset Submitted",
+        message: isResubmit
+          ? `${sellerName} has updated and resubmitted "${existing.title}" after review feedback.`
+          : `${sellerName} has submitted "${existing.title}" for approval.`,
+        data: {
+          assetId: id,
+          slug: existing.slug,
+          sellerId,
+          title: existing.title,
+          isResubmit,
+        },
+      });
+    }
+
+    return updated;
+  }
+
+  // ============================================================================
+  // ADMIN GOVERNANCE & APPROVAL WORKFLOW
+  // ============================================================================
+
+  async getAdminAssets(filter: AdminAssetQueryInput) {
+    return assetsRepository.findForAdmin(filter);
+  }
+
+  async getAdminAssetById(id: string) {
+    const asset = await assetsRepository.findById(id);
+    if (!asset) {
+      throw new AppError(`Asset with ID '${id}' not found`, 404);
+    }
+    const result = await assetsRepository.findForAdmin({ search: asset.slug, limit: 1 });
+    const match = result.data.find((a: any) => a.id === id);
+    return match || asset;
+  }
+
+  async adminReviewAsset(
+    assetId: string,
+    adminId: string,
+    input: AdminReviewAssetInput,
+  ) {
+    const asset = await assetsRepository.findById(assetId);
+    if (!asset) {
+      throw new AppError("Asset not found", 404);
+    }
+
+    if (input.action === "approve") {
+      const activeFile = await licensesRepository.findActiveFile(assetId);
+      if (!activeFile) {
+        throw new AppError(
+          "Cannot approve an asset without at least one active deliverable payload file uploaded",
+          400,
+        );
+      }
+    }
+
+    const updated = await assetsRepository.adminReview(
+      assetId,
+      adminId,
+      input.action,
+      input.feedback,
+    );
+
+    if (!updated) {
+      throw new AppError("Failed to update asset review state", 500);
+    }
+
+    // Dispatch notification to seller based on admin decision
+    if (input.action === "approve") {
+      await notificationsService.notifySeller(asset.seller_id, {
+        type: "asset_approved",
+        title: "Your Asset Has Been Approved! 🎉",
+        message: `Congratulations! Your digital asset "${asset.title}" has been approved by an administrator and is now live on the marketplace.`,
+        data: { assetId, slug: asset.slug, title: asset.title },
+      });
+    } else if (input.action === "reject") {
+      await notificationsService.notifySeller(asset.seller_id, {
+        type: "asset_rejected",
+        title: "Asset Submission Rejected",
+        message: `Your digital asset "${asset.title}" was rejected. Reason: ${input.feedback}`,
+        data: {
+          assetId,
+          slug: asset.slug,
+          title: asset.title,
+          feedback: input.feedback,
+        },
+      });
+    } else if (input.action === "needs_update") {
+      await notificationsService.notifySeller(asset.seller_id, {
+        type: "asset_needs_update",
+        title: "Updates Requested for Your Asset",
+        message: `An administrator reviewed "${asset.title}" and requested changes: ${input.feedback}. Please make the required updates and resubmit.`,
+        data: {
+          assetId,
+          slug: asset.slug,
+          title: asset.title,
+          feedback: input.feedback,
+        },
+      });
     }
 
     return updated;

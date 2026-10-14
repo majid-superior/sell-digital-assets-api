@@ -1,7 +1,17 @@
 import { z } from "zod";
 
 export const TierTypeEnum = z.enum(["personal", "commercial", "extended"]);
-export const AssetStatusEnum = z.enum(["draft", "under_review", "published", "archived"]);
+export const AssetStatusEnum = z.enum([
+  "draft",
+  "pending",
+  "needs_update",
+  "published",
+  "rejected",
+  "archived",
+  "under_review",
+]);
+
+export const SellerAllowedStatusEnum = z.enum(["draft", "pending", "archived"]);
 
 export const AssetTierInputSchema = z.object({
   tierType: TierTypeEnum,
@@ -18,9 +28,10 @@ export const CreateAssetSchema = z.object({
   tags: z.array(z.string().trim()).default([]),
   technicalSpecs: z.record(z.string(), z.unknown()).default({}),
   tiers: z.array(AssetTierInputSchema).min(1, "At least one pricing tier is required"),
+  status: z.enum(["draft", "pending"]).default("draft"),
 });
 
-export type CreateAssetInput = z.infer<typeof CreateAssetSchema>;
+export type CreateAssetInput = z.input<typeof CreateAssetSchema>;
 
 export const UpdateAssetSchema = z.object({
   categoryId: z.number().int().positive().optional(),
@@ -37,9 +48,47 @@ export type UpdateAssetInput = z.infer<typeof UpdateAssetSchema>;
 
 export const UpdateAssetStatusSchema = z.object({
   status: AssetStatusEnum,
+  feedback: z.string().trim().optional(),
 });
 
 export type UpdateAssetStatusInput = z.infer<typeof UpdateAssetStatusSchema>;
+
+export const AdminReviewActionEnum = z.enum(["approve", "reject", "needs_update"]);
+
+export const AdminReviewAssetSchema = z
+  .object({
+    action: AdminReviewActionEnum,
+    feedback: z.string().trim().max(2000).optional(),
+  })
+  .refine(
+    (data) => {
+      if (
+        (data.action === "reject" || data.action === "needs_update") &&
+        (!data.feedback || data.feedback.length < 5)
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        "Feedback/reason of at least 5 characters is required when rejecting or requesting updates",
+      path: ["feedback"],
+    },
+  );
+
+export type AdminReviewAssetInput = z.infer<typeof AdminReviewAssetSchema>;
+
+export const AdminAssetQuerySchema = z.object({
+  status: AssetStatusEnum.optional(),
+  sellerId: z.string().uuid().optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type AdminAssetQueryInput = z.infer<typeof AdminAssetQuerySchema>;
 
 export const AssetQuerySchema = z.object({
   category: z.coerce.number().int().positive().optional(),
