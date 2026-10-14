@@ -9,6 +9,7 @@ import { defaultOrganizationEntity } from "../data/organizations.js";
 import { defaultCategories, flattenCategories } from "../data/categories.js";
 import { defaultCurrencies } from "../data/currencies.js";
 import { defaultTheme } from "../data/themes.js";
+import { defaultLicenseTiers } from "../data/license-tiers.js";
 
 // Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
 if (typeof dns.setDefaultResultOrder === "function") {
@@ -416,7 +417,40 @@ SELECT
     t.updated_at
 FROM themes t;
 
--- Step 11: Assets & Digital Products Module
+-- Step 11: Master License Pricing Tiers Table
+CREATE TABLE IF NOT EXISTS license_tiers (
+    id SMALLSERIAL PRIMARY KEY,
+    tier_type VARCHAR(20) NOT NULL UNIQUE CHECK (tier_type IN ('personal', 'commercial', 'extended')),
+    name VARCHAR(100) NOT NULL,
+    default_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (default_price >= 0),
+    description TEXT,
+    license_terms_summary TEXT NOT NULL,
+    max_activations INT NOT NULL DEFAULT 1 CHECK (max_activations >= 1),
+    display_order SMALLINT NOT NULL DEFAULT 1,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Seed Default License Tiers (sourced from src/data/license-tiers.ts)
+INSERT INTO license_tiers (tier_type, name, default_price, description, license_terms_summary, max_activations, display_order, is_active) VALUES
+${defaultLicenseTiers.map((t) => `    ('${t.tier_type}', '${t.name.replace(/'/g, "''")}', ${t.default_price}, '${t.description.replace(/'/g, "''")}', '${t.license_terms_summary.replace(/'/g, "''")}', ${t.max_activations}, ${t.display_order}, ${t.is_active ? "TRUE" : "FALSE"})`).join(",\n")}
+ON CONFLICT (tier_type) DO UPDATE
+    SET name = EXCLUDED.name,
+        default_price = EXCLUDED.default_price,
+        description = EXCLUDED.description,
+        license_terms_summary = EXCLUDED.license_terms_summary,
+        max_activations = EXCLUDED.max_activations,
+        display_order = EXCLUDED.display_order,
+        is_active = EXCLUDED.is_active;
+
+DROP TRIGGER IF EXISTS trg_license_tiers_updated_at ON license_tiers;
+CREATE TRIGGER trg_license_tiers_updated_at
+BEFORE UPDATE ON license_tiers
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 12: Assets & Digital Products Module
 CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -448,11 +482,11 @@ BEFORE UPDATE ON assets
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 12: Asset Pricing Tiers
+-- Step 13: Asset Pricing Tiers
 CREATE TABLE IF NOT EXISTS asset_tiers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-    tier_type VARCHAR(20) NOT NULL CHECK (tier_type IN ('personal', 'commercial', 'extended')),
+    tier_type VARCHAR(20) NOT NULL REFERENCES license_tiers(tier_type) ON UPDATE CASCADE,
     price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
     license_terms_summary TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -468,7 +502,7 @@ BEFORE UPDATE ON asset_tiers
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 13: Asset Deliverable Files
+-- Step 14: Asset Deliverable Files
 CREATE TABLE IF NOT EXISTS asset_files (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -492,7 +526,7 @@ BEFORE UPDATE ON asset_files
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 14: Asset Showcase Media
+-- Step 15: Asset Showcase Media
 CREATE TABLE IF NOT EXISTS asset_media (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -512,13 +546,13 @@ BEFORE UPDATE ON asset_media
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 15: Licensing Engine
+-- Step 16: Licensing Engine
 CREATE TABLE IF NOT EXISTS licenses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     license_key VARCHAR(50) NOT NULL UNIQUE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    tier VARCHAR(20) NOT NULL DEFAULT 'personal' CHECK (tier IN ('personal', 'commercial', 'extended')),
+    tier VARCHAR(20) NOT NULL DEFAULT 'personal' REFERENCES license_tiers(tier_type) ON UPDATE CASCADE,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked', 'expired')),
     max_activations INT NOT NULL DEFAULT 1,
     activation_count INT NOT NULL DEFAULT 0,
@@ -530,7 +564,7 @@ CREATE INDEX IF NOT EXISTS idx_licenses_asset_id ON licenses (asset_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_buyer_id ON licenses (buyer_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses (license_key);
 
--- Step 16: License Activations
+-- Step 17: License Activations
 CREATE TABLE IF NOT EXISTS license_activations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     license_id UUID NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
@@ -542,7 +576,7 @@ CREATE TABLE IF NOT EXISTS license_activations (
 
 CREATE INDEX IF NOT EXISTS idx_license_activations_license_id ON license_activations (license_id);
 
--- Step 17: Download Audits
+-- Step 18: Download Audits
 CREATE TABLE IF NOT EXISTS download_audits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -830,8 +864,6 @@ export async function resetDatabase(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`⚠️  Resetting database: ${targetDbName}`);
-
   const requiresSsl =
     process.env.DATABASE_SSL === "true" ||
     databaseUrl.includes("sslmode=require") ||
@@ -846,6 +878,11 @@ export async function resetDatabase(): Promise<void> {
     databaseUrl.includes("supabase.co") ||
     databaseUrl.includes("neon.tech") ||
     databaseUrl.includes("amazonaws.com");
+
+  console.log("=======================================================");
+  console.log(`🎯 Target Database: ${targetDbName}`);
+  console.log(`📍 Host:            ${parsedUrl.hostname} (${isCloudDb ? "🔴 LIVE / CLOUD DATABASE" : "🟢 LOCAL DATABASE"})`);
+  console.log("=======================================================");
 
   // Step 0: Take an automated pre-drop backup of the database into the backups/ folder
   try {

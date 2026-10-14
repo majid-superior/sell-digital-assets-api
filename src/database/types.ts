@@ -103,6 +103,20 @@ export interface ThemeEntity {
  */
 export type ThemeSettingsEntity = ThemeEntity;
 
+export interface LicenseTierEntity {
+  id?: number;
+  tier_type: "personal" | "commercial" | "extended";
+  name: string;
+  default_price: number;
+  description?: string | null;
+  license_terms_summary: string;
+  max_activations: number;
+  display_order: number;
+  is_active: boolean;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
 export interface AssetTierEntity {
   id?: string;
   asset_id: string;
@@ -219,11 +233,13 @@ export interface DownloadAuditEntity {
 }
 
 export interface DatabaseSchema {
+  currencies: CurrencyEntity;
   organizations: OrganizationEntity;
   roles: RoleEntity;
   users: UserEntity;
   categories: CategoryEntity;
   themes: ThemeEntity;
+  license_tiers: LicenseTierEntity;
   assets: AssetEntity;
   asset_tiers: AssetTierEntity;
   asset_files: AssetFileEntity;
