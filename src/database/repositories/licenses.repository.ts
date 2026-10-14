@@ -76,6 +76,54 @@ export class LicensesRepository extends BaseRepository<LicenseEntity> {
     return res.rows[0] || null;
   }
 
+  async findByBuyer(buyerId: string): Promise<any[]> {
+    const sql = `
+      SELECT 
+        l.*,
+        json_build_object(
+          'id', a.id,
+          'title', a.title,
+          'slug', a.slug,
+          'status', a.status
+        ) AS asset,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', la.id,
+                'domain_or_machine_id', la.domain_or_machine_id,
+                'activated_at', la.activated_at
+              )
+            )
+            FROM license_activations la
+            WHERE la.license_id = l.id
+          ),
+          '[]'::json
+        ) AS activations,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', af.id,
+                'version', af.version,
+                'file_name', af.file_name,
+                'file_size_bytes', af.file_size_bytes::bigint
+              ) ORDER BY af.created_at DESC
+            )
+            FROM asset_files af
+            WHERE af.asset_id = a.id AND af.is_active = TRUE
+          ),
+          '[]'::json
+        ) AS files
+      FROM licenses l
+      JOIN assets a ON l.asset_id = a.id
+      WHERE l.buyer_id = $1
+      ORDER BY l.issued_at DESC;
+    `;
+    const res = await this.query<any>(sql, [buyerId]);
+    return res.rows;
+  }
+
   async findByBuyerAndAsset(buyerId: string, assetId: string): Promise<LicenseEntity | null> {
     const sql = `
       SELECT *

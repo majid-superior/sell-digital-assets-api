@@ -103,6 +103,24 @@ export class AuthController {
       next(error);
     }
   }
+
+  async becomeSeller(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AppError("Authentication required", 401);
+      }
+
+      const user = await authService.becomeSeller(req.user.id);
+      res.status(200).json({
+        success: true,
+        message: "Account upgraded to Seller successfully. Welcome to the Seller Studio!",
+        data: user,
+        user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const authController = new AuthController();

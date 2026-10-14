@@ -30,5 +30,11 @@ router.post(
   assetsController.issueLicense.bind(assetsController),
 );
 
+// GET /api/v1/licenses/buyer — Retrieves all active cryptographic licenses owned by buyer
+router.get(
+  "/buyer",
+  assetsController.getBuyerLicenses.bind(assetsController),
+);
+
 export default router;
 

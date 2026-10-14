@@ -256,6 +256,28 @@
         "summary": "Update current profile"
       }
     },
+    "/api/v1/auth/become-seller": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/api/v1/users": {
       "get": {
         "description": "Returns paginated list of registered users",
@@ -1437,6 +1459,32 @@
         "responses": {
           "201": {
             "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/buyer": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "x-buyer-id",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-seller-id",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }

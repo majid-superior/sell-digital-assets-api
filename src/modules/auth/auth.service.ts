@@ -165,6 +165,18 @@ export class AuthService {
     const { password_hash, ...safeUser } = updated;
     return safeUser;
   }
+
+  async becomeSeller(userId: string) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+    const updated = await userRepository.update(userId, {
+      role: "seller",
+    });
+    const { password_hash, ...safeUser } = updated!;
+    return safeUser;
+  }
 }
 
 export const authService = new AuthService();

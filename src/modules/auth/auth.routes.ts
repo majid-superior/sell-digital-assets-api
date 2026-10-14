@@ -50,4 +50,11 @@ router.patch(
   authController.updateMe.bind(authController),
 );
 
+// Upgrade Buyer to Seller
+router.post(
+  "/become-seller",
+  authenticate,
+  authController.becomeSeller.bind(authController),
+);
+
 export default router;

@@ -518,6 +518,10 @@ export class AssetsService {
       activatedAt: activation.activated_at,
     };
   }
+
+  async getBuyerLicenses(buyerId: string) {
+    return licensesRepository.findByBuyer(buyerId);
+  }
 }
 
 export const assetsService = new AssetsService();

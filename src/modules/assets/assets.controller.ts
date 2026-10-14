@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { assetsService } from "./assets.service.js";
+import { AppError } from "../../core/errors/app-error.js";
 import type {
   CreateAssetInput,
   UpdateAssetInput,
@@ -16,11 +17,13 @@ import type {
   IssueLicenseInput,
 } from "./assets.schema.js";
 
-const DEFAULT_SELLER_ID = "00000000-0000-0000-0000-000000000001";
-
 export class AssetsController {
   private getSellerId(req: Request): string {
-    return req.user?.id || (req.headers["x-seller-id"] as string) || DEFAULT_SELLER_ID;
+    const sellerId = req.user?.id || (req.headers["x-seller-id"] as string);
+    if (!sellerId) {
+      throw new AppError("Authentication required: Seller identity is missing.", 401);
+    }
+    return sellerId;
   }
 
   // ============================================================================
@@ -323,6 +326,23 @@ export class AssetsController {
         success: true,
         message: "License issued successfully",
         data: license,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getBuyerLicenses(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const buyerId = req.user?.id || (req.headers["x-buyer-id"] as string) || (req.headers["x-seller-id"] as string);
+      if (!buyerId) {
+        res.status(200).json({ success: true, data: [] });
+        return;
+      }
+      const licenses = await assetsService.getBuyerLicenses(buyerId);
+      res.status(200).json({
+        success: true,
+        data: licenses,
       });
     } catch (error) {
       next(error);
