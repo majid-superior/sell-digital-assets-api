@@ -24,18 +24,21 @@ const __dirname = path.dirname(__filename);
 /**
  * Ensures .env is reliably resolved and loaded regardless of
  * current working directory when the script is invoked.
+ * Passing --local forces reading .env values even if shell variables exist.
  */
 function loadEnv(): void {
+  const forceLocal = process.argv.includes("--local");
+
   let dir = __dirname;
   while (dir && dir !== path.dirname(dir)) {
     const envPath = path.join(dir, ".env");
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath });
+      dotenv.config({ path: envPath, override: forceLocal });
       return;
     }
     dir = path.dirname(dir);
   }
-  dotenv.config();
+  dotenv.config({ override: forceLocal });
 }
 
 loadEnv();
@@ -883,6 +886,11 @@ export async function resetDatabase(): Promise<void> {
   console.log(`🎯 Target Database: ${targetDbName}`);
   console.log(`📍 Host:            ${parsedUrl.hostname} (${isCloudDb ? "🔴 LIVE / CLOUD DATABASE" : "🟢 LOCAL DATABASE"})`);
   console.log("=======================================================");
+
+  if (isCloudDb) {
+    console.log("💡 Tip: To reset your LOCAL database instead, run: npm run db:reset:local");
+    console.log("       Or clear your PowerShell session variable: $env:DATABASE_URL=$null\n");
+  }
 
   // Step 0: Take an automated pre-drop backup of the database into the backups/ folder
   try {
