@@ -24,9 +24,9 @@ tmp/
 temp/
 
 # Digital Asset uploads & Local storage
-uploads/
-storage/
-assets_storage/
+/uploads/
+/storage/
+/assets_storage/
 *.bin
 *.zip
 *.tar.gz
