@@ -1,6 +1,7 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import crypto from "node:crypto";
 import { env } from "../../config/env.js";
+import { getSystemSettings, type SystemSettings } from "../../data/organizations.js";
 
 export interface AuthUserPayload {
   id: string;
@@ -19,7 +20,15 @@ export interface GeneratedTokens {
   refreshExpiresAt: Date;
 }
 
-export function generateTokens(user: AuthUserPayload): GeneratedTokens {
+export function generateTokens(
+  user: AuthUserPayload,
+  customSettings?: Partial<SystemSettings>,
+): GeneratedTokens {
+  const currentSettings = getSystemSettings();
+  const settings = customSettings
+    ? { ...currentSettings, ...customSettings }
+    : currentSettings;
+
   const accessPayload = {
     id: user.id,
     email: user.email,
@@ -32,22 +41,28 @@ export function generateTokens(user: AuthUserPayload): GeneratedTokens {
     jti,
   };
 
+  const accessMinutes = Math.max(1, settings.accessTokenTtlMinutes || 15);
+  const refreshDays = Math.max(1, settings.refreshTokenTtlDays || 7);
+
+  const expiresIn = `${accessMinutes}m`;
+  const refreshExpiresIn = `${refreshDays}d`;
+
   const accessToken = jwt.sign(accessPayload, env.JWT_SECRET, {
-    expiresIn: "15m",
+    expiresIn: expiresIn as any,
     algorithm: "HS256",
   });
 
   const refreshToken = jwt.sign(refreshPayload, env.JWT_REFRESH_SECRET, {
-    expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
+    expiresIn: refreshExpiresIn as any,
     algorithm: "HS256",
   });
 
-  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const refreshExpiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
 
   return {
     accessToken,
     refreshToken,
-    expiresIn: "15m",
+    expiresIn,
     jti,
     refreshExpiresAt,
   };

@@ -25,6 +25,12 @@ router.get(
   assetsController.getAdminAssets.bind(assetsController),
 );
 
+// GET /api/v1/admin/assets/counts — Counters for review queue & sidebar
+router.get(
+  "/counts",
+  assetsController.getAdminAssetCounts.bind(assetsController),
+);
+
 // GET /api/v1/admin/assets/:id — Full asset review details
 router.get(
   "/:id",

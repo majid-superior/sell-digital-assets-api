@@ -26,6 +26,21 @@ export class OrganizationsService {
   async getCurrencies() {
     return await organizationsRepository.getCurrencies();
   }
+
+  async getSystemSettings() {
+    const info = await getOrganizationInfo();
+    return info.systemSettings;
+  }
+
+  async updateSystemSettings(data: Record<string, any>) {
+    const current = await this.getSystemSettings();
+    const merged = { ...current, ...data };
+    const updated = await organizationsRepository.updateOrganization({
+      system_settings: merged,
+    });
+    refreshOrganizationCache(updated);
+    return updated.system_settings || merged;
+  }
 }
 
 export const organizationsService = new OrganizationsService();

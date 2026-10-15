@@ -11,6 +11,7 @@ export const RegisterUserSchema = z.object({
 export const SignInUserSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
+  rememberMe: z.boolean().optional(),
 });
 
 export const RefreshTokenSchema = z.object({

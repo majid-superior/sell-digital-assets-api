@@ -16,6 +16,7 @@ const requiresSsl =
   env.DATABASE_URL.includes("render.com") ||
   env.DATABASE_URL.includes("amazonaws.com") ||
   env.DATABASE_URL.includes("supabase.co") ||
+  env.DATABASE_URL.includes("supabase.com") ||
   env.DATABASE_URL.includes("neon.tech");
 
 const publicResolver = new dns.Resolver();

@@ -38,6 +38,7 @@ export interface OrganizationEntity {
   payout_minimum?: number;
   social_links?: Record<string, unknown> | unknown[];
   metadata?: Record<string, unknown> | unknown[];
+  system_settings?: Record<string, unknown> | unknown[];
   created_at?: Date | string;
   updated_at?: Date | string;
 }

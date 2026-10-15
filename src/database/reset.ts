@@ -18,6 +18,36 @@ if (typeof dns.setDefaultResultOrder === "function") {
 
 const { Client } = pg;
 
+const publicResolver = new dns.Resolver();
+publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
+
+const resilientDnsLookup = (
+  hostname: string,
+  options: any,
+  callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
+): void => {
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+  ) {
+    return dns.lookup(hostname, options, callback as any);
+  }
+
+  dns.lookup(hostname, options, (err, address, family) => {
+    if (err) {
+      publicResolver.resolve4(hostname, (resErr, addresses) => {
+        if (resErr || !addresses || addresses.length === 0) {
+          return callback(err);
+        }
+        return callback(null, addresses[0], 4);
+      });
+    } else {
+      callback(null, address, family);
+    }
+  });
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -118,6 +148,7 @@ CREATE TABLE IF NOT EXISTS organizations (
         CHECK (payout_minimum >= 0.00),
     social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    system_settings JSONB NOT NULL DEFAULT '{"sessionIdleTimeoutMinutes":30,"accessTokenTtlMinutes":15,"refreshTokenTtlDays":7,"rememberMeTtlDays":30,"maxLoginAttempts":5,"lockoutDurationMinutes":15,"passwordMinLength":8,"requireSpecialChar":false,"allowUserRegistration":true,"requireEmailVerification":false,"maintenanceMode":false}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -776,7 +807,8 @@ async function backupDatabase(
     const testClient = new Client({
       connectionString: databaseUrl,
       ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-    });
+      lookup: resilientDnsLookup,
+    } as any);
     try {
       await testClient.connect();
       const res = await testClient.query(
@@ -893,12 +925,14 @@ export async function resetDatabase(): Promise<void> {
     databaseUrl.includes("render.com") ||
     databaseUrl.includes("amazonaws.com") ||
     databaseUrl.includes("supabase.co") ||
+    databaseUrl.includes("supabase.com") ||
     databaseUrl.includes("neon.tech");
 
   const isCloudDb =
     requiresSsl ||
     databaseUrl.includes("render.com") ||
     databaseUrl.includes("supabase.co") ||
+    databaseUrl.includes("supabase.com") ||
     databaseUrl.includes("neon.tech") ||
     databaseUrl.includes("amazonaws.com");
 
@@ -967,49 +1001,23 @@ export async function resetDatabase(): Promise<void> {
     );
   }
 
-  const publicResolver = new dns.Resolver();
-  publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
-
-  const resilientDnsLookup = (
-    hostname: string,
-    options: any,
-    callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
-  ): void => {
-    if (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
-    ) {
-      return dns.lookup(hostname, options, callback as any);
-    }
-
-    dns.lookup(hostname, options, (err, address, family) => {
-      if (err) {
-        publicResolver.resolve4(hostname, (resErr, addresses) => {
-          if (resErr || !addresses || addresses.length === 0) {
-            return callback(err);
-          }
-          return callback(null, addresses[0], 4);
-        });
-      } else {
-        callback(null, address, family);
-      }
-    });
-  };
-
   // Step 2: Connect to the target database and execute the schema DDL in a transaction
-  const targetClient = new Client({
-    connectionString: databaseUrl,
-    ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-    lookup: resilientDnsLookup,
-  } as any);
+  let targetClient: any = null;
 
   try {
     for (let attempt = 1; attempt <= 3; attempt++) {
+      targetClient = new Client({
+        connectionString: databaseUrl,
+        ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+        lookup: resilientDnsLookup,
+      } as any);
+
       try {
         await targetClient.connect();
         break;
       } catch (connErr: any) {
+        await targetClient.end().catch(() => {});
+        targetClient = null;
         if (attempt < 3) {
           console.warn(`⚠️  Database connection attempt ${attempt} failed (${connErr.message}). Retrying in 2s...`);
           await new Promise((r) => setTimeout(r, 2000));
@@ -1017,6 +1025,10 @@ export async function resetDatabase(): Promise<void> {
           throw connErr;
         }
       }
+    }
+
+    if (!targetClient) {
+      throw new Error("Failed to initialize database connection");
     }
 
     if (isCloudDb) {
@@ -1169,7 +1181,9 @@ export async function resetDatabase(): Promise<void> {
     console.error(`❌ Error: ${err.message}`);
     process.exit(1);
   } finally {
-    await targetClient.end().catch(() => {});
+    if (targetClient) {
+      await targetClient.end().catch(() => {});
+    }
   }
 
   console.log("🎉 Database reset & schema build complete!");

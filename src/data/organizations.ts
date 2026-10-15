@@ -57,6 +57,34 @@ import { defaultTheme } from "./themes.js";
 export type { CurrencyInfo };
 export { TOP_CURRENCIES, defaultCurrency };
 
+export interface SystemSettings {
+  sessionIdleTimeoutMinutes: number;
+  accessTokenTtlMinutes: number;
+  refreshTokenTtlDays: number;
+  rememberMeTtlDays: number;
+  maxLoginAttempts: number;
+  lockoutDurationMinutes: number;
+  passwordMinLength: number;
+  requireSpecialChar: boolean;
+  allowUserRegistration: boolean;
+  requireEmailVerification: boolean;
+  maintenanceMode: boolean;
+}
+
+export const defaultSystemSettings: SystemSettings = {
+  sessionIdleTimeoutMinutes: 30,
+  accessTokenTtlMinutes: 15,
+  refreshTokenTtlDays: 7,
+  rememberMeTtlDays: 30,
+  maxLoginAttempts: 5,
+  lockoutDurationMinutes: 15,
+  passwordMinLength: 4,
+  requireSpecialChar: true,
+  allowUserRegistration: true,
+  requireEmailVerification: false,
+  maintenanceMode: false,
+};
+
 export interface OrganizationInfo {
   name: string;
   shortName: string;
@@ -75,6 +103,7 @@ export interface OrganizationInfo {
   payoutMinimum?: number | undefined;
   raw?: OrganizationEntity | undefined;
   theme: OrganizationTheme;
+  systemSettings: SystemSettings;
 }
 
 export const defaultOrganization: OrganizationInfo = {
@@ -123,6 +152,7 @@ export const defaultOrganization: OrganizationInfo = {
     tokens: TOKENS,
     palette: COLOR_HEX_MAP,
   },
+  systemSettings: defaultSystemSettings,
 };
 
 export const defaultOrganizationEntity: OrganizationEntity = {
@@ -153,6 +183,7 @@ export const defaultOrganizationEntity: OrganizationEntity = {
     links: defaultOrganization.links,
     copyright: defaultOrganization.copyright,
   },
+  system_settings: defaultSystemSettings as unknown as Record<string, unknown>,
 };
 
 export function mapEntityToOrganizationInfo(
@@ -237,12 +268,68 @@ export function mapEntityToOrganizationInfo(
       tokens: TOKENS,
       palette: COLOR_HEX_MAP,
     },
+    systemSettings: (() => {
+      const rawSystem =
+        entity.system_settings &&
+        typeof entity.system_settings === "object" &&
+        !Array.isArray(entity.system_settings)
+          ? entity.system_settings
+          : metadata.system_settings &&
+              typeof metadata.system_settings === "object" &&
+              !Array.isArray(metadata.system_settings)
+            ? metadata.system_settings
+            : {};
+
+      return {
+        sessionIdleTimeoutMinutes:
+          Number((rawSystem as any).sessionIdleTimeoutMinutes) ||
+          defaultSystemSettings.sessionIdleTimeoutMinutes,
+        accessTokenTtlMinutes:
+          Number((rawSystem as any).accessTokenTtlMinutes) ||
+          defaultSystemSettings.accessTokenTtlMinutes,
+        refreshTokenTtlDays:
+          Number((rawSystem as any).refreshTokenTtlDays) ||
+          defaultSystemSettings.refreshTokenTtlDays,
+        rememberMeTtlDays:
+          Number((rawSystem as any).rememberMeTtlDays) ||
+          defaultSystemSettings.rememberMeTtlDays,
+        maxLoginAttempts:
+          Number((rawSystem as any).maxLoginAttempts) ||
+          defaultSystemSettings.maxLoginAttempts,
+        lockoutDurationMinutes:
+          Number((rawSystem as any).lockoutDurationMinutes) ||
+          defaultSystemSettings.lockoutDurationMinutes,
+        passwordMinLength:
+          Number((rawSystem as any).passwordMinLength) ||
+          defaultSystemSettings.passwordMinLength,
+        requireSpecialChar: Boolean(
+          (rawSystem as any).requireSpecialChar ??
+          defaultSystemSettings.requireSpecialChar,
+        ),
+        allowUserRegistration: Boolean(
+          (rawSystem as any).allowUserRegistration ??
+          defaultSystemSettings.allowUserRegistration,
+        ),
+        requireEmailVerification: Boolean(
+          (rawSystem as any).requireEmailVerification ??
+          defaultSystemSettings.requireEmailVerification,
+        ),
+        maintenanceMode: Boolean(
+          (rawSystem as any).maintenanceMode ??
+          defaultSystemSettings.maintenanceMode,
+        ),
+      };
+    })(),
   };
 }
 
 let cachedOrganization: OrganizationInfo = defaultOrganization;
 let lastFetched = 0;
 const CACHE_TTL_MS = 60000; // 1 minute in-memory cache
+
+export function getSystemSettings(): SystemSettings {
+  return cachedOrganization?.systemSettings || defaultSystemSettings;
+}
 
 export async function getOrganizationInfo(
   forceRefresh = false,

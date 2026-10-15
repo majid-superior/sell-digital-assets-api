@@ -1,6 +1,7 @@
 import { userRepository } from "../../database/repositories/user.repository.js";
 import { hashPassword, comparePassword } from "../../core/security/password.js";
 import { generateTokens, verifyRefreshToken, type AuthUserPayload } from "../../core/security/tokens.js";
+import { getSystemSettings } from "../../data/organizations.js";
 import { AppError } from "../../core/errors/app-error.js";
 import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.schema.js";
 
@@ -73,11 +74,18 @@ export class AuthService {
     // 4. Record successful sign-in and reset failure counter
     await userRepository.updateLastSignIn(user.id);
 
-    const tokens = generateTokens({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
+    const customSettings = input.rememberMe
+      ? { refreshTokenTtlDays: getSystemSettings().rememberMeTtlDays || 30 }
+      : undefined;
+
+    const tokens = generateTokens(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      customSettings,
+    );
 
     return {
       user: {

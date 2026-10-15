@@ -40,6 +40,32 @@ export class OrganizationsController {
       next(error);
     }
   }
+
+  async getSystemSettings(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await organizationsService.getSystemSettings();
+      res.status(200).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateSystemSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const body = req.body;
+      const data = await organizationsService.updateSystemSettings(body);
+      res.status(200).json({
+        success: true,
+        message: "System settings updated successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const organizationsController = new OrganizationsController();

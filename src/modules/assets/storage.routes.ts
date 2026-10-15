@@ -79,10 +79,47 @@ router.get("/download", async (req: Request, res: Response): Promise<void> => {
   const stat = fs.statSync(filePath);
   const downloadName = filename || path.basename(filePath);
 
-  res.setHeader("Content-Type", "application/octet-stream");
+  const ext = path.extname(downloadName).toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".bmp": "image/bmp",
+    ".avif": "image/avif",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".pdf": "application/pdf",
+    ".zip": "application/zip",
+    ".gz": "application/gzip",
+    ".tar": "application/x-tar",
+    ".7z": "application/x-7z-compressed",
+    ".json": "application/json",
+  };
+
+  const mimeType = mimeTypes[ext] || "application/octet-stream";
+  const isInline =
+    mimeType.startsWith("image/") ||
+    mimeType.startsWith("video/") ||
+    mimeType.startsWith("audio/") ||
+    key.startsWith("public/media/");
+
+  // Remove restrictive CSP on media downloads so browsers can render inline previews
+  if (isInline) {
+    res.removeHeader("Content-Security-Policy");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  }
+
+  res.setHeader("Content-Type", mimeType);
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="${encodeURIComponent(downloadName)}"`,
+    `${isInline ? "inline" : "attachment"}; filename="${encodeURIComponent(downloadName)}"`,
   );
   res.setHeader("Content-Length", stat.size);
 

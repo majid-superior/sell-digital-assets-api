@@ -371,7 +371,21 @@ export class AssetsController {
       res.status(200).json({
         success: true,
         data: result.data,
+        counts: result.counts,
         pagination: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAdminAssetCounts(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const counts = await assetsService.getAdminAssetCounts();
+
+      res.status(200).json({
+        success: true,
+        data: counts,
       });
     } catch (error) {
       next(error);

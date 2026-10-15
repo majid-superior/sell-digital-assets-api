@@ -2,7 +2,23 @@ import { BaseRepository } from "./base.repository.js";
 import type { OrganizationEntity } from "../types.js";
 
 export class OrganizationsRepository extends BaseRepository<OrganizationEntity> {
+  private columnChecked = false;
+
+  private async ensureSystemSettingsColumn(): Promise<void> {
+    if (this.columnChecked) return;
+    try {
+      await this.query(`
+        ALTER TABLE organizations 
+        ADD COLUMN IF NOT EXISTS system_settings JSONB NOT NULL DEFAULT '{"sessionIdleTimeoutMinutes":30,"accessTokenTtlMinutes":15,"refreshTokenTtlDays":7,"rememberMeTtlDays":30,"maxLoginAttempts":5,"lockoutDurationMinutes":15,"passwordMinLength":8,"requireSpecialChar":false,"allowUserRegistration":true,"requireEmailVerification":false,"maintenanceMode":false}'::jsonb;
+      `);
+      this.columnChecked = true;
+    } catch {
+      // Ignore if table does not exist yet or permission limitation
+    }
+  }
+
   async getOrganization(): Promise<OrganizationEntity | null> {
+    await this.ensureSystemSettingsColumn();
     const result = await this.query<OrganizationEntity>(
       `SELECT 
          o.*,
@@ -53,6 +69,7 @@ export class OrganizationsRepository extends BaseRepository<OrganizationEntity> 
       "payout_minimum",
       "social_links",
       "metadata",
+      "system_settings",
     ];
 
     const updates: string[] = [];
@@ -62,8 +79,8 @@ export class OrganizationsRepository extends BaseRepository<OrganizationEntity> 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
         let val = data[field];
-        if (field === "social_links" || field === "metadata") {
-          val = JSON.stringify(val);
+        if (field === "social_links" || field === "metadata" || field === "system_settings") {
+          val = typeof val === "string" ? val : JSON.stringify(val);
         }
         updates.push(`${field} = $${idx}`);
         values.push(val);

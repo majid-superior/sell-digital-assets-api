@@ -718,15 +718,48 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     `;
 
     const dataResult = await this.query<any>(dataSql, dataParams);
+    const counts = await this.getAdminCounts();
 
     return {
       data: dataResult.rows,
+      counts,
       pagination: {
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit) || 1,
       },
+    };
+  }
+
+  async getAdminCounts(): Promise<{
+    total: number;
+    pending: number;
+    published: number;
+    rejected: number;
+    needsUpdate: number;
+    draft: number;
+  }> {
+    const sql = `
+      SELECT 
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE a.status = 'pending')::int AS pending,
+        COUNT(*) FILTER (WHERE a.status = 'published')::int AS published,
+        COUNT(*) FILTER (WHERE a.status = 'rejected')::int AS rejected,
+        COUNT(*) FILTER (WHERE a.status = 'needs_update')::int AS needs_update,
+        COUNT(*) FILTER (WHERE a.status = 'draft')::int AS draft
+      FROM assets a
+      WHERE a.deleted_at IS NULL;
+    `;
+    const res = await this.query<any>(sql);
+    const row = res.rows[0] || {};
+    return {
+      total: Number(row.total) || 0,
+      pending: Number(row.pending) || 0,
+      published: Number(row.published) || 0,
+      rejected: Number(row.rejected) || 0,
+      needsUpdate: Number(row.needs_update) || 0,
+      draft: Number(row.draft) || 0,
     };
   }
 

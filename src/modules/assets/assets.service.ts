@@ -221,6 +221,10 @@ export class AssetsService {
     return assetsRepository.findForAdmin(filter);
   }
 
+  async getAdminAssetCounts() {
+    return assetsRepository.getAdminCounts();
+  }
+
   async getAdminAssetById(id: string) {
     const asset = await assetsRepository.findById(id);
     if (!asset) {
@@ -393,7 +397,7 @@ export class AssetsService {
     } else {
       const expiresAt = Date.now() + 31536000000;
       const token = localStorageService.signToken(storageKey, expiresAt, "download");
-      previewUrl = `http://localhost:${env.PORT}/api/v1/storage/download?key=${encodeURIComponent(
+      previewUrl = `/api/v1/storage/download?key=${encodeURIComponent(
         storageKey,
       )}&token=${token}&expires=${expiresAt}`;
     }
@@ -420,7 +424,7 @@ export class AssetsService {
     } else {
       const expiresAt = Date.now() + 31536000000;
       const token = localStorageService.signToken(input.storageKey, expiresAt, "download");
-      url = `http://localhost:${env.PORT}/api/v1/storage/download?key=${encodeURIComponent(
+      url = `/api/v1/storage/download?key=${encodeURIComponent(
         input.storageKey,
       )}&token=${token}&expires=${expiresAt}`;
     }
