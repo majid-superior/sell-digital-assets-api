@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { assetsController } from "./assets.controller.js";
+import { optionalAuthenticate } from "../../core/middleware/auth.middleware.js";
 import { downloadLimiter } from "../../core/middleware/rate-limit.middleware.js";
-import { validateBody } from "../../core/validation/validate.middleware.js";
-import { GenerateDownloadLinkSchema } from "./assets.schema.js";
+import { validateBody, validateParams } from "../../core/validation/validate.middleware.js";
+import { AssetIdParamSchema, GenerateDownloadLinkSchema } from "./assets.schema.js";
 
 const router = Router();
 
@@ -10,9 +11,12 @@ const router = Router();
 router.post(
   "/:assetId/generate-link",
   downloadLimiter,
+  optionalAuthenticate,
+  validateParams(AssetIdParamSchema),
   validateBody(GenerateDownloadLinkSchema),
   assetsController.generateDownloadLink.bind(assetsController),
 );
 
 export default router;
+
 

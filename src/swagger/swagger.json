@@ -123,7 +123,15 @@
     "/api/v1/auth/signup": {
       "post": {
         "description": "Creates a new user account and returns JWT tokens",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
@@ -148,7 +156,15 @@
     "/api/v1/auth/signin": {
       "post": {
         "description": "Authenticates credentials and returns access & refresh tokens",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -173,7 +189,15 @@
     "/api/v1/auth/refresh": {
       "post": {
         "description": "Exchanges a valid refresh token for a new access token",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -198,7 +222,15 @@
     "/api/v1/auth/signout": {
       "post": {
         "description": "Revokes active refresh token session and clears authentication cookies",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -225,6 +257,13 @@
         "description": "Retrieves profile of the token owner",
         "parameters": [
           {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -240,34 +279,23 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Get current authenticated profile"
+        "summary": "Get current authenticated profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       },
       "patch": {
         "description": "Updates own profile details or password",
         "parameters": [
           {
-            "name": "authorization",
+            "name": "host",
             "in": "header",
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "Authentication"
-        ],
-        "summary": "Update current profile"
-      }
-    },
-    "/api/v1/auth/become-seller": {
-      "post": {
-        "description": "",
-        "parameters": [
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -283,6 +311,47 @@
         },
         "tags": [
           "Authentication"
+        ],
+        "summary": "Update current profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/become-seller": {
+      "post": {
+        "description": "Upgrades the authenticated buyer account to the Seller role",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Upgrade buyer account to seller",
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ]
       }
     },
@@ -290,6 +359,13 @@
       "get": {
         "description": "Returns paginated list of registered users",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -341,6 +417,13 @@
             }
           },
           {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -370,6 +453,13 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -419,6 +509,13 @@
             }
           },
           {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -460,6 +557,13 @@
         "description": "Updates organization profile, branding, URLs, addresses, and platform settings",
         "parameters": [
           {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "schema": {
@@ -485,6 +589,13 @@
       "patch": {
         "description": "Partially updates organization configuration",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -559,17 +670,36 @@
     },
     "/api/v1/organizations/settings/system": {
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Retrieves dynamic session, authentication, and security policies",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Organization Branding"
+        ],
+        "summary": "Get platform system settings"
       },
       "patch": {
-        "description": "",
+        "description": "Partially updates dynamic session, authentication, and security policies in PostgreSQL",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -582,11 +712,27 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Organization Branding"
+        ],
+        "summary": "Update platform system settings (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       },
       "put": {
-        "description": "",
+        "description": "Updates dynamic session, authentication, and security policies in PostgreSQL",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -599,52 +745,16 @@
           "200": {
             "description": "OK"
           }
-        }
-      }
-    },
-    "/api/v1/organizations/system-settings": {
-      "get": {
-        "description": "",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "patch": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
+        },
+        "tags": [
+          "Organization Branding"
         ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "description": "",
-        "parameters": [
+        "summary": "Replace platform system settings (Admin only)",
+        "security": [
           {
-            "name": "authorization",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
+            "bearerAuth": []
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
+        ]
       }
     },
     "/api/v1/categories": {
@@ -721,6 +831,13 @@
       "post": {
         "description": "Creates a new category. Automatically derives depth and hierarchical breadcrumb path.",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -947,9 +1064,59 @@
         ],
         "summary": "Get active theme styling & tokens"
       },
+      "post": {
+        "description": "Creates a new theme palette in PostgreSQL",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Create a new theme (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThemeInput"
+              }
+            }
+          }
+        }
+      },
       "put": {
         "description": "Updates database theme styling, invalidates caches, and synchronizes CSS tokens",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -982,6 +1149,115 @@
             }
           }
         }
+      },
+      "patch": {
+        "description": "Partially updates active database theme styling and CSS tokens",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Partially update active theme (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateThemeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/theme/all": {
+      "get": {
+        "description": "Retrieves all themes stored in PostgreSQL",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "List all registered themes"
+      }
+    },
+    "/api/v1/theme/{id}/activate": {
+      "post": {
+        "description": "Activates a specific theme palette by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Theme"
+        ],
+        "summary": "Activate theme by ID (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/theme/css": {
@@ -1004,54 +1280,153 @@
     },
     "/api/v1/assets/categories": {
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Returns active hierarchical category tree for asset discovery",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Public"
+        ],
+        "summary": "Get marketplace category tree"
       }
     },
     "/api/v1/assets": {
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Returns filtered and paginated published digital assets",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Public"
+        ],
+        "summary": "Browse public marketplace catalog"
+      },
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "Assets - Public"
+        ]
       }
     },
     "/api/v1/assets/seller": {
       "post": {
-        "description": "",
-        "parameters": [],
+        "description": "Creates a new digital asset in draft status for the authenticated seller",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create draft digital asset"
       },
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Returns paginated list of assets belonging to the authenticated seller",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List seller's own assets & stats"
       }
     },
     "/api/v1/assets/seller/{id}": {
       "patch": {
-        "description": "",
+        "description": "Updates asset metadata, descriptions, technical specs, or pricing tiers",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1061,15 +1436,31 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update seller asset details"
       },
       "delete": {
-        "description": "",
+        "description": "Archives and soft-deletes an asset owned by the authenticated seller",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1079,17 +1470,33 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Soft-delete and archive seller asset"
       }
     },
     "/api/v1/assets/seller/{id}/status": {
       "post": {
-        "description": "",
+        "description": "Transitions asset between draft, pending review, and archived states",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1113,17 +1520,33 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Transition seller asset status"
       }
     },
     "/api/v1/assets/seller/{id}/files/presign-upload": {
       "post": {
-        "description": "",
+        "description": "Generates a signed upload URL for a deliverable asset file",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1133,17 +1556,33 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Generate presigned deliverable upload URL"
       }
     },
     "/api/v1/assets/seller/{id}/files/confirm": {
       "post": {
-        "description": "",
+        "description": "Verifies uploaded deliverable file on storage and attaches it to the asset",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1153,17 +1592,33 @@
           "201": {
             "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm deliverable file upload"
       }
     },
     "/api/v1/assets/seller/{id}/media/presign-upload": {
       "post": {
-        "description": "",
+        "description": "Generates a signed upload URL for asset preview images, videos, or audio",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1173,17 +1628,33 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Generate presigned media preview upload URL"
       }
     },
     "/api/v1/assets/seller/{id}/media/confirm": {
       "post": {
-        "description": "",
+        "description": "Verifies uploaded showcase media on storage and attaches it to the asset",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1193,12 +1664,21 @@
           "201": {
             "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm media preview upload"
       }
     },
     "/api/v1/assets/seller/{id}/files/{fileId}": {
       "delete": {
-        "description": "",
+        "description": "Removes and archives a specific deliverable file version",
         "parameters": [
           {
             "name": "id",
@@ -1215,18 +1695,34 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Decommission deliverable file version"
       }
     },
     "/api/v1/assets/{slug}": {
       "get": {
-        "description": "",
+        "description": "Retrieves full public details, media previews, and licensing tiers for a published asset",
         "parameters": [
           {
             "name": "slug",
@@ -1235,65 +1731,116 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
-      }
-    },
-    "/api/v1/seller/assets/categories": {
-      "get": {
-        "description": "",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
+        },
+        "tags": [
+          "Assets - Public"
+        ],
+        "summary": "Get published asset details by slug"
       }
     },
     "/api/v1/seller/assets": {
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Returns paginated list of assets belonging to the authenticated seller",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
-      }
-    },
-    "/api/v1/seller/assets/seller": {
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List seller's own assets & stats"
+      },
       "post": {
-        "description": "",
-        "parameters": [],
+        "description": "Creates a new digital asset in draft status for the authenticated seller",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created"
           }
-        }
-      },
-      "get": {
-        "description": "",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK"
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
           }
-        }
+        ],
+        "summary": "Create draft digital asset"
       }
     },
-    "/api/v1/seller/assets/seller/{id}": {
+    "/api/v1/seller/assets/{id}": {
       "patch": {
-        "description": "",
+        "description": "Updates asset metadata, descriptions, technical specs, or pricing tiers",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1303,15 +1850,38 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update seller asset details"
       },
       "delete": {
-        "description": "",
+        "description": "Archives and soft-deletes an asset owned by the authenticated seller",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1321,17 +1891,40 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Soft-delete and archive seller asset"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/status": {
+    "/api/v1/seller/assets/{id}/status": {
       "post": {
-        "description": "",
+        "description": "Transitions asset between draft, pending review, and archived states",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1355,17 +1948,40 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Transition seller asset status"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/files/presign-upload": {
+    "/api/v1/seller/assets/{id}/files/presign-upload": {
       "post": {
-        "description": "",
+        "description": "Generates a signed upload URL for a deliverable asset file",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1375,17 +1991,40 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Generate presigned deliverable upload URL"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/files/confirm": {
+    "/api/v1/seller/assets/{id}/files/confirm": {
       "post": {
-        "description": "",
+        "description": "Verifies uploaded deliverable file on storage and attaches it to the asset",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1395,17 +2034,40 @@
           "201": {
             "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm deliverable file upload"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/media/presign-upload": {
+    "/api/v1/seller/assets/{id}/media/presign-upload": {
       "post": {
-        "description": "",
+        "description": "Generates a signed upload URL for asset preview images, videos, or audio",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1415,17 +2077,40 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Generate presigned media preview upload URL"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/media/confirm": {
+    "/api/v1/seller/assets/{id}/media/confirm": {
       "post": {
-        "description": "",
+        "description": "Verifies uploaded showcase media on storage and attaches it to the asset",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1435,12 +2120,21 @@
           "201": {
             "description": "Created"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm media preview upload"
       }
     },
-    "/api/v1/seller/assets/seller/{id}/files/{fileId}": {
+    "/api/v1/seller/assets/{id}/files/{fileId}": {
       "delete": {
-        "description": "",
+        "description": "Removes and archives a specific deliverable file version",
         "parameters": [
           {
             "name": "id",
@@ -1457,81 +2151,10 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/seller/assets/{slug}": {
-      "get": {
-        "description": "",
-        "parameters": [
+          },
           {
-            "name": "slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/assets": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "authorization",
+            "name": "host",
             "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/assets/counts": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/assets/{id}": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
             "schema": {
               "type": "string"
             }
@@ -1548,17 +2171,146 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Decommission deliverable file version"
       }
     },
-    "/api/v1/admin/assets/{id}/review": {
-      "post": {
-        "description": "",
+    "/api/v1/admin/assets": {
+      "get": {
+        "description": "Retrieves paginated assets across all statuses with queue counts",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List assets for admin moderation (Admin only)"
+      }
+    },
+    "/api/v1/admin/assets/counts": {
+      "get": {
+        "description": "Returns asset counts grouped by status for moderation dashboards",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get admin asset review queue counts (Admin only)"
+      }
+    },
+    "/api/v1/admin/assets/{id}": {
+      "get": {
+        "description": "Retrieves complete asset details including files, media, tiers, and review logs",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get full asset details for review (Admin only)"
+      }
+    },
+    "/api/v1/admin/assets/{id}/review": {
+      "post": {
+        "description": "Approves, rejects, or requests updates on a submitted asset and dispatches seller notifications",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1589,17 +2341,40 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Assets - Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Submit admin moderation decision (Admin only)"
       }
     },
     "/api/v1/downloads/{assetId}/generate-link": {
       "post": {
-        "description": "",
+        "description": "Verifies license or ownership entitlement and returns a short-lived signed download URL",
         "parameters": [
           {
             "name": "assetId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1623,24 +2398,47 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Downloads"
+        ],
+        "summary": "Generate signed asset download link"
       }
     },
     "/api/v1/licenses/verify": {
       "post": {
-        "description": "",
-        "parameters": [],
+        "description": "Validates license status, tier, expiration, and seat activations",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Licenses"
+        ],
+        "summary": "Verify cryptographic license key"
       }
     },
     "/api/v1/licenses/activate": {
       "post": {
-        "description": "",
+        "description": "Registers a domain or machine identifier against a license key within its seat limit",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "x-forwarded-for",
             "in": "header",
@@ -1653,33 +2451,61 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Licenses"
+        ],
+        "summary": "Activate domain or machine seat on license"
       }
     },
     "/api/v1/licenses/issue": {
       "post": {
-        "description": "",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        }
-      }
-    },
-    "/api/v1/licenses/buyer": {
-      "get": {
-        "description": "",
+        "description": "Issues a new license key for a buyer and asset tier",
         "parameters": [
           {
-            "name": "x-buyer-id",
+            "name": "host",
             "in": "header",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "x-seller-id",
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "Licenses"
+        ],
+        "summary": "Issue cryptographic license key (Admin only)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/licenses/buyer": {
+      "get": {
+        "description": "Retrieves all licenses owned by the authenticated buyer",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
             "in": "header",
             "schema": {
               "type": "string"
@@ -1690,35 +2516,131 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Licenses"
+        ],
+        "summary": "List authenticated buyer's licenses",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/storage/upload": {
       "put": {
-        "description": "",
-        "parameters": [],
-        "responses": {
-          "default": {
-            "description": ""
+        "description": "Streams a binary file upload to local storage using a valid HMAC upload token",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "content-length",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
-        }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Direct signed stream upload"
       }
     },
     "/api/v1/storage/download": {
       "get": {
-        "description": "",
-        "parameters": [],
+        "description": "Streams a binary file from local storage using a valid HMAC download token",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "description": ""
           }
-        }
+        },
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Direct signed stream download"
       }
     },
     "/api/v1/notifications": {
       "get": {
-        "description": "",
+        "description": "Returns paginated in-app notifications and unread count",
         "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -1752,36 +2674,25 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List notifications for authenticated user"
       }
     },
     "/api/v1/notifications/read-all": {
       "post": {
-        "description": "",
+        "description": "Marks all unread notifications for the authenticated user as read",
         "parameters": [
           {
-            "name": "authorization",
+            "name": "host",
             "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/read": {
-      "patch": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
             "schema": {
               "type": "string"
             }
@@ -1798,7 +2709,59 @@
           "200": {
             "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Mark all notifications as read"
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "description": "Marks a specific notification as read by UUID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Mark single notification as read"
       }
     }
   },

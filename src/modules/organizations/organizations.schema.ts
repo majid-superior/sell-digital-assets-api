@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+export const SystemSettingsSchema = z.object({
+  sessionIdleTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  accessTokenTtlMinutes: z.number().int().min(1).max(1440).optional(),
+  refreshTokenTtlDays: z.number().int().min(1).max(365).optional(),
+  rememberMeTtlDays: z.number().int().min(1).max(365).optional(),
+  maxLoginAttempts: z.number().int().min(1).max(50).optional(),
+  lockoutDurationMinutes: z.number().int().min(1).max(1440).optional(),
+  passwordMinLength: z.number().int().min(4).max(128).optional(),
+  requireSpecialChar: z.boolean().optional(),
+  allowUserRegistration: z.boolean().optional(),
+  requireEmailVerification: z.boolean().optional(),
+  maintenanceMode: z.boolean().optional(),
+});
+
+export type SystemSettingsInput = z.infer<typeof SystemSettingsSchema>;
+
 export const UpdateOrganizationSchema = z.object({
   organization_name: z.string().trim().min(1).max(150).optional(),
   legal_name: z.string().trim().min(1).max(150).optional(),
@@ -25,24 +41,9 @@ export const UpdateOrganizationSchema = z.object({
   payout_minimum: z.number().min(0).optional(),
   social_links: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  system_settings: z.record(z.string(), z.unknown()).optional(),
+  system_settings: SystemSettingsSchema.optional(),
 });
 
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>;
 
-export const SystemSettingsSchema = z.object({
-  sessionIdleTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
-  accessTokenTtlMinutes: z.number().int().min(1).max(1440).optional(),
-  refreshTokenTtlDays: z.number().int().min(1).max(365).optional(),
-  rememberMeTtlDays: z.number().int().min(1).max(365).optional(),
-  maxLoginAttempts: z.number().int().min(1).max(50).optional(),
-  lockoutDurationMinutes: z.number().int().min(1).max(1440).optional(),
-  passwordMinLength: z.number().int().min(6).max(128).optional(),
-  requireSpecialChar: z.boolean().optional(),
-  allowUserRegistration: z.boolean().optional(),
-  requireEmailVerification: z.boolean().optional(),
-  maintenanceMode: z.boolean().optional(),
-});
-
-export type SystemSettingsInput = z.infer<typeof SystemSettingsSchema>;
 

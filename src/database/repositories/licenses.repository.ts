@@ -1,4 +1,9 @@
 import { BaseRepository } from "./base.repository.js";
+import { AppError } from "../../core/errors/app-error.js";
+import {
+  defaultLicenseTierMap,
+  type LicenseTierConfig,
+} from "../../data/license-tiers.js";
 import type {
   LicenseEntity,
   LicenseActivationEntity,
@@ -6,7 +11,47 @@ import type {
   AssetFileEntity,
 } from "../types.js";
 
+export interface ActivateDomainResult {
+  activation: LicenseActivationEntity;
+  alreadyExisted: boolean;
+  activeCount: number;
+  maxActivations: number;
+}
+
 export class LicensesRepository extends BaseRepository<LicenseEntity> {
+  async findTierByType(
+    tierType: "personal" | "commercial" | "extended",
+  ): Promise<LicenseTierConfig> {
+    try {
+      const res = await this.query<LicenseTierConfig>(
+        `SELECT tier_type, name, default_price::float AS default_price, description,
+                license_terms_summary, max_activations, display_order, is_active
+         FROM license_tiers
+         WHERE tier_type = $1
+         LIMIT 1`,
+        [tierType],
+      );
+      if (res.rows[0]) {
+        return res.rows[0];
+      }
+    } catch {
+      // Fallback to default license tier config if table is not yet initialized
+    }
+    return (
+      defaultLicenseTierMap.get(tierType) || {
+        tier_type: tierType,
+        name: `${tierType} License`,
+        default_price: 0,
+        description: "",
+        license_terms_summary: "",
+        max_activations:
+          tierType === "extended" ? 25 : tierType === "commercial" ? 5 : 1,
+        display_order: 1,
+        is_active: true,
+      }
+    );
+  }
+
   async issue(data: {
     licenseKey: string;
     assetId: string;
@@ -140,8 +185,56 @@ export class LicensesRepository extends BaseRepository<LicenseEntity> {
     licenseId: string,
     domainOrMachineId: string,
     ipAddress?: string,
-  ): Promise<LicenseActivationEntity> {
+  ): Promise<ActivateDomainResult> {
     return this.withTransaction(async (client) => {
+      const lockRes = await client.query<LicenseEntity>(
+        `SELECT id, status, expires_at, max_activations, activation_count
+         FROM licenses
+         WHERE id = $1
+         FOR UPDATE`,
+        [licenseId],
+      );
+
+      const lic = lockRes.rows[0];
+      if (!lic) {
+        throw new AppError("License key not found", 404);
+      }
+
+      if (lic.status !== "active") {
+        throw new AppError(`Cannot activate: License is ${lic.status}`, 400);
+      }
+
+      if (lic.expires_at && new Date() > new Date(lic.expires_at)) {
+        throw new AppError("Cannot activate: License has expired", 400);
+      }
+
+      const existingRes = await client.query<LicenseActivationEntity>(
+        `SELECT *
+         FROM license_activations
+         WHERE license_id = $1 AND LOWER(domain_or_machine_id) = LOWER($2)
+         LIMIT 1`,
+        [licenseId, domainOrMachineId],
+      );
+
+      const maxActivations = lic.max_activations ?? 1;
+      const activeCount = lic.activation_count ?? 0;
+
+      if (existingRes.rows[0]) {
+        return {
+          activation: existingRes.rows[0],
+          alreadyExisted: true,
+          activeCount,
+          maxActivations,
+        };
+      }
+
+      if (activeCount >= maxActivations) {
+        throw new AppError(
+          `Activation limit reached (${activeCount}/${maxActivations}). Upgrade to a higher license tier for additional seats.`,
+          400,
+        );
+      }
+
       const insertSql = `
         INSERT INTO license_activations (
           license_id,
@@ -161,7 +254,12 @@ export class LicensesRepository extends BaseRepository<LicenseEntity> {
         [licenseId],
       );
 
-      return res.rows[0]!;
+      return {
+        activation: res.rows[0]!,
+        alreadyExisted: false,
+        activeCount: activeCount + 1,
+        maxActivations,
+      };
     });
   }
 

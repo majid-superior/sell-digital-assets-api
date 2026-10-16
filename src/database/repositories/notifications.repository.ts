@@ -64,13 +64,7 @@ export class NotificationsRepository extends BaseRepository<NotificationEntity> 
     const where = conditions.join(" AND ");
 
     const countSql = `SELECT COUNT(*)::int AS total FROM notifications WHERE ${where};`;
-    const countRes = await this.query<{ total: number }>(countSql, params);
-    const total = countRes.rows[0]?.total ?? 0;
-
     const unreadSql = `SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id = $1 AND is_read = FALSE;`;
-    const unreadRes = await this.query<{ unread: number }>(unreadSql, [userId]);
-    const unreadCount = unreadRes.rows[0]?.unread ?? 0;
-
     const dataSql = `
       SELECT *
       FROM notifications
@@ -78,11 +72,15 @@ export class NotificationsRepository extends BaseRepository<NotificationEntity> 
       ORDER BY created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2};
     `;
-    const dataRes = await this.query<NotificationEntity>(dataSql, [
-      ...params,
-      limit,
-      offset,
+
+    const [countRes, unreadRes, dataRes] = await Promise.all([
+      this.query<{ total: number }>(countSql, params),
+      this.query<{ unread: number }>(unreadSql, [userId]),
+      this.query<NotificationEntity>(dataSql, [...params, limit, offset]),
     ]);
+
+    const total = countRes.rows[0]?.total ?? 0;
+    const unreadCount = unreadRes.rows[0]?.unread ?? 0;
 
     return {
       data: dataRes.rows,

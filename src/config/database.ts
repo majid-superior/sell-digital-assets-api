@@ -10,14 +10,19 @@ if (typeof dns.setDefaultResultOrder === "function") {
 
 const { Pool } = pg;
 
-const requiresSsl =
-  process.env.DATABASE_SSL === "true" ||
-  env.DATABASE_URL.includes("sslmode=require") ||
-  env.DATABASE_URL.includes("render.com") ||
-  env.DATABASE_URL.includes("amazonaws.com") ||
-  env.DATABASE_URL.includes("supabase.co") ||
-  env.DATABASE_URL.includes("supabase.com") ||
-  env.DATABASE_URL.includes("neon.tech");
+export function isSslRequired(databaseUrl: string): boolean {
+  return (
+    process.env.DATABASE_SSL === "true" ||
+    databaseUrl.includes("sslmode=require") ||
+    databaseUrl.includes("render.com") ||
+    databaseUrl.includes("amazonaws.com") ||
+    databaseUrl.includes("supabase.co") ||
+    databaseUrl.includes("supabase.com") ||
+    databaseUrl.includes("neon.tech")
+  );
+}
+
+const requiresSsl = isSslRequired(env.DATABASE_URL);
 
 const publicResolver = new dns.Resolver();
 publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);

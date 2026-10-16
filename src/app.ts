@@ -28,7 +28,7 @@ import usersRoutes from "./modules/users/users.routes.js";
 import organizationsRoutes from "./modules/organizations/organizations.routes.js";
 import categoriesRoutes from "./modules/categories/categories.routes.js";
 import themeRoutes from "./modules/theme/theme.routes.js";
-import assetsRoutes from "./modules/assets/assets.routes.js";
+import assetsRoutes, { sellerAssetsRouter } from "./modules/assets/assets.routes.js";
 import adminAssetsRoutes from "./modules/assets/admin-assets.routes.js";
 import downloadsRoutes from "./modules/assets/downloads.routes.js";
 import licensesRoutes from "./modules/assets/licenses.routes.js";
@@ -49,8 +49,17 @@ app.use(ipGuardMiddleware);
 
 if (env.NODE_ENV === "production") {
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.header("x-forwarded-proto") !== "https") {
-      return res.redirect(301, `https://${req.hostname}${req.originalUrl}`);
+    if (!req.secure && req.header("x-forwarded-proto") !== "https") {
+      const safeHost = /^[a-zA-Z0-9.-]+$/.test(req.hostname) ? req.hostname : "";
+      if (!safeHost) {
+        return res.status(400).json({
+          success: false,
+          status: "fail",
+          message: "Invalid Host header",
+        });
+      }
+      const safeUrl = req.originalUrl.replace(/^[/\\]+/, "/");
+      return res.redirect(301, `https://${safeHost}${safeUrl}`);
     }
     next();
   });
@@ -209,7 +218,7 @@ app.use("/api/v1/organizations", organizationsRoutes);
 app.use("/api/v1/categories", categoriesRoutes);
 app.use("/api/v1/theme", themeRoutes);
 app.use("/api/v1/assets", assetsRoutes);
-app.use("/api/v1/seller/assets", assetsRoutes);
+app.use("/api/v1/seller/assets", sellerAssetsRouter);
 app.use("/api/v1/admin/assets", adminAssetsRoutes);
 app.use("/api/v1/downloads", downloadsRoutes);
 app.use("/api/v1/licenses", licensesRoutes);

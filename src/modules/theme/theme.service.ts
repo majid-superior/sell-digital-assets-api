@@ -118,23 +118,42 @@ export class ThemeService {
       }
     }
 
+    const safeKeyRegex = /^[a-z0-9-]+$/;
+    const safeColorRegex =
+      /^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\))$/;
+
     const lightLines: string[] = [];
     for (const [key, val] of Object.entries(lightPalette)) {
       if (val && typeof val === "string") {
-        lightLines.push(`  --color-${camelToKebab(key)}: ${val} !important;`);
+        const kebabKey = camelToKebab(key);
+        const trimmedVal = val.trim();
+        if (safeKeyRegex.test(kebabKey) && safeColorRegex.test(trimmedVal)) {
+          lightLines.push(`  --color-${kebabKey}: ${trimmedVal} !important;`);
+        }
       }
     }
 
     const darkLines: string[] = [];
     for (const [key, val] of Object.entries(darkPalette)) {
       if (val && typeof val === "string") {
-        darkLines.push(`  --color-${camelToKebab(key)}: ${val} !important;`);
+        const kebabKey = camelToKebab(key);
+        const trimmedVal = val.trim();
+        if (safeKeyRegex.test(kebabKey) && safeColorRegex.test(trimmedVal)) {
+          darkLines.push(`  --color-${kebabKey}: ${trimmedVal} !important;`);
+        }
       }
     }
 
+    const safeThemeName = String(theme.name || "Default")
+      .replace(/\*\//g, "")
+      .replace(/[\r\n]+/g, " ");
+    const safeThemeSlug = String(theme.slug || "active")
+      .replace(/\*\//g, "")
+      .replace(/[\r\n]+/g, " ");
+
     const css = `/* ==========================================================================
    Dynamically Generated Theme CSS Variables (Source: PostgreSQL Database)
-   Theme: ${theme.name} (${theme.slug || "active"})
+   Theme: ${safeThemeName} (${safeThemeSlug})
    Updated: ${theme.updated_at || new Date().toISOString()}
    ========================================================================== */
 

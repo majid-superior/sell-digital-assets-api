@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { assetsController } from "./assets.controller.js";
+import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import { validateBody } from "../../core/validation/validate.middleware.js";
 import {
   VerifyLicenseSchema,
@@ -23,18 +24,22 @@ router.post(
   assetsController.activateLicense.bind(assetsController),
 );
 
-// POST /api/v1/licenses/issue — Issues new cryptographic license key on purchase completion
+// POST /api/v1/licenses/issue — Issues new cryptographic license key on purchase completion (Admin only)
 router.post(
   "/issue",
+  authenticate,
+  authorize("admin"),
   validateBody(IssueLicenseSchema),
   assetsController.issueLicense.bind(assetsController),
 );
 
-// GET /api/v1/licenses/buyer — Retrieves all active cryptographic licenses owned by buyer
+// GET /api/v1/licenses/buyer — Retrieves all active cryptographic licenses owned by authenticated buyer
 router.get(
   "/buyer",
+  authenticate,
   assetsController.getBuyerLicenses.bind(assetsController),
 );
 
 export default router;
+
 

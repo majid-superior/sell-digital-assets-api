@@ -1,6 +1,11 @@
 import { userRepository } from "../../database/repositories/user.repository.js";
 import { hashPassword, comparePassword } from "../../core/security/password.js";
-import { generateTokens, verifyRefreshToken, type AuthUserPayload } from "../../core/security/tokens.js";
+import {
+  generateTokens,
+  verifyRefreshToken,
+  revokeRefreshToken,
+  type AuthUserPayload,
+} from "../../core/security/tokens.js";
 import { getSystemSettings } from "../../data/organizations.js";
 import { AppError } from "../../core/errors/app-error.js";
 import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.schema.js";
@@ -9,7 +14,27 @@ import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.s
 const DUMMY_HASH = "$2a$12$K8aUoQZJj4Ptw4q69E/f0u86P4FvL.8Qy/nZgK8Zl3wzMkm1w2KWW";
 
 export class AuthService {
+  private validatePasswordPolicy(password: string): void {
+    const settings = getSystemSettings();
+    const minLength = Math.max(4, settings.passwordMinLength || 4);
+
+    if (password.length < minLength) {
+      throw new AppError(`Password must be at least ${minLength} characters long.`, 400);
+    }
+
+    if (settings.requireSpecialChar && !/[^a-zA-Z0-9\s]/.test(password)) {
+      throw new AppError("Password must contain at least one special character.", 400);
+    }
+  }
+
   async register(input: RegisterUserInput) {
+    const settings = getSystemSettings();
+    if (!settings.allowUserRegistration) {
+      throw new AppError("User registration is currently disabled.", 403);
+    }
+
+    this.validatePasswordPolicy(input.password);
+
     const existing = await userRepository.findByEmail(input.email);
     if (existing) {
       throw new AppError("An account with this email address already exists.", 409);
@@ -45,6 +70,7 @@ export class AuthService {
   }
 
   async signIn(input: SignInUserInput) {
+    const settings = getSystemSettings();
     const user = await userRepository.findByEmail(input.email);
 
     // 1. Check account lockout BEFORE evaluating credentials
@@ -61,21 +87,33 @@ export class AuthService {
 
     if (!user || !user.password_hash || !isValid) {
       if (user) {
-        await userRepository.recordFailedSignIn(user.id);
+        await userRepository.recordFailedSignIn(
+          user.id,
+          settings.maxLoginAttempts || 5,
+          settings.lockoutDurationMinutes || 15,
+        );
       }
       throw new AppError("Invalid email or password", 401);
     }
 
-    // 3. Account status checks
+    // 3. Maintenance mode check (only admins allowed during maintenance)
+    if (settings.maintenanceMode && user.role !== "admin") {
+      throw new AppError(
+        "Platform is currently under maintenance. Please try again later.",
+        503,
+      );
+    }
+
+    // 4. Account status checks
     if (user.status !== "active") {
       throw new AppError(`Your account is currently ${user.status}. Please contact support.`, 403);
     }
 
-    // 4. Record successful sign-in and reset failure counter
+    // 5. Record successful sign-in and reset failure counter
     await userRepository.updateLastSignIn(user.id);
 
     const customSettings = input.rememberMe
-      ? { refreshTokenTtlDays: getSystemSettings().rememberMeTtlDays || 30 }
+      ? { refreshTokenTtlDays: settings.rememberMeTtlDays || 30 }
       : undefined;
 
     const tokens = generateTokens(
@@ -112,6 +150,12 @@ export class AuthService {
       throw new AppError(`Account is currently ${user.status}`, 403);
     }
 
+    // Rotate refresh token: revoke the consumed token's jti so it cannot be replayed
+    if (decoded.jti) {
+      const expMs = decoded.exp ? decoded.exp * 1000 : undefined;
+      revokeRefreshToken(decoded.jti, expMs);
+    }
+
     const tokens = generateTokens({
       id: user.id,
       email: user.email,
@@ -130,8 +174,10 @@ export class AuthService {
     };
   }
 
-  async signOut(_refreshToken?: string): Promise<void> {
-    // Stateless token invalidation handled via cookie clearance in controller
+  async signOut(refreshToken?: string): Promise<void> {
+    if (refreshToken) {
+      revokeRefreshToken(refreshToken);
+    }
   }
 
   async getMe(userId: string) {
@@ -151,6 +197,7 @@ export class AuthService {
 
     let passwordHash: string | undefined;
     if (data.password) {
+      this.validatePasswordPolicy(data.password);
       if (data.currentPassword) {
         const hashToCompare = user.password_hash || "";
         const isValid = await comparePassword(data.currentPassword, hashToCompare);

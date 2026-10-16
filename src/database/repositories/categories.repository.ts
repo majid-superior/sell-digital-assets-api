@@ -3,6 +3,10 @@ import type { CategoryEntity } from "../types.js";
 import { slugify } from "../../data/categories.js";
 import { AppError } from "../../core/errors/app-error.js";
 
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 export interface CreateCategoryDto {
   name: string;
   slug?: string | undefined;
@@ -435,6 +439,8 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
       }
     }
 
+    let effectiveSlug = existing.slug;
+    let slugChanged = false;
     if (data.slug !== undefined) {
       const slug = data.slug.trim().toLowerCase();
       if (!slug) {
@@ -445,6 +451,8 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
         if (slugConflict && slugConflict.id !== id) {
           throw new AppError(`Category with slug '${slug}' already exists`, 409);
         }
+        effectiveSlug = slug;
+        slugChanged = true;
         updates.push(`slug = $${idx++}`);
         values.push(slug);
       }
@@ -507,23 +515,22 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
       values.push(data.isActive);
     }
 
-    if (data.metadata !== undefined) {
-      updates.push(`metadata = $${idx++}::jsonb`);
-      values.push(JSON.stringify(data.metadata));
-    }
-
-    // If hierarchy or naming changed, recompute depth and path
+    // If hierarchy, naming, or slug changed, recompute depth, path, and metadata.pathSlugs
     let newDepth = existing.depth ?? 0;
     let newPath = existing.path ?? existing.name;
+    let resolvedParent: CategoryEntity | null = newParent;
+
+    if ((nameChanged || parentChanged || slugChanged) && newParentId !== null && !resolvedParent) {
+      resolvedParent = await this.findById(newParentId, true);
+      if (!resolvedParent) {
+        throw new AppError(`Parent category with ID ${newParentId} not found`, 404);
+      }
+    }
 
     if (nameChanged || parentChanged) {
-      if (newParentId !== null) {
-        const parent = newParent ?? (await this.findById(newParentId, true));
-        if (!parent) {
-          throw new AppError(`Parent category with ID ${newParentId} not found`, 404);
-        }
-        newDepth = (parent.depth ?? 0) + 1;
-        newPath = `${parent.path} > ${newName}`;
+      if (newParentId !== null && resolvedParent) {
+        newDepth = (resolvedParent.depth ?? 0) + 1;
+        newPath = `${resolvedParent.path} > ${newName}`;
       } else {
         newDepth = 0;
         newPath = newName;
@@ -534,6 +541,29 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
 
       updates.push(`path = $${idx++}`);
       values.push(newPath);
+    }
+
+    if (data.metadata !== undefined || slugChanged || parentChanged) {
+      const baseMetadata: Record<string, unknown> =
+        data.metadata !== undefined
+          ? { ...(data.metadata ?? {}) }
+          : { ...(((existing.metadata as Record<string, unknown>) ?? {})) };
+
+      if (slugChanged || parentChanged) {
+        const pathSlugs: string[] = [effectiveSlug];
+        if (newParentId !== null && resolvedParent) {
+          const parentPathSlugs = (resolvedParent.metadata as any)?.pathSlugs;
+          if (Array.isArray(parentPathSlugs)) {
+            pathSlugs.unshift(...parentPathSlugs);
+          } else if (resolvedParent.slug) {
+            pathSlugs.unshift(resolvedParent.slug);
+          }
+        }
+        baseMetadata.pathSlugs = pathSlugs;
+      }
+
+      updates.push(`metadata = $${idx++}::jsonb`);
+      values.push(JSON.stringify(baseMetadata));
     }
 
     if (updates.length === 0) {
@@ -564,12 +594,12 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
            SET path = $1 || SUBSTRING(path, $2::int),
                depth = depth + $3,
                updated_at = CURRENT_TIMESTAMP
-           WHERE path LIKE $4;`,
+           WHERE path LIKE $4 ESCAPE '\\';`,
           [
             newPrefix,
             oldPrefix.length + 1,
             depthDelta,
-            `${oldPrefix}%`,
+            `${escapeLikePattern(oldPrefix)}%`,
           ],
         );
       }
@@ -598,11 +628,11 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
     if (!existing) return false;
 
     if (cascadeToChildren) {
-      const childPrefix = `${existing.path} > %`;
+      const childPrefix = `${escapeLikePattern(existing.path ?? "")} > %`;
       const result = await this.query(
         `UPDATE categories
          SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 OR path LIKE $2;`,
+         WHERE id = $1 OR path LIKE $2 ESCAPE '\\';`,
         [id, childPrefix],
       );
       return (result.rowCount ?? 0) > 0;

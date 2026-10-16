@@ -29,9 +29,6 @@ export const corsOptions: CorsOptions = {
     "Authorization",
     "X-Requested-With",
     "X-Request-ID",
-    "x-seller-id",
-    "x-buyer-id",
-    "x-user-id",
   ],
 };
 

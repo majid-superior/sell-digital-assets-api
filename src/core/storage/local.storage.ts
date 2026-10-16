@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { env } from "../../config/env.js";
+import { AppError } from "../errors/app-error.js";
 import type {
   IStorageService,
   PresignedUploadResult,
@@ -21,8 +22,20 @@ export class LocalStorageService implements IStorageService {
   }
 
   public getAbsolutePath(storageKey: string): string {
+    if (storageKey.includes("\0")) {
+      throw new AppError("Invalid storage key: path traversal is prohibited", 400);
+    }
     const sanitizedKey = storageKey.replace(/^[/\\]+/, "");
-    return path.join(this.baseDir, sanitizedKey);
+    const resolvedPath = path.resolve(this.baseDir, sanitizedKey);
+    const basePrefix = this.baseDir.endsWith(path.sep)
+      ? this.baseDir
+      : this.baseDir + path.sep;
+
+    if (!resolvedPath.startsWith(basePrefix)) {
+      throw new AppError("Invalid storage key: path traversal is prohibited", 400);
+    }
+
+    return resolvedPath;
   }
 
   public signToken(
@@ -90,26 +103,34 @@ export class LocalStorageService implements IStorageService {
 
   async deleteFile(storageKey: string): Promise<boolean> {
     const filePath = this.getAbsolutePath(storageKey);
-    if (fs.existsSync(filePath)) {
+    try {
       await fs.promises.unlink(filePath);
       return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return false;
+      }
+      throw err;
     }
-    return false;
   }
 
   async getFileStats(storageKey: string): Promise<FileStats> {
     const filePath = this.getAbsolutePath(storageKey);
-    if (fs.existsSync(filePath)) {
+    try {
       const stat = await fs.promises.stat(filePath);
       return {
         exists: true,
         size: stat.size,
       };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return {
+          exists: false,
+          size: 0,
+        };
+      }
+      throw err;
     }
-    return {
-      exists: false,
-      size: 0,
-    };
   }
 }
 

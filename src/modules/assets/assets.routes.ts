@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { assetsController } from "./assets.controller.js";
+import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import {
   validateBody,
   validateQuery,
@@ -21,6 +22,7 @@ import {
 } from "./assets.schema.js";
 
 const router = Router();
+const sellerAuth = [authenticate, authorize("seller", "admin")] as const;
 
 // ============================================================================
 // Public / Discovery Endpoints (/api/v1/assets)
@@ -41,12 +43,12 @@ router.get(
 
 // ============================================================================
 // Seller Studio Management Endpoints (/api/v1/assets/seller/*)
-// Also available under /api/v1/seller/assets
 // ============================================================================
 
 // POST /api/v1/assets/seller — Create draft asset
 router.post(
   "/seller",
+  ...sellerAuth,
   validateBody(CreateAssetSchema),
   assetsController.createDraftAsset.bind(assetsController),
 );
@@ -54,6 +56,7 @@ router.post(
 // GET /api/v1/assets/seller — Get seller's assets & performance stats
 router.get(
   "/seller",
+  ...sellerAuth,
   validateQuery(SellerAssetQuerySchema),
   assetsController.getSellerAssets.bind(assetsController),
 );
@@ -61,14 +64,16 @@ router.get(
 // PATCH /api/v1/assets/seller/:id — Update asset info, description, or specs
 router.patch(
   "/seller/:id",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetSchema),
   assetsController.updateAsset.bind(assetsController),
 );
 
-// POST /api/v1/assets/seller/:id/status — Transition status (DRAFT, PUBLISHED, etc.)
+// POST /api/v1/assets/seller/:id/status — Transition status (DRAFT, PENDING, ARCHIVED)
 router.post(
   "/seller/:id/status",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetStatusSchema),
   assetsController.updateAssetStatus.bind(assetsController),
@@ -77,17 +82,19 @@ router.post(
 // DELETE /api/v1/assets/seller/:id — Soft-delete and archive asset
 router.delete(
   "/seller/:id",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   assetsController.deleteAsset.bind(assetsController),
 );
 
 // ============================================================================
-// Media & Deliverable File Handling
+// Media & Deliverable File Handling (/api/v1/assets/seller/:id/*)
 // ============================================================================
 
 // POST /api/v1/assets/seller/:id/files/presign-upload — Presigned upload URL + S3 object key
 router.post(
   "/seller/:id/files/presign-upload",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(PresignFileUploadSchema),
   assetsController.presignFileUpload.bind(assetsController),
@@ -96,6 +103,7 @@ router.post(
 // POST /api/v1/assets/seller/:id/files/confirm — Validate upload completion & associate version
 router.post(
   "/seller/:id/files/confirm",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(ConfirmFileUploadSchema),
   assetsController.confirmFileUpload.bind(assetsController),
@@ -104,6 +112,7 @@ router.post(
 // POST /api/v1/assets/seller/:id/media/presign-upload — Upload thumbnails and showcase images/videos
 router.post(
   "/seller/:id/media/presign-upload",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(PresignMediaUploadSchema),
   assetsController.presignMediaUpload.bind(assetsController),
@@ -112,6 +121,7 @@ router.post(
 // POST /api/v1/assets/seller/:id/media/confirm — Confirm media upload and save URL
 router.post(
   "/seller/:id/media/confirm",
+  ...sellerAuth,
   validateParams(IdParamSchema),
   validateBody(ConfirmMediaUploadSchema),
   assetsController.confirmMediaUpload.bind(assetsController),
@@ -120,6 +130,7 @@ router.post(
 // DELETE /api/v1/assets/seller/:id/files/:fileId — Decommission or archive an old file version
 router.delete(
   "/seller/:id/files/:fileId",
+  ...sellerAuth,
   validateParams(FileIdParamSchema),
   assetsController.decommissionFile.bind(assetsController),
 );
@@ -133,5 +144,69 @@ router.get(
   assetsController.getAssetBySlug.bind(assetsController),
 );
 
+// ============================================================================
+// Dedicated Seller Router for /api/v1/seller/assets
+// ============================================================================
+export const sellerAssetsRouter = Router();
+sellerAssetsRouter.use(authenticate, authorize("seller", "admin"));
+
+sellerAssetsRouter.post(
+  "/",
+  validateBody(CreateAssetSchema),
+  assetsController.createDraftAsset.bind(assetsController),
+);
+sellerAssetsRouter.get(
+  "/",
+  validateQuery(SellerAssetQuerySchema),
+  assetsController.getSellerAssets.bind(assetsController),
+);
+sellerAssetsRouter.patch(
+  "/:id",
+  validateParams(IdParamSchema),
+  validateBody(UpdateAssetSchema),
+  assetsController.updateAsset.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/status",
+  validateParams(IdParamSchema),
+  validateBody(UpdateAssetStatusSchema),
+  assetsController.updateAssetStatus.bind(assetsController),
+);
+sellerAssetsRouter.delete(
+  "/:id",
+  validateParams(IdParamSchema),
+  assetsController.deleteAsset.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/files/presign-upload",
+  validateParams(IdParamSchema),
+  validateBody(PresignFileUploadSchema),
+  assetsController.presignFileUpload.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/files/confirm",
+  validateParams(IdParamSchema),
+  validateBody(ConfirmFileUploadSchema),
+  assetsController.confirmFileUpload.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/media/presign-upload",
+  validateParams(IdParamSchema),
+  validateBody(PresignMediaUploadSchema),
+  assetsController.presignMediaUpload.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/media/confirm",
+  validateParams(IdParamSchema),
+  validateBody(ConfirmMediaUploadSchema),
+  assetsController.confirmMediaUpload.bind(assetsController),
+);
+sellerAssetsRouter.delete(
+  "/:id/files/:fileId",
+  validateParams(FileIdParamSchema),
+  assetsController.decommissionFile.bind(assetsController),
+);
+
 export default router;
+
 

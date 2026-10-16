@@ -185,7 +185,7 @@ export interface AssetEntity {
   seller?: {
     id: string;
     name: string;
-    email: string;
+    email?: string;
   };
   category?: {
     id: number;

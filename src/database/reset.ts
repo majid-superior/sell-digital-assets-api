@@ -2,6 +2,7 @@ import dns from "node:dns";
 import fs from "node:fs";
 import path from "node:path";
 import child_process from "node:child_process";
+import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
@@ -10,6 +11,7 @@ import { defaultCategories, flattenCategories } from "../data/categories.js";
 import { defaultCurrencies } from "../data/currencies.js";
 import { defaultTheme } from "../data/themes.js";
 import { defaultLicenseTiers } from "../data/license-tiers.js";
+import { resilientDnsLookup, isSslRequired } from "../config/database.js";
 
 // Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
 if (typeof dns.setDefaultResultOrder === "function") {
@@ -18,57 +20,24 @@ if (typeof dns.setDefaultResultOrder === "function") {
 
 const { Client } = pg;
 
-const publicResolver = new dns.Resolver();
-publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
-
-const resilientDnsLookup = (
-  hostname: string,
-  options: any,
-  callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
-): void => {
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
-  ) {
-    return dns.lookup(hostname, options, callback as any);
-  }
-
-  dns.lookup(hostname, options, (err, address, family) => {
-    if (err) {
-      publicResolver.resolve4(hostname, (resErr, addresses) => {
-        if (resErr || !addresses || addresses.length === 0) {
-          return callback(err);
-        }
-        return callback(null, addresses[0], 4);
-      });
-    } else {
-      callback(null, address, family);
-    }
-  });
-};
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
  * Ensures .env is reliably resolved and loaded regardless of
  * current working directory when the script is invoked.
- * Passing --local forces reading .env values even if shell variables exist.
  */
 function loadEnv(): void {
-  const forceLocal = process.argv.includes("--local");
-
   let dir = __dirname;
   while (dir && dir !== path.dirname(dir)) {
     const envPath = path.join(dir, ".env");
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath, override: forceLocal });
+      dotenv.config({ path: envPath });
       return;
     }
     dir = path.dirname(dir);
   }
-  dotenv.config({ override: forceLocal });
+  dotenv.config();
 }
 
 loadEnv();
@@ -198,7 +167,7 @@ SELECT setval(pg_get_serial_sequence('roles', 'id'), COALESCE((SELECT MAX(id) FR
 -- Step 6: Users Table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    role_id SMALLINT NOT NULL DEFAULT 1,
+    role_id SMALLINT NOT NULL DEFAULT 3,
     name VARCHAR(100) NOT NULL,
     email citext NOT NULL,
     password_hash VARCHAR(255),
@@ -224,6 +193,8 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT chk_users_password_if_local 
         CHECK (auth_provider != 'local' OR password_hash IS NOT NULL)
 );
+
+ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_email 
     ON users (email) 
@@ -513,6 +484,7 @@ CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets (category_id);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
 CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
 CREATE INDEX IF NOT EXISTS idx_assets_active ON assets (is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_tags_gin ON assets USING GIN (tags);
 
 DROP TRIGGER IF EXISTS trg_assets_updated_at ON assets;
 CREATE TRIGGER trg_assets_updated_at
@@ -896,10 +868,76 @@ async function backupDatabase(
   }
 }
 
+async function promptTargetDatabase(): Promise<string> {
+  const localUrl =
+    process.env.LOCAL_DATABASE_URL ||
+    "postgresql://postgres:P%40ssw0rd@localhost:5432/sell_digital_assets";
+  const liveUrl = process.env.DATABASE_URL;
+
+  // Command-line flag shortcuts (for scripting or automated environments)
+  if (process.argv.includes("--local") || process.argv.includes("-1")) {
+    return localUrl;
+  }
+  if (
+    process.argv.includes("--live") ||
+    process.argv.includes("--cloud") ||
+    process.argv.includes("-2")
+  ) {
+    if (!liveUrl) {
+      console.error(
+        "❌ Error: DATABASE_URL environment variable is missing for live database.",
+      );
+      process.exit(1);
+    }
+    return liveUrl;
+  }
+
+  // Interactive menu
+  if (process.stdin.isTTY) {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    try {
+      console.log("\n=======================================================");
+      console.log("             DATABASE RESET UTILITY                   ");
+      console.log("=======================================================");
+      console.log("  [1] Local Database (localhost:5432/sell_digital_assets)");
+      console.log("  [2] Live Database  (Supabase / Cloud)");
+      console.log("=======================================================");
+
+      while (true) {
+        const choice = (
+          await rl.question("Select option (1 for Local, 2 for Live): ")
+        ).trim();
+        if (choice === "1") {
+          return localUrl;
+        }
+        if (choice === "2") {
+          if (!liveUrl) {
+            console.error(
+              "❌ Error: DATABASE_URL environment variable is missing for live database.",
+            );
+            process.exit(1);
+          }
+          return liveUrl;
+        }
+        console.log("⚠️  Invalid option. Please enter '1' for Local or '2' for Live.");
+      }
+    } finally {
+      rl.close();
+    }
+  }
+
+  // Non-interactive fallback defaults to local to protect live database
+  return localUrl;
+}
+
 export async function resetDatabase(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = await promptTargetDatabase();
   if (!databaseUrl) {
-    console.error("❌ Error: DATABASE_URL environment variable is missing");
+    console.error("❌ Error: Target database URL could not be resolved");
     process.exit(1);
   }
 
@@ -919,22 +957,8 @@ export async function resetDatabase(): Promise<void> {
     process.exit(1);
   }
 
-  const requiresSsl =
-    process.env.DATABASE_SSL === "true" ||
-    databaseUrl.includes("sslmode=require") ||
-    databaseUrl.includes("render.com") ||
-    databaseUrl.includes("amazonaws.com") ||
-    databaseUrl.includes("supabase.co") ||
-    databaseUrl.includes("supabase.com") ||
-    databaseUrl.includes("neon.tech");
-
-  const isCloudDb =
-    requiresSsl ||
-    databaseUrl.includes("render.com") ||
-    databaseUrl.includes("supabase.co") ||
-    databaseUrl.includes("supabase.com") ||
-    databaseUrl.includes("neon.tech") ||
-    databaseUrl.includes("amazonaws.com");
+  const requiresSsl = isSslRequired(databaseUrl);
+  const isCloudDb = requiresSsl;
 
   console.log("=======================================================");
   console.log(`🎯 Target Database: ${targetDbName}`);
@@ -942,8 +966,9 @@ export async function resetDatabase(): Promise<void> {
   console.log("=======================================================");
 
   if (isCloudDb) {
-    console.log("💡 Tip: To reset your LOCAL database instead, run: npm run db:reset:local");
-    console.log("       Or clear your PowerShell session variable: $env:DATABASE_URL=$null\n");
+    console.log("⚠️  WARNING: You are resetting the LIVE / PRODUCTION CLOUD database!\n");
+  } else {
+    console.log("🟢 Running database reset on LOCAL PostgreSQL.\n");
   }
 
   // Step 0: Take an automated pre-drop backup of the database into the backups/ folder

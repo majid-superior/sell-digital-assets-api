@@ -9,6 +9,7 @@ export class AuthController {
       res.status(201).json({
         success: true,
         message: "User registered successfully",
+        data: result,
         token: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken,
         ...result,
@@ -24,6 +25,7 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: "Authentication successful",
+        data: result,
         token: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken,
         ...result,
@@ -43,6 +45,8 @@ export class AuthController {
       const result = await authService.refresh(refreshToken);
       res.status(200).json({
         success: true,
+        message: "Access token refreshed successfully",
+        data: result,
         token: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken,
         ...result,
@@ -80,7 +84,6 @@ export class AuthController {
         success: true,
         data: user,
         user,
-        ...user,
       });
     } catch (error) {
       next(error);

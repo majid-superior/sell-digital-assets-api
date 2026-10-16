@@ -4,7 +4,7 @@ import { AppError } from "../../core/errors/app-error.js";
 
 export class NotificationsController {
   private getUserId(req: Request): string {
-    const userId = req.user?.id || (req.headers["x-user-id"] as string);
+    const userId = req.user?.id;
     if (!userId) {
       throw new AppError("Authentication required.", 401);
     }

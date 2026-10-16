@@ -119,8 +119,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       JOIN categories c ON a.category_id = c.id
       WHERE ${whereClause};
     `;
-    const countResult = await this.query<{ total: number }>(countSql, params);
-    const total = countResult.rows[0]?.total ?? 0;
 
     // Sorting
     let orderBy = "a.created_at DESC";
@@ -160,8 +158,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         ) AS category,
         json_build_object(
           'id', u.id,
-          'name', u.name,
-          'email', u.email
+          'name', u.name
         ) AS seller,
         COALESCE(
           (
@@ -211,7 +208,11 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder};
     `;
 
-    const dataResult = await this.query<any>(dataSql, dataParams);
+    const [countResult, dataResult] = await Promise.all([
+      this.query<{ total: number }>(countSql, params),
+      this.query<any>(dataSql, dataParams),
+    ]);
+    const total = countResult.rows[0]?.total ?? 0;
 
     return {
       data: dataResult.rows,
@@ -248,8 +249,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         ) AS category,
         json_build_object(
           'id', u.id,
-          'name', u.name,
-          'email', u.email
+          'name', u.name
         ) AS seller,
         COALESCE(
           (
@@ -308,12 +308,23 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     const result = await this.query<any>(sql, [slug]);
     if (result.rows.length === 0) return null;
 
-    // Asynchronously increment view count
-    this.query("UPDATE assets SET view_count = view_count + 1 WHERE id = $1", [
-      result.rows[0].id,
-    ]).catch(() => {});
+    // Only increment view count for published public assets
+    if (result.rows[0].status === "published") {
+      this.query("UPDATE assets SET view_count = view_count + 1 WHERE id = $1", [
+        result.rows[0].id,
+      ]).catch(() => {});
+    }
 
     return result.rows[0];
+  }
+
+  async slugExists(slug: string, excludeId?: string): Promise<boolean> {
+    const sql = excludeId
+      ? "SELECT 1 FROM assets WHERE slug = $1 AND id != $2 LIMIT 1;"
+      : "SELECT 1 FROM assets WHERE slug = $1 LIMIT 1;";
+    const params = excludeId ? [slug, excludeId] : [slug];
+    const res = await this.query(sql, params);
+    return (res.rowCount ?? 0) > 0;
   }
 
   async findById(id: string): Promise<AssetEntity | null> {
@@ -356,12 +367,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       FROM assets a
       WHERE ${whereClause};
     `;
-    const statsResult = await this.query<any>(statsSql, params);
-    const stats = statsResult.rows[0] || {
-      total_assets: 0,
-      total_views: 0,
-      total_downloads: 0,
-    };
 
     const dataParams = [...params, limit, offset];
     const dataSql = `
@@ -408,7 +413,17 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       ORDER BY a.updated_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2};
     `;
-    const dataResult = await this.query<any>(dataSql, dataParams);
+
+    const [statsResult, dataResult] = await Promise.all([
+      this.query<any>(statsSql, params),
+      this.query<any>(dataSql, dataParams),
+    ]);
+
+    const stats = statsResult.rows[0] || {
+      total_assets: 0,
+      total_views: 0,
+      total_downloads: 0,
+    };
 
     return {
       stats: {
@@ -457,25 +472,34 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       ]);
       const createdAsset = assetRes.rows[0]!;
 
-      // Insert tiers
-      const createdTiers: AssetTierEntity[] = [];
-      for (const tier of data.tiers) {
+      // Insert tiers in a single batched query
+      let createdTiers: AssetTierEntity[] = [];
+      if (data.tiers && data.tiers.length > 0) {
+        const valueClauses: string[] = [];
+        const tierParams: unknown[] = [];
+
+        data.tiers.forEach((tier, idx) => {
+          const base = idx * 4;
+          valueClauses.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+          tierParams.push(
+            createdAsset.id,
+            tier.tierType,
+            tier.price,
+            tier.licenseTermsSummary || null,
+          );
+        });
+
         const tierSql = `
           INSERT INTO asset_tiers (
             asset_id,
             tier_type,
             price,
             license_terms_summary
-          ) VALUES ($1, $2, $3, $4)
+          ) VALUES ${valueClauses.join(", ")}
           RETURNING *;
         `;
-        const tierRes = await client.query<AssetTierEntity>(tierSql, [
-          createdAsset.id,
-          tier.tierType,
-          tier.price,
-          tier.licenseTermsSummary || null,
-        ]);
-        createdTiers.push(tierRes.rows[0]!);
+        const tierRes = await client.query<AssetTierEntity>(tierSql, tierParams);
+        createdTiers = tierRes.rows;
       }
 
       return {
@@ -537,25 +561,30 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         updatedAsset = res.rows[0]!;
       }
 
-      // If tiers supplied, replace them
+      // If tiers supplied, replace them in a single batched query
       if (data.tiers && data.tiers.length > 0) {
         await client.query("DELETE FROM asset_tiers WHERE asset_id = $1", [id]);
-        const newTiers: AssetTierEntity[] = [];
-        for (const tier of data.tiers) {
-          const tierSql = `
-            INSERT INTO asset_tiers (asset_id, tier_type, price, license_terms_summary)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *;
-          `;
-          const tierRes = await client.query<AssetTierEntity>(tierSql, [
+        const valueClauses: string[] = [];
+        const tierParams: unknown[] = [];
+
+        data.tiers.forEach((tier, idx) => {
+          const base = idx * 4;
+          valueClauses.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+          tierParams.push(
             id,
             tier.tierType,
             tier.price,
             tier.licenseTermsSummary || null,
-          ]);
-          newTiers.push(tierRes.rows[0]!);
-        }
-        updatedAsset.tiers = newTiers;
+          );
+        });
+
+        const tierSql = `
+          INSERT INTO asset_tiers (asset_id, tier_type, price, license_terms_summary)
+          VALUES ${valueClauses.join(", ")}
+          RETURNING *;
+        `;
+        const tierRes = await client.query<AssetTierEntity>(tierSql, tierParams);
+        updatedAsset.tiers = tierRes.rows;
       }
 
       return updatedAsset;
@@ -632,8 +661,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       JOIN users u ON a.seller_id = u.id
       WHERE ${whereClause};
     `;
-    const countResult = await this.query<{ total: number }>(countSql, params);
-    const total = countResult.rows[0]?.total ?? 0;
 
     const dataParams = [...params, limit, offset];
     const dataSql = `
@@ -717,8 +744,12 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       LIMIT $${params.length + 1} OFFSET $${params.length + 2};
     `;
 
-    const dataResult = await this.query<any>(dataSql, dataParams);
-    const counts = await this.getAdminCounts();
+    const [countResult, dataResult, counts] = await Promise.all([
+      this.query<{ total: number }>(countSql, params),
+      this.query<any>(dataSql, dataParams),
+      this.getAdminCounts(),
+    ]);
+    const total = countResult.rows[0]?.total ?? 0;
 
     return {
       data: dataResult.rows,
@@ -730,6 +761,88 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         totalPages: Math.ceil(total / limit) || 1,
       },
     };
+  }
+
+  async findByIdForAdmin(id: string): Promise<AssetEntity | null> {
+    const sql = `
+      SELECT 
+        a.id,
+        a.seller_id,
+        a.category_id,
+        a.title,
+        a.slug,
+        a.short_description,
+        a.full_description,
+        a.status,
+        a.admin_feedback,
+        a.reviewed_by,
+        a.reviewed_at,
+        a.submitted_at,
+        a.tags,
+        a.technical_specs,
+        a.view_count,
+        a.download_count,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        json_build_object('id', c.id, 'name', c.name, 'slug', c.slug) AS category,
+        json_build_object('id', u.id, 'name', u.name, 'email', u.email) AS seller,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', at.id,
+                'tier_type', at.tier_type,
+                'price', at.price::float,
+                'license_terms_summary', at.license_terms_summary
+              ) ORDER BY at.price ASC
+            )
+            FROM asset_tiers at
+            WHERE at.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS tiers,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', am.id,
+                'media_type', am.media_type,
+                'url', am.url,
+                'display_order', am.display_order
+              ) ORDER BY am.display_order ASC
+            )
+            FROM asset_media am
+            WHERE am.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS media,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', af.id,
+                'version', af.version,
+                'file_name', af.file_name,
+                'file_size_bytes', af.file_size_bytes::bigint,
+                'file_checksum_sha256', af.file_checksum_sha256,
+                'is_active', af.is_active,
+                'created_at', af.created_at
+              ) ORDER BY af.created_at DESC
+            )
+            FROM asset_files af
+            WHERE af.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS files
+      FROM assets a
+      JOIN categories c ON a.category_id = c.id
+      JOIN users u ON a.seller_id = u.id
+      WHERE a.id = $1 AND a.deleted_at IS NULL
+      LIMIT 1;
+    `;
+    const res = await this.query<AssetEntity>(sql, [id]);
+    return res.rows[0] || null;
   }
 
   async getAdminCounts(): Promise<{

@@ -155,12 +155,15 @@ export type ConfirmMediaUploadInput = z.infer<typeof ConfirmMediaUploadSchema>;
 // --- Fulfillment & Downloads ---
 
 export const GenerateDownloadLinkSchema = z.object({
-  buyerId: z.string().trim().optional(),
   licenseKey: z.string().trim().min(5).optional(),
   fileId: z.string().trim().optional(),
 });
 
 export type GenerateDownloadLinkInput = z.infer<typeof GenerateDownloadLinkSchema>;
+
+export const AssetIdParamSchema = z.object({
+  assetId: z.string().uuid("Valid Asset UUID is required"),
+});
 
 // --- Licensing & Verification ---
 

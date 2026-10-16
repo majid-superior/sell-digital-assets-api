@@ -315,6 +315,12 @@ const routes = [
   "./src/modules/organizations/organizations.routes.ts",
   "./src/modules/categories/categories.routes.ts",
   "./src/modules/theme/theme.routes.ts",
+  "./src/modules/assets/assets.routes.ts",
+  "./src/modules/assets/admin-assets.routes.ts",
+  "./src/modules/assets/downloads.routes.ts",
+  "./src/modules/assets/licenses.routes.ts",
+  "./src/modules/assets/storage.routes.ts",
+  "./src/modules/notifications/notifications.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -334,11 +340,16 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         ? routePath.slice(0, -1)
         : routePath;
 
-    // Skip redundant alias endpoints to keep docs clean
+    // Skip redundant alias endpoints and swagger-autogen router merge artifacts
     if (
       normalizedPath.startsWith("/api/v1/themes") ||
       normalizedPath === "/api/v1/theme/active" ||
-      normalizedPath === "/api/v1/theme/styles.css"
+      normalizedPath === "/api/v1/theme/styles.css" ||
+      normalizedPath === "/api/v1/organizations/system-settings" ||
+      normalizedPath.startsWith("/api/v1/assets/{id}") ||
+      normalizedPath.startsWith("/api/v1/seller/assets/seller") ||
+      normalizedPath === "/api/v1/seller/assets/categories" ||
+      normalizedPath === "/api/v1/seller/assets/{slug}"
     ) {
       continue;
     }
@@ -412,11 +423,18 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         if (methods.get) {
           methods.get.summary = "Get current authenticated profile";
           methods.get.description = "Retrieves profile of the token owner";
+          methods.get.security = [{ bearerAuth: [] }];
         }
         if (methods.patch) {
           methods.patch.summary = "Update current profile";
           methods.patch.description = "Updates own profile details or password";
+          methods.patch.security = [{ bearerAuth: [] }];
         }
+      } else if (normalizedPath === "/api/v1/auth/become-seller" && methods.post) {
+        methods.post.summary = "Upgrade buyer account to seller";
+        methods.post.description =
+          "Upgrades the authenticated buyer account to the Seller role";
+        methods.post.security = [{ bearerAuth: [] }];
       }
     } else if (normalizedPath.startsWith("/api/v1/users")) {
       for (const method of Object.values<any>(methods)) {
@@ -488,6 +506,27 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           },
         };
+      }
+    } else if (normalizedPath === "/api/v1/organizations/settings/system") {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Organization Branding"];
+      }
+      if (methods.get) {
+        methods.get.summary = "Get platform system settings";
+        methods.get.description =
+          "Retrieves dynamic session, authentication, and security policies";
+      }
+      if (methods.put) {
+        methods.put.summary = "Replace platform system settings (Admin only)";
+        methods.put.description =
+          "Updates dynamic session, authentication, and security policies in PostgreSQL";
+        methods.put.security = [{ bearerAuth: [] }];
+      }
+      if (methods.patch) {
+        methods.patch.summary = "Update platform system settings (Admin only)";
+        methods.patch.description =
+          "Partially updates dynamic session, authentication, and security policies in PostgreSQL";
+        methods.patch.security = [{ bearerAuth: [] }];
       }
     } else if (normalizedPath === "/api/v1/organizations") {
       for (const method of Object.values<any>(methods)) {
@@ -744,6 +783,20 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             "Retrieves currently active database theme palette with conditional ETag validation";
           methods.get.parameters = [];
         }
+        if (methods.post) {
+          methods.post.summary = "Create a new theme (Admin only)";
+          methods.post.description =
+            "Creates a new theme palette in PostgreSQL";
+          methods.post.security = [{ bearerAuth: [] }];
+          methods.post.requestBody = {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CreateThemeInput" },
+              },
+            },
+          };
+        }
         if (methods.put) {
           methods.put.summary = "Update active theme (Admin only)";
           methods.put.description =
@@ -758,6 +811,27 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             },
           };
         }
+        if (methods.patch) {
+          methods.patch.summary = "Partially update active theme (Admin only)";
+          methods.patch.description =
+            "Partially updates active database theme styling and CSS tokens";
+          methods.patch.security = [{ bearerAuth: [] }];
+          methods.patch.requestBody = {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UpdateThemeInput" },
+              },
+            },
+          };
+        }
+      } else if (normalizedPath === "/api/v1/theme/all" && methods.get) {
+        methods.get.summary = "List all registered themes";
+        methods.get.description = "Retrieves all themes stored in PostgreSQL";
+      } else if (normalizedPath === "/api/v1/theme/{id}/activate" && methods.post) {
+        methods.post.summary = "Activate theme by ID (Admin only)";
+        methods.post.description = "Activates a specific theme palette by ID";
+        methods.post.security = [{ bearerAuth: [] }];
       } else if (normalizedPath === "/api/v1/theme/css") {
         if (methods.get) {
           methods.get.summary = "Get dynamic compiled CSS stylesheet";
@@ -765,6 +839,166 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
             "Generates pure CSS variables (:root and .dark) compiled directly from the active database theme";
           methods.get.parameters = [];
         }
+      }
+    } else if (
+      normalizedPath.startsWith("/api/v1/assets/seller") ||
+      normalizedPath.startsWith("/api/v1/seller/assets")
+    ) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Assets - Seller"];
+        method.security = [{ bearerAuth: [] }];
+      }
+      if (
+        normalizedPath === "/api/v1/assets/seller" ||
+        normalizedPath === "/api/v1/seller/assets"
+      ) {
+        if (methods.get) {
+          methods.get.summary = "List seller's own assets & stats";
+          methods.get.description =
+            "Returns paginated list of assets belonging to the authenticated seller";
+        }
+        if (methods.post) {
+          methods.post.summary = "Create draft digital asset";
+          methods.post.description =
+            "Creates a new digital asset in draft status for the authenticated seller";
+        }
+      } else if (normalizedPath.endsWith("/status") && methods.post) {
+        methods.post.summary = "Transition seller asset status";
+        methods.post.description =
+          "Transitions asset between draft, pending review, and archived states";
+      } else if (normalizedPath.endsWith("/files/presign-upload") && methods.post) {
+        methods.post.summary = "Generate presigned deliverable upload URL";
+        methods.post.description =
+          "Generates a signed upload URL for a deliverable asset file";
+      } else if (normalizedPath.endsWith("/files/confirm") && methods.post) {
+        methods.post.summary = "Confirm deliverable file upload";
+        methods.post.description =
+          "Verifies uploaded deliverable file on storage and attaches it to the asset";
+      } else if (normalizedPath.endsWith("/media/presign-upload") && methods.post) {
+        methods.post.summary = "Generate presigned media preview upload URL";
+        methods.post.description =
+          "Generates a signed upload URL for asset preview images, videos, or audio";
+      } else if (normalizedPath.endsWith("/media/confirm") && methods.post) {
+        methods.post.summary = "Confirm media preview upload";
+        methods.post.description =
+          "Verifies uploaded showcase media on storage and attaches it to the asset";
+      } else if (normalizedPath.includes("/files/{fileId}") && methods.delete) {
+        methods.delete.summary = "Decommission deliverable file version";
+        methods.delete.description =
+          "Removes and archives a specific deliverable file version";
+      } else {
+        if (methods.patch) {
+          methods.patch.summary = "Update seller asset details";
+          methods.patch.description =
+            "Updates asset metadata, descriptions, technical specs, or pricing tiers";
+        }
+        if (methods.delete) {
+          methods.delete.summary = "Soft-delete and archive seller asset";
+          methods.delete.description =
+            "Archives and soft-deletes an asset owned by the authenticated seller";
+        }
+      }
+    } else if (normalizedPath.startsWith("/api/v1/assets")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Assets - Public"];
+      }
+      if (normalizedPath === "/api/v1/assets" && methods.get) {
+        methods.get.summary = "Browse public marketplace catalog";
+        methods.get.description =
+          "Returns filtered and paginated published digital assets";
+      } else if (normalizedPath === "/api/v1/assets/categories" && methods.get) {
+        methods.get.summary = "Get marketplace category tree";
+        methods.get.description =
+          "Returns active hierarchical category tree for asset discovery";
+      } else if (normalizedPath === "/api/v1/assets/{slug}" && methods.get) {
+        methods.get.summary = "Get published asset details by slug";
+        methods.get.description =
+          "Retrieves full public details, media previews, and licensing tiers for a published asset";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/admin/assets")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Assets - Admin"];
+        method.security = [{ bearerAuth: [] }];
+      }
+      if (normalizedPath === "/api/v1/admin/assets" && methods.get) {
+        methods.get.summary = "List assets for admin moderation (Admin only)";
+        methods.get.description =
+          "Retrieves paginated assets across all statuses with queue counts";
+      } else if (normalizedPath === "/api/v1/admin/assets/counts" && methods.get) {
+        methods.get.summary = "Get admin asset review queue counts (Admin only)";
+        methods.get.description =
+          "Returns asset counts grouped by status for moderation dashboards";
+      } else if (normalizedPath === "/api/v1/admin/assets/{id}" && methods.get) {
+        methods.get.summary = "Get full asset details for review (Admin only)";
+        methods.get.description =
+          "Retrieves complete asset details including files, media, tiers, and review logs";
+      } else if (normalizedPath === "/api/v1/admin/assets/{id}/review" && methods.post) {
+        methods.post.summary = "Submit admin moderation decision (Admin only)";
+        methods.post.description =
+          "Approves, rejects, or requests updates on a submitted asset and dispatches seller notifications";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/downloads")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Downloads"];
+      }
+      if (normalizedPath === "/api/v1/downloads/{assetId}/generate-link" && methods.post) {
+        methods.post.summary = "Generate signed asset download link";
+        methods.post.description =
+          "Verifies license or ownership entitlement and returns a short-lived signed download URL";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/licenses")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Licenses"];
+      }
+      if (normalizedPath === "/api/v1/licenses/verify" && methods.post) {
+        methods.post.summary = "Verify cryptographic license key";
+        methods.post.description =
+          "Validates license status, tier, expiration, and seat activations";
+      } else if (normalizedPath === "/api/v1/licenses/activate" && methods.post) {
+        methods.post.summary = "Activate domain or machine seat on license";
+        methods.post.description =
+          "Registers a domain or machine identifier against a license key within its seat limit";
+      } else if (normalizedPath === "/api/v1/licenses/issue" && methods.post) {
+        methods.post.summary = "Issue cryptographic license key (Admin only)";
+        methods.post.description =
+          "Issues a new license key for a buyer and asset tier";
+        methods.post.security = [{ bearerAuth: [] }];
+      } else if (normalizedPath === "/api/v1/licenses/buyer" && methods.get) {
+        methods.get.summary = "List authenticated buyer's licenses";
+        methods.get.description =
+          "Retrieves all licenses owned by the authenticated buyer";
+        methods.get.security = [{ bearerAuth: [] }];
+      }
+    } else if (normalizedPath.startsWith("/api/v1/storage")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Storage"];
+      }
+      if (normalizedPath === "/api/v1/storage/upload" && methods.put) {
+        methods.put.summary = "Direct signed stream upload";
+        methods.put.description =
+          "Streams a binary file upload to local storage using a valid HMAC upload token";
+      } else if (normalizedPath === "/api/v1/storage/download" && methods.get) {
+        methods.get.summary = "Direct signed stream download";
+        methods.get.description =
+          "Streams a binary file from local storage using a valid HMAC download token";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/notifications")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Notifications"];
+        method.security = [{ bearerAuth: [] }];
+      }
+      if (normalizedPath === "/api/v1/notifications" && methods.get) {
+        methods.get.summary = "List notifications for authenticated user";
+        methods.get.description =
+          "Returns paginated in-app notifications and unread count";
+      } else if (normalizedPath === "/api/v1/notifications/read-all" && methods.post) {
+        methods.post.summary = "Mark all notifications as read";
+        methods.post.description =
+          "Marks all unread notifications for the authenticated user as read";
+      } else if (normalizedPath === "/api/v1/notifications/{id}/read" && methods.patch) {
+        methods.patch.summary = "Mark single notification as read";
+        methods.patch.description =
+          "Marks a specific notification as read by UUID";
       }
     }
   }

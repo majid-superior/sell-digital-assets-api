@@ -1,4 +1,5 @@
 import { BaseRepository } from "./base.repository.js";
+import { invalidateAuthUserCache } from "../../core/middleware/auth.middleware.js";
 
 export interface UserEntity {
   id: string;
@@ -20,12 +21,23 @@ export interface UserEntity {
 }
 
 export interface PaginationQuery {
-  page?: number;
-  limit?: number;
+  page?: number | undefined;
+  limit?: number | undefined;
+  search?: string | undefined;
+  role?: string | undefined;
+  status?: string | undefined;
+}
+
+export interface UserCounts {
+  total: number;
+  sellers: number;
+  buyers: number;
+  active: number;
 }
 
 export interface PaginatedResult<T> {
   data: T[];
+  counts?: UserCounts;
   pagination: {
     total: number;
     page: number;
@@ -86,24 +98,69 @@ export class UserRepository extends BaseRepository<UserEntity> {
     const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const [countRes, dataRes] = await Promise.all([
+    const conditions: string[] = ["deleted_at IS NULL", "role != 'admin'"];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (params.search?.trim()) {
+      conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx} OR id::text ILIKE $${idx})`);
+      values.push(`%${params.search.trim()}%`);
+      idx++;
+    }
+
+    if (params.role && params.role !== "all") {
+      conditions.push(`LOWER(role) = LOWER($${idx})`);
+      values.push(params.role);
+      idx++;
+    }
+
+    if (params.status && params.status !== "all") {
+      const normalizedStatus =
+        params.status === "deactive" ? "suspended" : params.status.toLowerCase();
+      conditions.push(`(LOWER(status) = LOWER($${idx}) OR ($${idx} = 'suspended' AND LOWER(status) = 'deactive'))`);
+      values.push(normalizedStatus);
+      idx++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+    const [countsRes, countRes, dataRes] = await Promise.all([
+      this.query<{ total: string; sellers: string; buyers: string; active: string }>(
+        `SELECT 
+           COUNT(*) as total,
+           COUNT(*) FILTER (WHERE LOWER(role) = 'seller') as sellers,
+           COUNT(*) FILTER (WHERE LOWER(role) IN ('buyer', 'customer')) as buyers,
+           COUNT(*) FILTER (WHERE LOWER(status) = 'active') as active
+         FROM view_users 
+         WHERE deleted_at IS NULL AND role != 'admin'`,
+      ),
       this.query<{ count: string }>(
-        "SELECT COUNT(*) FROM view_users WHERE deleted_at IS NULL AND role != 'admin'",
+        `SELECT COUNT(*) FROM view_users ${whereClause}`,
+        values,
       ),
       this.query<Omit<UserEntity, "password_hash">>(
         `SELECT id, role_id, role, role_name, name, email, auth_provider, status, 
                 email_verified_at, last_login_at, created_at, updated_at 
          FROM view_users 
-         WHERE deleted_at IS NULL AND role != 'admin' 
-         ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-        [limit, offset],
+         ${whereClause} 
+         ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+        [...values, limit, offset],
       ),
     ]);
+
+    const countsRow = countsRes.rows[0];
+    const counts: UserCounts = {
+      total: parseInt(countsRow?.total || "0", 10),
+      sellers: parseInt(countsRow?.sellers || "0", 10),
+      buyers: parseInt(countsRow?.buyers || "0", 10),
+      active: parseInt(countsRow?.active || "0", 10),
+    };
 
     const total = parseInt(countRes.rows[0]?.count || "0", 10);
 
     return {
       data: dataRes.rows,
+      counts,
       pagination: {
         total,
         page,
@@ -210,6 +267,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
       values,
     );
 
+    invalidateAuthUserCache(id);
     return this.findById(id);
   }
 
@@ -218,8 +276,10 @@ export class UserRepository extends BaseRepository<UserEntity> {
       "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
       [id],
     );
+    invalidateAuthUserCache(id);
     return (result.rowCount ?? 0) > 0;
   }
 }
 
 export const userRepository = new UserRepository();
+

@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { Transform, type TransformCallback } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { assetsRepository } from "../../database/repositories/assets.repository.js";
 import { licensesRepository } from "../../database/repositories/licenses.repository.js";
 import { categoriesService } from "../categories/categories.service.js";
+import { slugify } from "../../data/categories.js";
 import { storageService, localStorageService } from "../../core/storage/index.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
@@ -25,13 +30,30 @@ import type {
   IssueLicenseInput,
 } from "./assets.schema.js";
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-}
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB maximum upload stream size
+
+const DOWNLOAD_MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".bmp": "image/bmp",
+  ".avif": "image/avif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".pdf": "application/pdf",
+  ".zip": "application/zip",
+  ".gz": "application/gzip",
+  ".tar": "application/x-tar",
+  ".7z": "application/x-7z-compressed",
+  ".json": "application/json",
+};
 
 export class AssetsService {
   // ============================================================================
@@ -77,10 +99,13 @@ export class AssetsService {
   async createDraftAsset(sellerId: string, rawInput: CreateAssetInput) {
     const input = CreateAssetSchema.parse(rawInput);
     let baseSlug = input.slug ? slugify(input.slug) : slugify(input.title);
+    if (!baseSlug) {
+      baseSlug = `asset-${crypto.randomBytes(4).toString("hex")}`;
+    }
     let slug = baseSlug;
     let counter = 1;
 
-    while (await assetsRepository.findBySlug(slug)) {
+    while (await assetsRepository.slugExists(slug)) {
       slug = `${baseSlug}-${counter++}`;
     }
 
@@ -128,11 +153,15 @@ export class AssetsService {
       throw new AppError("Asset not found or unauthorized", 404);
     }
 
-    let slug = input.slug ? slugify(input.slug) : undefined;
-    if (slug && slug !== existing.slug) {
-      const collision = await assetsRepository.findBySlug(slug);
-      if (collision && collision.id !== id) {
-        slug = `${slug}-${id.slice(0, 4)}`;
+    let slug: string | undefined;
+    if (input.slug !== undefined) {
+      const baseSlug = slugify(input.slug) || `asset-${crypto.randomBytes(4).toString("hex")}`;
+      slug = baseSlug;
+      if (slug !== existing.slug) {
+        let counter = 1;
+        while (await assetsRepository.slugExists(slug, id)) {
+          slug = `${baseSlug}-${counter++}`;
+        }
       }
     }
 
@@ -226,13 +255,11 @@ export class AssetsService {
   }
 
   async getAdminAssetById(id: string) {
-    const asset = await assetsRepository.findById(id);
+    const asset = await assetsRepository.findByIdForAdmin(id);
     if (!asset) {
       throw new AppError(`Asset with ID '${id}' not found`, 404);
     }
-    const result = await assetsRepository.findForAdmin({ search: asset.slug, limit: 1 });
-    const match = result.data.find((a: any) => a.id === id);
-    return match || asset;
+    return asset;
   }
 
   async adminReviewAsset(
@@ -351,6 +378,16 @@ export class AssetsService {
       throw new AppError("Asset not found or unauthorized", 404);
     }
 
+    const expectedPrefix = `vault/assets/${assetId}/`;
+    if (
+      !input.storageKey.startsWith(expectedPrefix) ||
+      input.storageKey.includes("..") ||
+      input.storageKey.includes("\\") ||
+      input.storageKey.includes("\0")
+    ) {
+      throw new AppError("Invalid storage key for this asset", 400);
+    }
+
     const stats = await storageService.getFileStats(input.storageKey);
     if (!stats.exists && env.STORAGE_DRIVER === "local") {
       throw new AppError(
@@ -418,6 +455,26 @@ export class AssetsService {
       throw new AppError("Asset not found or unauthorized", 404);
     }
 
+    const expectedPrefix = `public/media/${assetId}/`;
+    if (
+      !input.storageKey.startsWith(expectedPrefix) ||
+      input.storageKey.includes("..") ||
+      input.storageKey.includes("\\") ||
+      input.storageKey.includes("\0")
+    ) {
+      throw new AppError("Invalid media storage key for this asset", 400);
+    }
+
+    if (env.STORAGE_DRIVER === "local") {
+      const stats = await storageService.getFileStats(input.storageKey);
+      if (!stats.exists) {
+        throw new AppError(
+          "Media file was not found in storage. Ensure upload completed.",
+          400,
+        );
+      }
+    }
+
     let url = "";
     if (env.STORAGE_DRIVER === "r2" && env.AWS_ENDPOINT) {
       url = `${env.AWS_ENDPOINT}/${input.storageKey}`;
@@ -464,6 +521,7 @@ export class AssetsService {
     input: GenerateDownloadLinkInput,
     ipAddress: string,
     userAgent?: string,
+    authenticatedUserId?: string,
   ) {
     const asset = await assetsRepository.findById(assetId);
     if (!asset) {
@@ -483,13 +541,13 @@ export class AssetsService {
       }
       verifiedLicenseKey = license.license_key;
       verifiedBuyerId = license.buyer_id;
-    } else if (input.buyerId) {
-      const license = await licensesRepository.findByBuyerAndAsset(input.buyerId, assetId);
+    } else if (authenticatedUserId) {
+      const license = await licensesRepository.findByBuyerAndAsset(authenticatedUserId, assetId);
       if (!license) {
         throw new AppError("No active purchase license found for this user account", 403);
       }
       verifiedLicenseKey = license.license_key;
-      verifiedBuyerId = input.buyerId;
+      verifiedBuyerId = authenticatedUserId;
     } else {
       throw new AppError(
         "Authorization required: Provide a valid licenseKey or authenticated buyer account",
@@ -544,9 +602,29 @@ export class AssetsService {
   }
 
   async issueLicense(input: IssueLicenseInput) {
-    let maxActivations = 1;
-    if (input.tier === "commercial") maxActivations = 5;
-    if (input.tier === "extended") maxActivations = 50;
+    const [asset, buyer, tierConfig] = await Promise.all([
+      assetsRepository.findById(input.assetId),
+      userRepository.findById(input.buyerId),
+      licensesRepository.findTierByType(input.tier),
+    ]);
+
+    if (!asset) {
+      throw new AppError("Asset not found", 404);
+    }
+
+    if (!buyer) {
+      throw new AppError("Buyer account not found", 404);
+    }
+
+    if (buyer.status !== "active") {
+      throw new AppError(`Buyer account is ${buyer.status}`, 400);
+    }
+
+    if (!tierConfig.is_active) {
+      throw new AppError(`License tier '${input.tier}' is currently inactive`, 400);
+    }
+
+    const maxActivations = tierConfig.max_activations;
 
     let licenseKey = this.generateKey();
     while (await licensesRepository.findByKey(licenseKey)) {
@@ -605,7 +683,9 @@ export class AssetsService {
       status: license.status,
       tier: license.tier,
       asset: license.asset,
-      owner: license.buyer,
+      owner: license.buyer
+        ? { id: license.buyer.id, name: license.buyer.name }
+        : undefined,
       issuedAt: license.issued_at,
       expiresAt: license.expires_at,
       seats: {
@@ -628,50 +708,149 @@ export class AssetsService {
       throw new AppError(`Cannot activate: License is ${license.status}`, 400);
     }
 
+    if (license.expires_at && new Date() > new Date(license.expires_at)) {
+      throw new AppError("Cannot activate: License has expired", 400);
+    }
+
     const domain = input.domainOrMachineId.trim().toLowerCase();
-    const activations = license.activations || [];
 
-    const existing = activations.find(
-      (a: any) => a.domain_or_machine_id.toLowerCase() === domain,
-    );
-    if (existing) {
-      return {
-        success: true,
-        message: "Domain/Machine is already registered to this license",
-        activation: existing,
-        activeCount: license.activation_count,
-        maxActivations: license.max_activations,
-      };
-    }
-
-    const maxActivations = license.max_activations ?? 1;
-    const activationCount = license.activation_count ?? 0;
-
-    if (activationCount >= maxActivations) {
-      throw new AppError(
-        `Activation limit reached (${activationCount}/${maxActivations}). Upgrade to a higher license tier for additional seats.`,
-        400,
-      );
-    }
-
-    const activation = await licensesRepository.activateDomain(
+    const result = await licensesRepository.activateDomain(
       license.id!,
       domain,
       ipAddress,
     );
 
+    if (result.alreadyExisted) {
+      return {
+        success: true,
+        message: "Domain/Machine is already registered to this license",
+        activation: result.activation,
+        activeCount: result.activeCount,
+        maxActivations: result.maxActivations,
+      };
+    }
+
     return {
       success: true,
       message: "License successfully activated",
       domain,
-      activeCount: activationCount + 1,
-      maxActivations,
-      activatedAt: activation.activated_at,
+      activeCount: result.activeCount,
+      maxActivations: result.maxActivations,
+      activatedAt: result.activation.activated_at,
     };
   }
 
   async getBuyerLicenses(buyerId: string) {
     return licensesRepository.findByBuyer(buyerId);
+  }
+
+  // ============================================================================
+  // DIRECT LOCAL STORAGE STREAMING
+  // ============================================================================
+
+  async streamDirectUpload(
+    sourceStream: NodeJS.ReadableStream,
+    params: {
+      key?: string | undefined;
+      token?: string | undefined;
+      expires?: string | undefined;
+      declaredLength?: number | undefined;
+    },
+  ) {
+    const { key, token, expires, declaredLength = 0 } = params;
+
+    if (!key || !token || !expires) {
+      throw new AppError("Missing upload signature parameters (key, token, expires)", 400);
+    }
+
+    const expiresAt = parseInt(expires, 10);
+    const isValid = localStorageService.verifyToken(key, expiresAt, "upload", token);
+    if (!isValid) {
+      throw new AppError("Invalid or expired upload signature token", 403);
+    }
+
+    if (declaredLength > MAX_UPLOAD_BYTES) {
+      throw new AppError("Uploaded file exceeds maximum allowed size (500 MB)", 413);
+    }
+
+    const filePath = localStorageService.getAbsolutePath(key);
+    const parentDir = path.dirname(filePath);
+    await fs.promises.mkdir(parentDir, { recursive: true });
+
+    let bytesReceived = 0;
+    const byteLimitTransform = new Transform({
+      transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+        bytesReceived += chunk.length;
+        if (bytesReceived > MAX_UPLOAD_BYTES) {
+          callback(new AppError("Uploaded file exceeds maximum allowed size (500 MB)", 413));
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+
+    const writeStream = fs.createWriteStream(filePath);
+
+    try {
+      await pipeline(sourceStream, byteLimitTransform, writeStream);
+    } catch (err) {
+      await fs.promises.unlink(filePath).catch(() => {});
+      throw err;
+    }
+
+    const stat = await fs.promises.stat(filePath);
+
+    return {
+      storageKey: key,
+      sizeBytes: stat.size,
+    };
+  }
+
+  async resolveDirectDownload(params: {
+    key?: string | undefined;
+    token?: string | undefined;
+    expires?: string | undefined;
+    filename?: string | undefined;
+  }) {
+    const { key, token, expires, filename } = params;
+
+    if (!key || !token || !expires) {
+      throw new AppError("Missing download signature parameters (key, token, expires)", 400);
+    }
+
+    const expiresAt = parseInt(expires, 10);
+    const isValid = localStorageService.verifyToken(key, expiresAt, "download", token);
+    if (!isValid) {
+      throw new AppError("Invalid or expired download signature token", 403);
+    }
+
+    const filePath = localStorageService.getAbsolutePath(key);
+    let stat: fs.Stats;
+    try {
+      stat = await fs.promises.stat(filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new AppError("File not found on storage disk", 404);
+      }
+      throw err;
+    }
+
+    const downloadName = filename || path.basename(filePath);
+    const ext = path.extname(downloadName).toLowerCase();
+    const mimeType = DOWNLOAD_MIME_TYPES[ext] || "application/octet-stream";
+    const isInline =
+      mimeType.startsWith("image/") ||
+      mimeType.startsWith("video/") ||
+      mimeType.startsWith("audio/") ||
+      key.startsWith("public/media/");
+
+    return {
+      filePath,
+      sizeBytes: stat.size,
+      downloadName,
+      mimeType,
+      isInline,
+    };
   }
 }
 

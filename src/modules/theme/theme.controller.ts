@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { themeService } from "./theme.service.js";
 import { COLOR_HEX_MAP } from "../../theme/tokens/colors.js";
+import { AppError } from "../../core/errors/app-error.js";
 import type {
   UpdateActiveThemeInput,
   CreateThemeInput,
@@ -196,10 +197,9 @@ export class ThemeController {
    */
   async activateTheme(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const id = parseInt(req.params.id as string, 10);
+      const id = Number(req.params.id);
       if (isNaN(id)) {
-        res.status(400).json({ success: false, message: "Invalid theme ID" });
-        return;
+        throw new AppError("Invalid theme ID", 400);
       }
 
       const data = await themeService.setActiveTheme(id);

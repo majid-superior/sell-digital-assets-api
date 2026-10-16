@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { pipeline } from "node:stream/promises";
 import type { Request, Response, NextFunction } from "express";
 import { assetsService } from "./assets.service.js";
 import { AppError } from "../../core/errors/app-error.js";
@@ -21,7 +23,7 @@ import type {
 
 export class AssetsController {
   private getSellerId(req: Request): string {
-    const sellerId = req.user?.id || (req.headers["x-seller-id"] as string);
+    const sellerId = req.user?.id;
     if (!sellerId) {
       throw new AppError("Authentication required: Seller identity is missing.", 401);
     }
@@ -265,6 +267,7 @@ export class AssetsController {
     try {
       const { assetId } = req.params as { assetId: string };
       const body = (req.body as GenerateDownloadLinkInput) || {};
+      const authenticatedUserId = req.user?.id;
       const ipAddress = (req.headers["x-forwarded-for"] as string) || req.ip || "127.0.0.1";
       const userAgent = req.headers["user-agent"];
 
@@ -273,6 +276,7 @@ export class AssetsController {
         body,
         ipAddress,
         userAgent,
+        authenticatedUserId,
       );
 
       res.status(200).json({
@@ -336,10 +340,9 @@ export class AssetsController {
 
   async getBuyerLicenses(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const buyerId = req.user?.id || (req.headers["x-buyer-id"] as string) || (req.headers["x-seller-id"] as string);
+      const buyerId = req.user?.id;
       if (!buyerId) {
-        res.status(200).json({ success: true, data: [] });
-        return;
+        throw new AppError("Authentication required", 401);
       }
       const licenses = await assetsService.getBuyerLicenses(buyerId);
       res.status(200).json({
@@ -356,7 +359,7 @@ export class AssetsController {
   // ============================================================================
 
   private getAdminId(req: Request): string {
-    const adminId = req.user?.id || (req.headers["x-admin-id"] as string);
+    const adminId = req.user?.id;
     if (!adminId) {
       throw new AppError("Authentication required: Admin identity is missing.", 401);
     }
@@ -430,7 +433,77 @@ export class AssetsController {
       next(error);
     }
   }
+
+  // ============================================================================
+  // DIRECT LOCAL STORAGE STREAMING
+  // ============================================================================
+
+  async handleStorageUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { key, token, expires } = req.query as {
+        key?: string;
+        token?: string;
+        expires?: string;
+      };
+      const declaredLength = req.headers["content-length"]
+        ? parseInt(req.headers["content-length"], 10)
+        : 0;
+
+      const data = await assetsService.streamDirectUpload(req, {
+        key,
+        token,
+        expires,
+        declaredLength,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "File stored successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async handleStorageDownload(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { key, token, expires, filename } = req.query as {
+        key?: string;
+        token?: string;
+        expires?: string;
+        filename?: string;
+      };
+
+      const { filePath, sizeBytes, downloadName, mimeType, isInline } =
+        await assetsService.resolveDirectDownload({ key, token, expires, filename });
+
+      // Remove restrictive CSP on media downloads so browsers can render inline previews
+      if (isInline) {
+        res.removeHeader("Content-Security-Policy");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `${isInline ? "inline" : "attachment"}; filename="${encodeURIComponent(downloadName)}"`,
+      );
+      res.setHeader("Content-Length", sizeBytes);
+
+      const readStream = fs.createReadStream(filePath);
+      try {
+        await pipeline(readStream, res);
+      } catch (err: any) {
+        if (err?.code === "ERR_STREAM_PREMATURE_CLOSE" || res.headersSent) {
+          return;
+        }
+        throw err;
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const assetsController = new AssetsController();
-

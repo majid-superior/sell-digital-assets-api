@@ -8,8 +8,9 @@ export class UsersController {
       const query = (req.query as unknown as PaginationQueryInput) || {};
       const page = query.page ?? 1;
       const limit = query.limit ?? 20;
+      const { search, role, status } = query;
 
-      const result = await usersService.getAllUsers({ page, limit });
+      const result = await usersService.getAllUsers({ page, limit, search, role, status });
       res.status(200).json({
         success: true,
         ...result,
