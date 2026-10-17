@@ -31,7 +31,7 @@ export interface CreateAssetDto {
   title: string;
   slug: string;
   shortDescription: string;
-  fullDescription: string;
+  fullDescription?: string | null | undefined;
   status?:
     | "draft"
     | "pending"
@@ -54,7 +54,7 @@ export interface UpdateAssetDto {
   title?: string | undefined;
   slug?: string | undefined;
   shortDescription?: string | undefined;
-  fullDescription?: string | undefined;
+  fullDescription?: string | null | undefined;
   tags?: string[] | undefined;
   technicalSpecs?: Record<string, unknown> | undefined;
   tiers?: Array<{
@@ -465,7 +465,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         data.title,
         data.slug,
         data.shortDescription,
-        data.fullDescription,
+        data.fullDescription ?? null,
         data.status || "draft",
         data.tags || [],
         JSON.stringify(data.technicalSpecs || {}),
@@ -531,7 +531,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         updates.push(`short_description = $${params.length}`);
       }
       if (data.fullDescription !== undefined) {
-        params.push(data.fullDescription);
+        params.push(data.fullDescription ?? null);
         updates.push(`full_description = $${params.length}`);
       }
       if (data.tags !== undefined) {
@@ -1005,6 +1005,25 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       RETURNING id;
     `;
     const res = await this.query(sql, [fileId, assetId]);
+    return res.rows.length > 0;
+  }
+
+  async findMediaById(mediaId: string, assetId: string): Promise<AssetMediaEntity | null> {
+    const sql = `
+      SELECT * FROM asset_media
+      WHERE id = $1 AND asset_id = $2;
+    `;
+    const res = await this.query<AssetMediaEntity>(sql, [mediaId, assetId]);
+    return res.rows[0] || null;
+  }
+
+  async deleteMedia(mediaId: string, assetId: string): Promise<boolean> {
+    const sql = `
+      DELETE FROM asset_media
+      WHERE id = $1 AND asset_id = $2
+      RETURNING id;
+    `;
+    const res = await this.query(sql, [mediaId, assetId]);
     return res.rows.length > 0;
   }
 }

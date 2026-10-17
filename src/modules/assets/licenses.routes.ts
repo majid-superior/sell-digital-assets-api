@@ -10,6 +10,9 @@ import {
 
 const router = Router();
 
+// GET /api/v1/licenses/tiers — List default licensing tiers and standard configuration
+router.get("/tiers", assetsController.getLicenseTiers.bind(assetsController));
+
 // POST /api/v1/licenses/verify — Validates license key structure, active status, tier & seat status
 router.post(
   "/verify",

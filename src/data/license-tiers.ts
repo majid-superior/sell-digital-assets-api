@@ -18,7 +18,7 @@ export const defaultLicenseTiers: LicenseTierConfig[] = [
   {
     tier_type: "personal",
     name: "Personal License",
-    default_price: 0,
+    default_price: 9,
     description: "For individual use in personal, non-commercial projects.",
     license_terms_summary: "Single personal project",
     max_activations: 1,
@@ -28,7 +28,7 @@ export const defaultLicenseTiers: LicenseTierConfig[] = [
   {
     tier_type: "commercial",
     name: "Commercial License",
-    default_price: 0,
+    default_price: 19,
     description:
       "Standard commercial licensing for client deliverables and commercial work.",
     license_terms_summary: "Up to 5 commercial projects",
@@ -39,7 +39,7 @@ export const defaultLicenseTiers: LicenseTierConfig[] = [
   {
     tier_type: "extended",
     name: "Extended License",
-    default_price: 0,
+    default_price: 39,
     description:
       "Full enterprise and resale rights for SaaS, templates, and unlimited distributions.",
     license_terms_summary: "Unlimited projects and resale rights",

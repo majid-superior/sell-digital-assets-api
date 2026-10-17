@@ -76,6 +76,19 @@ export class AssetsController {
     }
   }
 
+  async getLicenseTiers(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const tiers = await assetsService.getLicenseTiers();
+
+      res.status(200).json({
+        success: true,
+        data: tiers,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // ============================================================================
   // SELLER STUDIO MANAGEMENT
   // ============================================================================
@@ -252,6 +265,23 @@ export class AssetsController {
       res.status(200).json({
         success: true,
         message: "File version successfully decommissioned",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteMedia(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id, mediaId } = req.params as { id: string; mediaId: string };
+      const sellerId = this.getSellerId(req);
+
+      const result = await assetsService.deleteMedia(id, sellerId, mediaId);
+
+      res.status(200).json({
+        success: true,
+        message: "Media item deleted successfully",
         data: result,
       });
     } catch (error) {

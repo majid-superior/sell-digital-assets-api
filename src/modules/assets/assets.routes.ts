@@ -19,6 +19,7 @@ import {
   IdParamSchema,
   SlugParamSchema,
   FileIdParamSchema,
+  MediaIdParamSchema,
 } from "./assets.schema.js";
 
 const router = Router();
@@ -27,6 +28,12 @@ const sellerAuth = [authenticate, authorize("seller", "admin")] as const;
 // ============================================================================
 // Public / Discovery Endpoints (/api/v1/assets)
 // ============================================================================
+
+// GET /api/v1/assets/tiers — License pricing tiers configuration
+router.get(
+  "/tiers",
+  assetsController.getLicenseTiers.bind(assetsController),
+);
 
 // GET /api/v1/assets/categories — Category taxonomy tree
 router.get(
@@ -125,6 +132,14 @@ router.post(
   validateParams(IdParamSchema),
   validateBody(ConfirmMediaUploadSchema),
   assetsController.confirmMediaUpload.bind(assetsController),
+);
+
+// DELETE /api/v1/assets/seller/:id/media/:mediaId — Delete media showcase image
+router.delete(
+  "/seller/:id/media/:mediaId",
+  ...sellerAuth,
+  validateParams(MediaIdParamSchema),
+  assetsController.deleteMedia.bind(assetsController),
 );
 
 // DELETE /api/v1/assets/seller/:id/files/:fileId — Decommission or archive an old file version

@@ -2,6 +2,7 @@ import { BaseRepository } from "./base.repository.js";
 import { AppError } from "../../core/errors/app-error.js";
 import {
   defaultLicenseTierMap,
+  defaultLicenseTiers,
   type LicenseTierConfig,
 } from "../../data/license-tiers.js";
 import type {
@@ -19,6 +20,24 @@ export interface ActivateDomainResult {
 }
 
 export class LicensesRepository extends BaseRepository<LicenseEntity> {
+  async getLicenseTiers(): Promise<LicenseTierConfig[]> {
+    try {
+      const res = await this.query<LicenseTierConfig>(
+        `SELECT tier_type, name, default_price::float AS default_price, description,
+                license_terms_summary, max_activations, display_order, is_active
+         FROM license_tiers
+         WHERE is_active = TRUE
+         ORDER BY display_order ASC`,
+      );
+      if (res.rows.length > 0) {
+        return res.rows;
+      }
+    } catch {
+      // Fallback to default tiers if table not initialized
+    }
+    return defaultLicenseTiers;
+  }
+
   async findTierByType(
     tierType: "personal" | "commercial" | "extended",
   ): Promise<LicenseTierConfig> {

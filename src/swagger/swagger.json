@@ -1278,6 +1278,28 @@
         "summary": "Get dynamic compiled CSS stylesheet"
       }
     },
+    "/api/v1/assets/tiers": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Public"
+        ]
+      }
+    },
     "/api/v1/assets/categories": {
       "get": {
         "description": "Returns active hierarchical category tree for asset discovery",
@@ -1676,6 +1698,50 @@
         "summary": "Confirm media preview upload"
       }
     },
+    "/api/v1/assets/seller/{id}/media/{mediaId}": {
+      "delete": {
+        "description": "Archives and soft-deletes an asset owned by the authenticated seller",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Soft-delete and archive seller asset"
+      }
+    },
     "/api/v1/assets/seller/{id}/files/{fileId}": {
       "delete": {
         "description": "Removes and archives a specific deliverable file version",
@@ -1749,6 +1815,33 @@
           "Assets - Public"
         ],
         "summary": "Get published asset details by slug"
+      }
+    },
+    "/api/v1/seller/assets/tiers": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/seller/assets": {
@@ -2403,6 +2496,28 @@
           "Downloads"
         ],
         "summary": "Generate signed asset download link"
+      }
+    },
+    "/api/v1/licenses/tiers": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Licenses"
+        ]
       }
     },
     "/api/v1/licenses/verify": {

@@ -92,6 +92,10 @@ export class AssetsService {
     return categoriesService.getCategories({ tree: true });
   }
 
+  async getLicenseTiers() {
+    return licensesRepository.getLicenseTiers();
+  }
+
   // ============================================================================
   // SELLER MANAGEMENT
   // ============================================================================
@@ -117,7 +121,7 @@ export class AssetsService {
       title: input.title,
       slug,
       shortDescription: input.shortDescription,
-      fullDescription: input.fullDescription,
+      fullDescription: input.fullDescription ?? null,
       status: initialStatus,
       tags: input.tags,
       technicalSpecs: input.technicalSpecs,
@@ -510,6 +514,23 @@ export class AssetsService {
     await assetsRepository.decommissionFile(fileId, assetId);
 
     return { id: fileId, decommissioned: true };
+  }
+
+  async deleteMedia(assetId: string, sellerId: string, mediaId: string) {
+    const asset = await assetsRepository.findById(assetId);
+    if (!asset || asset.seller_id !== sellerId) {
+      throw new AppError("Asset not found or unauthorized", 404);
+    }
+
+    const media = await assetsRepository.findMediaById(mediaId, assetId);
+    if (!media) {
+      throw new AppError("Media item not found", 404);
+    }
+
+    await storageService.deleteFile(media.storage_key).catch(() => {});
+    await assetsRepository.deleteMedia(mediaId, assetId);
+
+    return { id: mediaId, deleted: true };
   }
 
   // ============================================================================

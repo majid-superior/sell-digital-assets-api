@@ -24,7 +24,7 @@ export const CreateAssetSchema = z.object({
   title: z.string().trim().min(3).max(180),
   slug: z.string().trim().max(180).optional(),
   shortDescription: z.string().trim().min(10).max(450),
-  fullDescription: z.string().trim().min(20),
+  fullDescription: z.string().trim().optional().nullable().transform((val) => val || null),
   tags: z.array(z.string().trim()).default([]),
   technicalSpecs: z.record(z.string(), z.unknown()).default({}),
   tiers: z.array(AssetTierInputSchema).min(1, "At least one pricing tier is required"),
@@ -38,7 +38,7 @@ export const UpdateAssetSchema = z.object({
   title: z.string().trim().min(3).max(180).optional(),
   slug: z.string().trim().max(180).optional(),
   shortDescription: z.string().trim().min(10).max(450).optional(),
-  fullDescription: z.string().trim().min(20).optional(),
+  fullDescription: z.string().trim().optional().nullable().transform((val) => (val !== undefined ? val || null : undefined)),
   tags: z.array(z.string().trim()).optional(),
   technicalSpecs: z.record(z.string(), z.unknown()).optional(),
   tiers: z.array(AssetTierInputSchema).optional(),
@@ -200,5 +200,10 @@ export const SlugParamSchema = z.object({
 export const FileIdParamSchema = z.object({
   id: z.string().trim().min(1, "Asset ID is required"),
   fileId: z.string().trim().min(1, "File ID is required"),
+});
+
+export const MediaIdParamSchema = z.object({
+  id: z.string().trim().min(1, "Asset ID is required"),
+  mediaId: z.string().trim().min(1, "Media ID is required"),
 });
 

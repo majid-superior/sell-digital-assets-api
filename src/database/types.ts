@@ -160,7 +160,7 @@ export interface AssetEntity {
   title: string;
   slug: string;
   short_description: string;
-  full_description: string;
+  full_description: string | null;
   status:
     | "draft"
     | "pending"

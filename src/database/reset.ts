@@ -463,7 +463,7 @@ CREATE TABLE IF NOT EXISTS assets (
     title VARCHAR(200) NOT NULL,
     slug VARCHAR(200) NOT NULL UNIQUE,
     short_description VARCHAR(500) NOT NULL,
-    full_description TEXT NOT NULL,
+    full_description TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'needs_update', 'published', 'rejected', 'archived', 'under_review')),
     admin_feedback TEXT,
     reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
