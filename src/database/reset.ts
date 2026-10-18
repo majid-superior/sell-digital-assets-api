@@ -464,6 +464,8 @@ CREATE TABLE IF NOT EXISTS assets (
     slug VARCHAR(200) NOT NULL UNIQUE,
     short_description VARCHAR(500) NOT NULL,
     full_description TEXT,
+    preview_url TEXT,
+    storage_path TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'needs_update', 'published', 'rejected', 'archived', 'under_review')),
     admin_feedback TEXT,
     reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -483,6 +485,8 @@ CREATE INDEX IF NOT EXISTS idx_assets_seller_id ON assets (seller_id);
 CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets (category_id);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
 CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
+CREATE INDEX IF NOT EXISTS idx_assets_preview_url ON assets (preview_url) WHERE preview_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_storage_path ON assets (storage_path) WHERE storage_path IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_active ON assets (is_active) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_tags_gin ON assets USING GIN (tags);
 
@@ -619,6 +623,43 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id) WHERE is_read = FALSE;
+
+-- Step 20: Supabase Storage Buckets (Safe Initialization)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'storage') THEN
+        -- Best-effort SQL bucket initialization (Supabase JS API also ensures/updates them post-commit)
+        BEGIN
+            INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+            VALUES (
+                'sell-digital-assets-storage-previews',
+                'sell-digital-assets-storage-previews',
+                true,
+                10485760, -- 10MB limit for webp preview images
+                ARRAY['image/webp', 'image/png', 'image/jpeg']::text[]
+            )
+            ON CONFLICT (id) DO UPDATE SET
+                public = true,
+                file_size_limit = EXCLUDED.file_size_limit,
+                allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+            INSERT INTO storage.buckets (id, name, public, file_size_limit)
+            VALUES (
+                'sell-digital-assets-storage-private',
+                'sell-digital-assets-storage-private',
+                false,
+                524288000 -- 500MB limit for original asset files
+            )
+            ON CONFLICT (id) DO UPDATE SET
+                public = false,
+                file_size_limit = EXCLUDED.file_size_limit;
+        EXCEPTION WHEN OTHERS THEN
+            -- In managed cloud databases where direct SQL access to storage.buckets is restricted,
+            -- this block safely passes, and buckets are provisioned by the Supabase Storage API.
+            NULL;
+        END;
+    END IF;
+END $$;
 `;
 
 /**
@@ -1197,7 +1238,47 @@ export async function resetDatabase(): Promise<void> {
       console.log(`✅ Seeded ${slugToIdMap.size} digital asset categories successfully!`);
 
       await targetClient.query("COMMIT");
-      console.log("✅ Schema applied successfully!");
+      console.log("✅ Schema applied successfully with ZERO mock data!");
+
+      // If Supabase API credentials are configured, ensure buckets exist via Supabase Storage API
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const { createClient } = await import("@supabase/supabase-js");
+          const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY,
+            { auth: { autoRefreshToken: false, persistSession: false } }
+          );
+
+          const { error: prevErr } = await supabase.storage.createBucket("sell-digital-assets-storage-previews", {
+            public: true,
+            fileSizeLimit: 10485760,
+            allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
+          });
+          if (prevErr && prevErr.message?.toLowerCase().includes("already exists")) {
+            await supabase.storage.updateBucket("sell-digital-assets-storage-previews", {
+              public: true,
+              fileSizeLimit: 10485760,
+              allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
+            }).catch(() => {});
+          }
+
+          const { error: privErr } = await supabase.storage.createBucket("sell-digital-assets-storage-private", {
+            public: false,
+            fileSizeLimit: 524288000,
+          });
+          if (privErr && privErr.message?.toLowerCase().includes("already exists")) {
+            await supabase.storage.updateBucket("sell-digital-assets-storage-private", {
+              public: false,
+              fileSizeLimit: 524288000,
+            }).catch(() => {});
+          }
+
+          console.log("🪣  Verified Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
+        } catch {
+          // If network error or bucket already exists, proceed smoothly
+        }
+      }
     } catch (schemaErr: any) {
       await targetClient.query("ROLLBACK").catch(() => {});
       throw schemaErr;

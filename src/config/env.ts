@@ -20,8 +20,11 @@ export interface EnvConfig {
   AWS_ACCESS_KEY_ID?: string | undefined;
   AWS_SECRET_ACCESS_KEY?: string | undefined;
   AWS_ENDPOINT?: string | undefined;
-  STORAGE_DRIVER: "local" | "r2" | "s3";
+  STORAGE_DRIVER: "local" | "r2" | "s3" | "supabase";
   LOCAL_STORAGE_PATH: string;
+  SUPABASE_URL?: string | undefined;
+  SUPABASE_SERVICE_ROLE_KEY?: string | undefined;
+  SUPABASE_ANON_KEY?: string | undefined;
 }
 
 function getRequiredEnv(key: string): string {
@@ -140,6 +143,9 @@ export const env: EnvConfig = {
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID?.trim() || undefined,
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY?.trim() || undefined,
   AWS_ENDPOINT: process.env.AWS_ENDPOINT?.trim() || undefined,
-  STORAGE_DRIVER: (process.env.STORAGE_DRIVER?.trim() as "local" | "r2" | "s3") || "local",
+  STORAGE_DRIVER: (process.env.STORAGE_DRIVER?.trim() as "local" | "r2" | "s3" | "supabase") || "local",
   LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH?.trim() || (process.platform === "win32" ? "C:\\GH\\sell-digital-assets-storage" : "./storage"),
+  SUPABASE_URL: process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim() || undefined,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY?.trim() || process.env.VITE_SUPABASE_ANON_KEY?.trim() || undefined,
 };

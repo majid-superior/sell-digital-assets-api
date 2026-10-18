@@ -319,6 +319,97 @@ export class AssetsController {
   }
 
   // ============================================================================
+  // SECURE AUTHENTICATED BUYER DOWNLOAD (GET /api/assets/:id/download)
+  // ============================================================================
+
+  async downloadAsset(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const userId = req.user?.id;
+      const userRole = (req.user as any)?.role?.slug || (req.user as any)?.role || "user";
+
+      if (!userId) {
+        throw new AppError("Authentication required: Please log in to download this asset", 401);
+      }
+
+      const ipAddress = (req.headers["x-forwarded-for"] as string) || req.ip || "127.0.0.1";
+      const userAgent = req.headers["user-agent"];
+
+      const result = await assetsService.generateBuyerDownload(
+        id,
+        userId,
+        userRole,
+        ipAddress,
+        userAgent,
+      );
+
+      res.status(200).json({
+        success: true,
+        downloadUrl: result.downloadUrl,
+        data: {
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName,
+          expiresIn: result.expiresIn,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ============================================================================
+  // DUAL-UPLOAD & WATERMARK CONTROLLER (POST /api/assets/:id/upload)
+  // ============================================================================
+
+  async uploadImageAsset(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const sellerId = this.getSellerId(req);
+      const userRole = (req.user as any)?.role?.slug || (req.user as any)?.role || "user";
+
+      let fileBuffer: Buffer | undefined;
+      let fileName = "asset-upload.png";
+      let mimeType = "image/png";
+
+      if (req.file) {
+        fileBuffer = req.file.buffer;
+        fileName = req.file.originalname || fileName;
+        mimeType = req.file.mimetype || mimeType;
+      } else if (Buffer.isBuffer(req.body)) {
+        fileBuffer = req.body;
+        const contentType = req.headers["content-type"];
+        if (contentType && !contentType.includes("multipart")) {
+          mimeType = contentType;
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        throw new AppError("No image file provided for upload. Send as multipart form field 'file' or binary body.", 400);
+      }
+
+      const result = await assetsService.processDualUploadAndWatermark(
+        id,
+        sellerId,
+        fileBuffer,
+        fileName,
+        mimeType,
+        userRole,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Asset original uploaded to private bucket and watermarked preview generated successfully",
+        data: {
+          storage_path: result.storage_path,
+          preview_url: result.preview_url,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ============================================================================
   // LICENSING & VERIFICATION
   // ============================================================================
 

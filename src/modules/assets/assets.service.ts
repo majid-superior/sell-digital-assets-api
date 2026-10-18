@@ -10,6 +10,8 @@ import { slugify } from "../../data/categories.js";
 import { storageService, localStorageService } from "../../core/storage/index.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
+import { supabaseAdmin, SUPABASE_BUCKETS } from "../../config/supabase.js";
+import sharp from "sharp";
 import { notificationsService } from "../notifications/notifications.service.js";
 import { userRepository } from "../../database/repositories/user.repository.js";
 import { CreateAssetSchema } from "./assets.schema.js";
@@ -67,7 +69,7 @@ export class AssetsService {
         : [query.tags]
       : undefined;
 
-    return assetsRepository.findPublic({
+    const result = await assetsRepository.findPublic({
       categoryId: query.category,
       categorySlug: query.categorySlug,
       search: query.search,
@@ -78,6 +80,15 @@ export class AssetsService {
       page: query.page,
       limit: query.limit,
     });
+
+    // Security sanitization: storage_path is strictly excluded from public listings
+    if (result && Array.isArray(result.data)) {
+      for (const item of result.data) {
+        delete (item as any).storage_path;
+      }
+    }
+
+    return result;
   }
 
   async getAssetBySlug(slug: string) {
@@ -85,6 +96,8 @@ export class AssetsService {
     if (!asset || asset.status !== "published") {
       throw new AppError(`Asset '${slug}' not found`, 404);
     }
+    // Security sanitization: storage_path is strictly excluded from public product pages
+    delete (asset as any).storage_path;
     return asset;
   }
 
@@ -539,8 +552,263 @@ export class AssetsService {
   }
 
   // ============================================================================
+  // TWO-BUCKET DUAL-UPLOAD & AUTOMATIC WATERMARKING SERVICE
+  // ============================================================================
+
+  /**
+   * Dual-Upload & Automatic Watermarking Service
+   * 1. Uploads untouched original high-res buffer to private bucket 'sell-digital-assets-storage-private' at originals/<slug>-<timestamp>.<ext>
+   * 2. Uses sharp to resize image to max width 800px (withoutEnlargement), composites a semi-transparent diagonal SVG watermark
+   *    reading "PREVIEW ONLY • DO NOT COPY" across the center, and converts to .webp (quality: 70).
+   * 3. Uploads watermarked WebP to public bucket 'sell-digital-assets-storage-previews' at previews/<slug>-preview.webp
+   * 4. Updates assets table with storage_path and preview_url
+   */
+  async processDualUploadAndWatermark(
+    assetId: string,
+    sellerId: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    userRole?: string,
+  ) {
+    const asset = await assetsRepository.findById(assetId);
+    if (!asset) {
+      throw new AppError("Asset not found", 404);
+    }
+
+    // Verify ownership or admin privileges
+    if (asset.seller_id !== sellerId && userRole !== "admin") {
+      throw new AppError("Unauthorized: You do not own this asset", 403);
+    }
+
+    const ext = path.extname(fileName).replace(/^\./, "").toLowerCase() || "png";
+    const timestamp = Date.now();
+    const storagePath = `originals/${asset.slug}-${timestamp}.${ext}`;
+    const previewStorageKey = `previews/${asset.slug}-preview.webp`;
+
+    let previewUrl: string;
+
+    // 1. Generate Watermarked WebP Preview via sharp
+    const resized = sharp(fileBuffer).resize({ width: 800, withoutEnlargement: true });
+    const meta = await resized.metadata();
+    const width = meta.width || 800;
+    const height = meta.height || 600;
+
+    const svgWatermark = Buffer.from(`
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <style>
+            .watermark-text {
+              fill: rgba(255, 255, 255, 0.45);
+              stroke: rgba(0, 0, 0, 0.4);
+              stroke-width: 1.5px;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              font-size: ${Math.max(16, Math.round(width / 20))}px;
+              font-weight: 800;
+              letter-spacing: 4px;
+              text-anchor: middle;
+              dominant-baseline: central;
+            }
+          </style>
+        </defs>
+        <g transform="rotate(-30, ${width / 2}, ${height / 2})">
+          <text x="${width / 2}" y="${height / 2}" class="watermark-text">
+            PREVIEW ONLY • DO NOT COPY
+          </text>
+        </g>
+      </svg>
+    `);
+
+    const watermarkedWebPBuffer = await sharp(fileBuffer)
+      .resize({ width: 800, withoutEnlargement: true })
+      .composite([
+        {
+          input: svgWatermark,
+          top: 0,
+          left: 0,
+        },
+      ])
+      .webp({ quality: 70 })
+      .toBuffer();
+
+    // 2. Upload to Supabase Storage if configured, or fall back to local driver
+    if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+      // 2a. Original untouched high-resolution file to 'sell-digital-assets-storage-private'
+      const { error: origUploadErr } = await supabaseAdmin.storage
+        .from(SUPABASE_BUCKETS.PRIVATE)
+        .upload(storagePath, fileBuffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (origUploadErr) {
+        throw new AppError(
+          `Failed to upload original high-res asset to ${SUPABASE_BUCKETS.PRIVATE}: ${origUploadErr.message}`,
+          500,
+        );
+      }
+
+      // 2b. Watermarked low-resolution preview to 'sell-digital-assets-storage-previews'
+      const { error: prevUploadErr } = await supabaseAdmin.storage
+        .from(SUPABASE_BUCKETS.PREVIEWS)
+        .upload(previewStorageKey, watermarkedWebPBuffer, {
+          contentType: "image/webp",
+          upsert: true,
+        });
+
+      if (prevUploadErr) {
+        throw new AppError(
+          `Failed to upload watermarked preview to ${SUPABASE_BUCKETS.PREVIEWS}: ${prevUploadErr.message}`,
+          500,
+        );
+      }
+
+      // 2c. Get public URL for preview_url
+      const { data: publicData } = supabaseAdmin.storage
+        .from(SUPABASE_BUCKETS.PREVIEWS)
+        .getPublicUrl(previewStorageKey);
+
+      previewUrl = publicData.publicUrl;
+    } else {
+      // Fallback for local development if SUPABASE credentials not yet set
+      const origLocalPath = localStorageService.getAbsolutePath(storagePath);
+      await fs.promises.mkdir(path.dirname(origLocalPath), { recursive: true });
+      await fs.promises.writeFile(origLocalPath, fileBuffer);
+
+      const prevLocalPath = localStorageService.getAbsolutePath(previewStorageKey);
+      await fs.promises.mkdir(path.dirname(prevLocalPath), { recursive: true });
+      await fs.promises.writeFile(prevLocalPath, watermarkedWebPBuffer);
+
+      previewUrl = this.resolvePublicMediaUrl(previewStorageKey);
+    }
+
+    const validAssetId = asset.id!;
+
+    // 3. Persist storage_path and preview_url to assets record
+    const updated = await assetsRepository.updateStorageAndPreview(validAssetId, {
+      storagePath,
+      previewUrl,
+    });
+
+    // 4. Also register preview into asset_media so existing gallery views show the watermarked preview
+    await assetsRepository.createMedia({
+      assetId: validAssetId,
+      mediaType: "thumbnail",
+      storageKey: previewStorageKey,
+      url: previewUrl,
+      displayOrder: 0,
+    }).catch(() => {});
+
+    return {
+      storage_path: storagePath,
+      preview_url: previewUrl,
+      asset: updated,
+    };
+  }
+
+  // ============================================================================
   // SECURE FULFILLMENT & DOWNLOADS
   // ============================================================================
+
+  /**
+   * Authenticated Buyer Download Endpoint (GET /api/assets/:id/download)
+   * 1. Requires authenticated user
+   * 2. Verifies user has completed purchase (license) or is asset owner/admin
+   * 3. Queries storage_path and slug
+   * 4. Generates a 60-second short-lived signed URL:
+   *    supabaseAdmin.storage.from('sell-digital-assets-storage-private').createSignedUrl(storage_path, 60, { download: `${slug}-original.${ext}` })
+   * 5. Returns { downloadUrl } with HTTP 200
+   */
+  async generateBuyerDownload(
+    idOrSlug: string,
+    userId: string,
+    userRole: string,
+    ipAddress: string,
+    userAgent?: string,
+  ) {
+    const asset = await assetsRepository.findByIdOrSlug(idOrSlug);
+    if (!asset) {
+      throw new AppError("Asset not found", 404);
+    }
+
+    // Authorization verification:
+    // 1. Admin
+    // 2. Asset Creator / Seller
+    // 3. Verified Buyer with active license
+    const validAssetId = asset.id!;
+    const isOwner = asset.seller_id === userId;
+    const isAdmin = userRole === "admin";
+    const verifiedLicense = await licensesRepository.findByBuyerAndAsset(userId, validAssetId);
+
+    if (!isOwner && !isAdmin && !verifiedLicense) {
+      throw new AppError(
+        "Forbidden: You do not have an active purchase license for this asset.",
+        403,
+      );
+    }
+
+    // Determine target storage path for the original asset
+    let targetPath = asset.storage_path;
+    let fileName = `${asset.slug}-original.png`;
+
+    if (!targetPath) {
+      // Fallback to active file deliverable if asset.storage_path is not yet populated
+      const activeFile = await licensesRepository.findActiveFile(validAssetId);
+      if (activeFile) {
+        targetPath = activeFile.storage_key;
+        fileName = activeFile.file_name;
+      } else {
+        throw new AppError("Original asset deliverable is not available in storage.", 404);
+      }
+    } else {
+      const ext = path.extname(targetPath).replace(/^\./, "") || "png";
+      fileName = `${asset.slug}-original.${ext}`;
+    }
+
+    let downloadUrl: string;
+
+    if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Generate short-lived Signed URL valid for 60 seconds
+      const { data: signedData, error: signError } = await supabaseAdmin.storage
+        .from(SUPABASE_BUCKETS.PRIVATE)
+        .createSignedUrl(targetPath, 60, {
+          download: fileName,
+        });
+
+      if (signError || !signedData?.signedUrl) {
+        throw new AppError(
+          `Failed to generate private signed URL: ${signError?.message || "Unknown error"}`,
+          500,
+        );
+      }
+
+      downloadUrl = signedData.signedUrl;
+    } else {
+      // Local storage fallback for offline development
+      downloadUrl = await storageService.generatePresignedDownloadUrl(
+        targetPath,
+        fileName,
+        60,
+      );
+    }
+
+    // Record download audit
+    await licensesRepository.recordDownloadAudit({
+      assetId: validAssetId,
+      userId,
+      licenseKey: verifiedLicense?.license_key || null,
+      ipAddress,
+      userAgent: userAgent || null,
+      signedUrlToken: crypto.randomBytes(16).toString("hex"),
+      expiresAt: new Date(Date.now() + 60 * 1000),
+    }).catch(() => {});
+
+    return {
+      downloadUrl,
+      fileName,
+      expiresIn: 60,
+    };
+  }
 
   async generateDownloadLink(
     assetId: string,

@@ -1,6 +1,8 @@
 import { Router } from "express";
+import multer from "multer";
 import { assetsController } from "./assets.controller.js";
 import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
+import { downloadLimiter } from "../../core/middleware/rate-limit.middleware.js";
 import {
   validateBody,
   validateQuery,
@@ -24,6 +26,13 @@ import {
 
 const router = Router();
 const sellerAuth = [authenticate, authorize("seller", "admin")] as const;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB
+  },
+});
 
 // ============================================================================
 // Public / Discovery Endpoints (/api/v1/assets)
@@ -151,6 +160,33 @@ router.delete(
 );
 
 // ============================================================================
+// Authenticated Buyer Download Endpoint (/api/v1/assets/:id/download)
+// ============================================================================
+router.get(
+  "/:id/download",
+  authenticate,
+  downloadLimiter,
+  assetsController.downloadAsset.bind(assetsController),
+);
+
+// ============================================================================
+// Dual-Upload & Watermarking Endpoint (/api/v1/assets/:id/upload)
+// ============================================================================
+router.post(
+  "/:id/upload",
+  ...sellerAuth,
+  upload.single("file"),
+  assetsController.uploadImageAsset.bind(assetsController),
+);
+
+router.post(
+  "/seller/:id/upload",
+  ...sellerAuth,
+  upload.single("file"),
+  assetsController.uploadImageAsset.bind(assetsController),
+);
+
+// ============================================================================
 // GET /api/v1/assets/:slug — Full details by slug (must be placed after static routes)
 // ============================================================================
 router.get(
@@ -215,6 +251,11 @@ sellerAssetsRouter.post(
   validateParams(IdParamSchema),
   validateBody(ConfirmMediaUploadSchema),
   assetsController.confirmMediaUpload.bind(assetsController),
+);
+sellerAssetsRouter.post(
+  "/:id/upload",
+  upload.single("file"),
+  assetsController.uploadImageAsset.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id/files/:fileId",

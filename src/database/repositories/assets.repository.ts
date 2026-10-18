@@ -144,6 +144,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.slug,
         a.short_description,
         a.full_description,
+        a.preview_url,
         a.status,
         a.tags,
         a.technical_specs,
@@ -235,6 +236,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.slug,
         a.short_description,
         a.full_description,
+        a.preview_url,
         a.status,
         a.tags,
         a.technical_specs,
@@ -334,6 +336,35 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       WHERE a.id = $1 AND a.is_active = TRUE AND a.deleted_at IS NULL;
     `;
     const res = await this.query<AssetEntity>(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  async findByIdOrSlug(idOrSlug: string): Promise<AssetEntity | null> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idOrSlug);
+    const sql = `
+      SELECT a.*
+      FROM assets a
+      WHERE ${isUuid ? "a.id = $1" : "a.slug = $1"} AND a.is_active = TRUE AND a.deleted_at IS NULL;
+    `;
+    const res = await this.query<AssetEntity>(sql, [idOrSlug]);
+    return res.rows[0] || null;
+  }
+
+  async updateStorageAndPreview(
+    id: string,
+    data: { storagePath: string; previewUrl: string },
+  ): Promise<AssetEntity | null> {
+    const sql = `
+      UPDATE assets
+      SET storage_path = $1, preview_url = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND deleted_at IS NULL
+      RETURNING *;
+    `;
+    const res = await this.query<AssetEntity>(sql, [
+      data.storagePath,
+      data.previewUrl,
+      id,
+    ]);
     return res.rows[0] || null;
   }
 
@@ -773,6 +804,8 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.slug,
         a.short_description,
         a.full_description,
+        a.preview_url,
+        a.storage_path,
         a.status,
         a.admin_feedback,
         a.reviewed_by,

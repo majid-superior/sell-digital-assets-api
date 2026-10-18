@@ -161,6 +161,8 @@ export interface AssetEntity {
   slug: string;
   short_description: string;
   full_description: string | null;
+  preview_url?: string | null;
+  storage_path?: string | null;
   status:
     | "draft"
     | "pending"
