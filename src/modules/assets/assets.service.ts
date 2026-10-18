@@ -430,7 +430,8 @@ export class AssetsService {
 
     const expiresAt = Date.now() + 31536000000;
     const token = localStorageService.signToken(storageKey, expiresAt, "download");
-    return `/api/v1/storage/download?key=${encodeURIComponent(
+    const baseUrl = env.SERVER_URL ? env.SERVER_URL.replace(/\/+$/, "") : "";
+    return `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
       storageKey,
     )}&token=${token}&expires=${expiresAt}`;
   }

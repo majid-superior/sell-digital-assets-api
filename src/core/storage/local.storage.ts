@@ -23,7 +23,10 @@ export class LocalStorageService implements IStorageService {
 
   public getAbsolutePath(storageKey: string): string {
     if (storageKey.includes("\0")) {
-      throw new AppError("Invalid storage key: path traversal is prohibited", 400);
+      throw new AppError(
+        "Invalid storage key: path traversal is prohibited",
+        400,
+      );
     }
     const sanitizedKey = storageKey.replace(/^[/\\]+/, "");
     const resolvedPath = path.resolve(this.baseDir, sanitizedKey);
@@ -32,7 +35,10 @@ export class LocalStorageService implements IStorageService {
       : this.baseDir + path.sep;
 
     if (!resolvedPath.startsWith(basePrefix)) {
-      throw new AppError("Invalid storage key: path traversal is prohibited", 400);
+      throw new AppError(
+        "Invalid storage key: path traversal is prohibited",
+        400,
+      );
     }
 
     return resolvedPath;
@@ -64,6 +70,13 @@ export class LocalStorageService implements IStorageService {
     }
   }
 
+  public getBaseUrl(): string {
+    if (env.SERVER_URL) {
+      return env.SERVER_URL.replace(/\/+$/, "");
+    }
+    return `http://localhost:${env.PORT}`;
+  }
+
   async generatePresignedUploadUrl(
     storageKey: string,
     _contentType: string,
@@ -71,7 +84,8 @@ export class LocalStorageService implements IStorageService {
   ): Promise<PresignedUploadResult> {
     const expiresAt = Date.now() + expiresInSeconds * 1000;
     const token = this.signToken(storageKey, expiresAt, "upload");
-    const uploadUrl = `http://localhost:${env.PORT}/api/v1/storage/upload?key=${encodeURIComponent(
+    const baseUrl = this.getBaseUrl();
+    const uploadUrl = `${baseUrl}/api/v1/storage/upload?key=${encodeURIComponent(
       storageKey,
     )}&token=${token}&expires=${expiresAt}`;
 
@@ -90,7 +104,8 @@ export class LocalStorageService implements IStorageService {
   ): Promise<string> {
     const expiresAt = Date.now() + expiresInSeconds * 1000;
     const token = this.signToken(storageKey, expiresAt, "download");
-    let downloadUrl = `http://localhost:${env.PORT}/api/v1/storage/download?key=${encodeURIComponent(
+    const baseUrl = this.getBaseUrl();
+    let downloadUrl = `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
       storageKey,
     )}&token=${token}&expires=${expiresAt}`;
 
@@ -133,4 +148,3 @@ export class LocalStorageService implements IStorageService {
     }
   }
 }
-

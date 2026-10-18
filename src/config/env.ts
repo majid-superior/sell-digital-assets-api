@@ -7,6 +7,7 @@ export interface EnvConfig {
   NODE_ENV: "development" | "production";
   DATABASE_URL: string;
   CLIENT_URL: string;
+  SERVER_URL?: string | undefined;
   ALLOWED_ORIGINS: string[];
   JWT_SECRET: string;
   JWT_REFRESH_SECRET: string;
@@ -99,6 +100,7 @@ export const env: EnvConfig = {
   NODE_ENV: nodeEnv as EnvConfig["NODE_ENV"],
   DATABASE_URL: getRequiredEnv("DATABASE_URL"),
   CLIENT_URL: clientUrl,
+  SERVER_URL: process.env.SERVER_URL?.trim() || process.env.API_URL?.trim() || process.env.RENDER_EXTERNAL_URL?.trim() || undefined,
   ALLOWED_ORIGINS: parsedOrigins,
   JWT_SECRET: getRequiredSecret("JWT_SECRET"),
   JWT_REFRESH_SECRET: getRequiredSecret("JWT_REFRESH_SECRET"),
@@ -112,5 +114,5 @@ export const env: EnvConfig = {
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY?.trim() || undefined,
   AWS_ENDPOINT: process.env.AWS_ENDPOINT?.trim() || undefined,
   STORAGE_DRIVER: (process.env.STORAGE_DRIVER?.trim() as "local" | "r2" | "s3") || "local",
-  LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH?.trim() || "C:\\GH\\sell-digital-assets-storage",
+  LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH?.trim() || (process.platform === "win32" ? "C:\\GH\\sell-digital-assets-storage" : "./storage"),
 };
