@@ -413,6 +413,28 @@ export class AssetsService {
     });
   }
 
+  private resolvePublicMediaUrl(storageKey: string): string {
+    if ((env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") && env.AWS_ENDPOINT) {
+      if (env.AWS_ENDPOINT.includes("supabase.co")) {
+        const bucket = env.AWS_BUCKET_NAME || "sell-digital-assets";
+        try {
+          const parsed = new URL(env.AWS_ENDPOINT);
+          const host = parsed.hostname.replace(".storage.supabase.co", ".supabase.co");
+          return `https://${host}/storage/v1/object/public/${bucket}/${storageKey}`;
+        } catch {
+          return `${env.AWS_ENDPOINT}/${storageKey}`;
+        }
+      }
+      return `${env.AWS_ENDPOINT}/${storageKey}`;
+    }
+
+    const expiresAt = Date.now() + 31536000000;
+    const token = localStorageService.signToken(storageKey, expiresAt, "download");
+    return `/api/v1/storage/download?key=${encodeURIComponent(
+      storageKey,
+    )}&token=${token}&expires=${expiresAt}`;
+  }
+
   async presignMediaUpload(
     assetId: string,
     sellerId: string,
@@ -432,16 +454,7 @@ export class AssetsService {
       900,
     );
 
-    let previewUrl = "";
-    if (env.STORAGE_DRIVER === "r2" && env.AWS_ENDPOINT) {
-      previewUrl = `${env.AWS_ENDPOINT}/${storageKey}`;
-    } else {
-      const expiresAt = Date.now() + 31536000000;
-      const token = localStorageService.signToken(storageKey, expiresAt, "download");
-      previewUrl = `/api/v1/storage/download?key=${encodeURIComponent(
-        storageKey,
-      )}&token=${token}&expires=${expiresAt}`;
-    }
+    const previewUrl = this.resolvePublicMediaUrl(storageKey);
 
     return {
       ...presigned,
@@ -479,16 +492,7 @@ export class AssetsService {
       }
     }
 
-    let url = "";
-    if (env.STORAGE_DRIVER === "r2" && env.AWS_ENDPOINT) {
-      url = `${env.AWS_ENDPOINT}/${input.storageKey}`;
-    } else {
-      const expiresAt = Date.now() + 31536000000;
-      const token = localStorageService.signToken(input.storageKey, expiresAt, "download");
-      url = `/api/v1/storage/download?key=${encodeURIComponent(
-        input.storageKey,
-      )}&token=${token}&expires=${expiresAt}`;
-    }
+    const url = this.resolvePublicMediaUrl(input.storageKey);
 
     return assetsRepository.createMedia({
       assetId,

@@ -21,6 +21,7 @@ export class CloudflareR2StorageService implements IStorageService {
     this.bucket = env.AWS_BUCKET_NAME || "sell-digital-assets";
     const clientConfig: any = {
       region: env.AWS_REGION || "auto",
+      forcePathStyle: true,
     };
     if (env.AWS_ENDPOINT) {
       clientConfig.endpoint = env.AWS_ENDPOINT;
