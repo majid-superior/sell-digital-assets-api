@@ -59,34 +59,61 @@ if (isNaN(port) || port <= 0 || port > 65535) {
   );
 }
 
-const clientUrl = getRequiredEnv("CLIENT_URL");
-try {
-  new URL(clientUrl);
-} catch {
+const rawClientUrl = getRequiredEnv("CLIENT_URL");
+const clientUrls = rawClientUrl
+  .split(",")
+  .map((url) => url.trim())
+  .filter(Boolean);
+
+const primaryClientUrl = clientUrls[0];
+if (!primaryClientUrl) {
   throw new Error(
-    `CRITICAL CONFIGURATION ERROR: Environment variable 'CLIENT_URL' must be a valid URL, received: '${clientUrl}'`,
+    `CRITICAL CONFIGURATION ERROR: Environment variable 'CLIENT_URL' is required. No fallback value is permitted.`,
   );
 }
 
-// Support multiple comma-separated origins, ensuring clientUrl is always included
-const rawAllowedOrigins = process.env.ALLOWED_ORIGINS;
-const parsedOrigins = rawAllowedOrigins
-  ? rawAllowedOrigins.split(",").map((o) => o.trim()).filter(Boolean)
-  : [];
-
-if (!parsedOrigins.includes(clientUrl)) {
-  parsedOrigins.push(clientUrl);
-}
-
-for (const origin of parsedOrigins) {
+for (const url of clientUrls) {
   try {
-    new URL(origin);
+    new URL(url);
   } catch {
     throw new Error(
-      `CRITICAL CONFIGURATION ERROR: Origin '${origin}' in ALLOWED_ORIGINS must be a valid URL.`,
+      `CRITICAL CONFIGURATION ERROR: Environment variable 'CLIENT_URL' contains invalid URL '${url}', received: '${rawClientUrl}'`,
     );
   }
 }
+
+// Support multiple comma-separated origins, ensuring all clientUrls are included
+const rawAllowedOrigins = process.env.ALLOWED_ORIGINS;
+const parsedOrigins: string[] = [];
+
+function registerOrigin(originStr: string, sourceVar: string) {
+  try {
+    const origin = new URL(originStr).origin;
+    if (!parsedOrigins.includes(origin)) {
+      parsedOrigins.push(origin);
+    }
+  } catch {
+    throw new Error(
+      `CRITICAL CONFIGURATION ERROR: Origin '${originStr}' in ${sourceVar} must be a valid URL.`,
+    );
+  }
+}
+
+for (const u of clientUrls) {
+  registerOrigin(u, "CLIENT_URL");
+}
+
+if (rawAllowedOrigins) {
+  const origins = rawAllowedOrigins
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  for (const o of origins) {
+    registerOrigin(o, "ALLOWED_ORIGINS");
+  }
+}
+
+const clientUrl = primaryClientUrl.replace(/\/+$/, "");
 
 const rawExposeStack = getRequiredEnv("EXPOSE_STACK");
 if (rawExposeStack !== "true" && rawExposeStack !== "false") {
