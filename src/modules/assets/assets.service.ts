@@ -7,7 +7,10 @@ import { assetsRepository } from "../../database/repositories/assets.repository.
 import { licensesRepository } from "../../database/repositories/licenses.repository.js";
 import { categoriesService } from "../categories/categories.service.js";
 import { slugify } from "../../data/categories.js";
-import { storageService, localStorageService } from "../../core/storage/index.js";
+import {
+  storageService,
+  localStorageService,
+} from "../../core/storage/index.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
 import { supabaseAdmin, SUPABASE_BUCKETS } from "../../config/supabase.js";
@@ -148,14 +151,22 @@ export class AssetsService {
         type: "asset_submitted",
         title: "New Digital Asset Submitted",
         message: `${sellerName} submitted a new digital asset for approval: "${asset.title}".`,
-        data: { assetId: asset.id, slug: asset.slug, sellerId, title: asset.title },
+        data: {
+          assetId: asset.id,
+          slug: asset.slug,
+          sellerId,
+          title: asset.title,
+        },
       });
     }
 
     return asset;
   }
 
-  async getSellerAssets(sellerId: string, query: Partial<SellerAssetQueryInput> = {}) {
+  async getSellerAssets(
+    sellerId: string,
+    query: Partial<SellerAssetQueryInput> = {},
+  ) {
     return assetsRepository.findBySeller(sellerId, {
       status: query.status,
       search: query.search,
@@ -172,7 +183,8 @@ export class AssetsService {
 
     let slug: string | undefined;
     if (input.slug !== undefined) {
-      const baseSlug = slugify(input.slug) || `asset-${crypto.randomBytes(4).toString("hex")}`;
+      const baseSlug =
+        slugify(input.slug) || `asset-${crypto.randomBytes(4).toString("hex")}`;
       slug = baseSlug;
       if (slug !== existing.slug) {
         let counter = 1;
@@ -427,12 +439,18 @@ export class AssetsService {
   }
 
   private resolvePublicMediaUrl(storageKey: string): string {
-    if ((env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") && env.AWS_ENDPOINT) {
+    if (
+      (env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") &&
+      env.AWS_ENDPOINT
+    ) {
       if (env.AWS_ENDPOINT.includes("supabase.co")) {
-        const bucket = env.AWS_BUCKET_NAME || "sell-digital-assets";
+        const bucket = env.AWS_BUCKET_PREVIEWS || SUPABASE_BUCKETS.PREVIEWS;
         try {
           const parsed = new URL(env.AWS_ENDPOINT);
-          const host = parsed.hostname.replace(".storage.supabase.co", ".supabase.co");
+          const host = parsed.hostname.replace(
+            ".storage.supabase.co",
+            ".supabase.co",
+          );
           return `https://${host}/storage/v1/object/public/${bucket}/${storageKey}`;
         } catch {
           return `${env.AWS_ENDPOINT}/${storageKey}`;
@@ -442,7 +460,11 @@ export class AssetsService {
     }
 
     const expiresAt = Date.now() + 31536000000;
-    const token = localStorageService.signToken(storageKey, expiresAt, "download");
+    const token = localStorageService.signToken(
+      storageKey,
+      expiresAt,
+      "download",
+    );
     const baseUrl = env.SERVER_URL ? env.SERVER_URL.replace(/\/+$/, "") : "";
     return `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
       storageKey,
@@ -581,7 +603,8 @@ export class AssetsService {
       throw new AppError("Unauthorized: You do not own this asset", 403);
     }
 
-    const ext = path.extname(fileName).replace(/^\./, "").toLowerCase() || "png";
+    const ext =
+      path.extname(fileName).replace(/^\./, "").toLowerCase() || "png";
     const timestamp = Date.now();
     const storagePath = `originals/${asset.slug}-${timestamp}.${ext}`;
     const previewStorageKey = `previews/${asset.slug}-preview.webp`;
@@ -589,7 +612,10 @@ export class AssetsService {
     let previewUrl: string;
 
     // 1. Generate Watermarked WebP Preview via sharp
-    const resized = sharp(fileBuffer).resize({ width: 800, withoutEnlargement: true });
+    const resized = sharp(fileBuffer).resize({
+      width: 800,
+      withoutEnlargement: true,
+    });
     const meta = await resized.metadata();
     const width = meta.width || 800;
     const height = meta.height || 600;
@@ -631,7 +657,7 @@ export class AssetsService {
       .webp({ quality: 70 })
       .toBuffer();
 
-    // 2. Upload to Supabase Storage if configured, or fall back to local driver
+    // 2. Upload to Supabase Storage if configured, or S3/R2 storage service, or fall back to local driver
     if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
       // 2a. Original untouched high-resolution file to 'sell-digital-assets-storage-private'
       const { error: origUploadErr } = await supabaseAdmin.storage
@@ -669,35 +695,47 @@ export class AssetsService {
         .getPublicUrl(previewStorageKey);
 
       previewUrl = publicData.publicUrl;
+    } else if (env.STORAGE_DRIVER === "s3" || env.STORAGE_DRIVER === "r2") {
+      // S3-compatible cloud storage driver (works with Supabase S3 endpoint, AWS S3, Cloudflare R2)
+      await storageService.uploadBuffer(storagePath, fileBuffer, mimeType);
+      await storageService.uploadBuffer(
+        previewStorageKey,
+        watermarkedWebPBuffer,
+        "image/webp",
+      );
+      previewUrl = this.resolvePublicMediaUrl(previewStorageKey);
     } else {
-      // Fallback for local development if SUPABASE credentials not yet set
-      const origLocalPath = localStorageService.getAbsolutePath(storagePath);
-      await fs.promises.mkdir(path.dirname(origLocalPath), { recursive: true });
-      await fs.promises.writeFile(origLocalPath, fileBuffer);
-
-      const prevLocalPath = localStorageService.getAbsolutePath(previewStorageKey);
-      await fs.promises.mkdir(path.dirname(prevLocalPath), { recursive: true });
-      await fs.promises.writeFile(prevLocalPath, watermarkedWebPBuffer);
-
+      // Fallback for local development
+      await storageService.uploadBuffer(storagePath, fileBuffer, mimeType);
+      await storageService.uploadBuffer(
+        previewStorageKey,
+        watermarkedWebPBuffer,
+        "image/webp",
+      );
       previewUrl = this.resolvePublicMediaUrl(previewStorageKey);
     }
 
     const validAssetId = asset.id!;
 
     // 3. Persist storage_path and preview_url to assets record
-    const updated = await assetsRepository.updateStorageAndPreview(validAssetId, {
-      storagePath,
-      previewUrl,
-    });
+    const updated = await assetsRepository.updateStorageAndPreview(
+      validAssetId,
+      {
+        storagePath,
+        previewUrl,
+      },
+    );
 
     // 4. Also register preview into asset_media so existing gallery views show the watermarked preview
-    await assetsRepository.createMedia({
-      assetId: validAssetId,
-      mediaType: "thumbnail",
-      storageKey: previewStorageKey,
-      url: previewUrl,
-      displayOrder: 0,
-    }).catch(() => {});
+    await assetsRepository
+      .createMedia({
+        assetId: validAssetId,
+        mediaType: "thumbnail",
+        storageKey: previewStorageKey,
+        url: previewUrl,
+        displayOrder: 0,
+      })
+      .catch(() => {});
 
     return {
       storage_path: storagePath,
@@ -738,7 +776,10 @@ export class AssetsService {
     const validAssetId = asset.id!;
     const isOwner = asset.seller_id === userId;
     const isAdmin = userRole === "admin";
-    const verifiedLicense = await licensesRepository.findByBuyerAndAsset(userId, validAssetId);
+    const verifiedLicense = await licensesRepository.findByBuyerAndAsset(
+      userId,
+      validAssetId,
+    );
 
     if (!isOwner && !isAdmin && !verifiedLicense) {
       throw new AppError(
@@ -758,7 +799,10 @@ export class AssetsService {
         targetPath = activeFile.storage_key;
         fileName = activeFile.file_name;
       } else {
-        throw new AppError("Original asset deliverable is not available in storage.", 404);
+        throw new AppError(
+          "Original asset deliverable is not available in storage.",
+          404,
+        );
       }
     } else {
       const ext = path.extname(targetPath).replace(/^\./, "") || "png";
@@ -793,15 +837,17 @@ export class AssetsService {
     }
 
     // Record download audit
-    await licensesRepository.recordDownloadAudit({
-      assetId: validAssetId,
-      userId,
-      licenseKey: verifiedLicense?.license_key || null,
-      ipAddress,
-      userAgent: userAgent || null,
-      signedUrlToken: crypto.randomBytes(16).toString("hex"),
-      expiresAt: new Date(Date.now() + 60 * 1000),
-    }).catch(() => {});
+    await licensesRepository
+      .recordDownloadAudit({
+        assetId: validAssetId,
+        userId,
+        licenseKey: verifiedLicense?.license_key || null,
+        ipAddress,
+        userAgent: userAgent || null,
+        signedUrlToken: crypto.randomBytes(16).toString("hex"),
+        expiresAt: new Date(Date.now() + 60 * 1000),
+      })
+      .catch(() => {});
 
     return {
       downloadUrl,
@@ -836,9 +882,15 @@ export class AssetsService {
       verifiedLicenseKey = license.license_key;
       verifiedBuyerId = license.buyer_id;
     } else if (authenticatedUserId) {
-      const license = await licensesRepository.findByBuyerAndAsset(authenticatedUserId, assetId);
+      const license = await licensesRepository.findByBuyerAndAsset(
+        authenticatedUserId,
+        assetId,
+      );
       if (!license) {
-        throw new AppError("No active purchase license found for this user account", 403);
+        throw new AppError(
+          "No active purchase license found for this user account",
+          403,
+        );
       }
       verifiedLicenseKey = license.license_key;
       verifiedBuyerId = authenticatedUserId;
@@ -851,7 +903,10 @@ export class AssetsService {
 
     const file = await licensesRepository.findActiveFile(assetId, input.fileId);
     if (!file) {
-      throw new AppError("No active downloadable package exists for this asset yet", 404);
+      throw new AppError(
+        "No active downloadable package exists for this asset yet",
+        404,
+      );
     }
 
     const expiresInSeconds = 900; // 15 mins
@@ -915,7 +970,10 @@ export class AssetsService {
     }
 
     if (!tierConfig.is_active) {
-      throw new AppError(`License tier '${input.tier}' is currently inactive`, 400);
+      throw new AppError(
+        `License tier '${input.tier}' is currently inactive`,
+        400,
+      );
     }
 
     const maxActivations = tierConfig.max_activations;
@@ -964,7 +1022,8 @@ export class AssetsService {
     if (input.domainOrMachineId) {
       isDomainActivated = activations.some(
         (a: any) =>
-          a.domain_or_machine_id.toLowerCase() === input.domainOrMachineId?.toLowerCase(),
+          a.domain_or_machine_id.toLowerCase() ===
+          input.domainOrMachineId?.toLowerCase(),
       );
     }
 
@@ -1054,17 +1113,28 @@ export class AssetsService {
     const { key, token, expires, declaredLength = 0 } = params;
 
     if (!key || !token || !expires) {
-      throw new AppError("Missing upload signature parameters (key, token, expires)", 400);
+      throw new AppError(
+        "Missing upload signature parameters (key, token, expires)",
+        400,
+      );
     }
 
     const expiresAt = parseInt(expires, 10);
-    const isValid = localStorageService.verifyToken(key, expiresAt, "upload", token);
+    const isValid = localStorageService.verifyToken(
+      key,
+      expiresAt,
+      "upload",
+      token,
+    );
     if (!isValid) {
       throw new AppError("Invalid or expired upload signature token", 403);
     }
 
     if (declaredLength > MAX_UPLOAD_BYTES) {
-      throw new AppError("Uploaded file exceeds maximum allowed size (500 MB)", 413);
+      throw new AppError(
+        "Uploaded file exceeds maximum allowed size (500 MB)",
+        413,
+      );
     }
 
     const filePath = localStorageService.getAbsolutePath(key);
@@ -1073,10 +1143,19 @@ export class AssetsService {
 
     let bytesReceived = 0;
     const byteLimitTransform = new Transform({
-      transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+      transform(
+        chunk: Buffer,
+        _encoding: BufferEncoding,
+        callback: TransformCallback,
+      ) {
         bytesReceived += chunk.length;
         if (bytesReceived > MAX_UPLOAD_BYTES) {
-          callback(new AppError("Uploaded file exceeds maximum allowed size (500 MB)", 413));
+          callback(
+            new AppError(
+              "Uploaded file exceeds maximum allowed size (500 MB)",
+              413,
+            ),
+          );
           return;
         }
         callback(null, chunk);
@@ -1109,11 +1188,19 @@ export class AssetsService {
     const { key, token, expires, filename } = params;
 
     if (!key || !token || !expires) {
-      throw new AppError("Missing download signature parameters (key, token, expires)", 400);
+      throw new AppError(
+        "Missing download signature parameters (key, token, expires)",
+        400,
+      );
     }
 
     const expiresAt = parseInt(expires, 10);
-    const isValid = localStorageService.verifyToken(key, expiresAt, "download", token);
+    const isValid = localStorageService.verifyToken(
+      key,
+      expiresAt,
+      "download",
+      token,
+    );
     if (!isValid) {
       throw new AppError("Invalid or expired download signature token", 403);
     }

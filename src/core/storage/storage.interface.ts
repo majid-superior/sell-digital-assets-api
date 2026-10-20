@@ -27,4 +27,10 @@ export interface IStorageService {
   deleteFile(storageKey: string): Promise<boolean>;
 
   getFileStats(storageKey: string): Promise<FileStats>;
+
+  uploadBuffer(
+    storageKey: string,
+    buffer: Buffer,
+    contentType?: string,
+  ): Promise<void>;
 }

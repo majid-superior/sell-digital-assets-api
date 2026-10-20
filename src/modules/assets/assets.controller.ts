@@ -345,6 +345,7 @@ export class AssetsController {
 
       res.status(200).json({
         success: true,
+        message: "Download URL generated successfully",
         downloadUrl: result.downloadUrl,
         data: {
           downloadUrl: result.downloadUrl,

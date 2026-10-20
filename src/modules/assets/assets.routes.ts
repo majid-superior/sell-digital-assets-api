@@ -166,6 +166,7 @@ router.get(
   "/:id/download",
   authenticate,
   downloadLimiter,
+  validateParams(IdParamSchema),
   assetsController.downloadAsset.bind(assetsController),
 );
 
@@ -176,6 +177,7 @@ router.post(
   "/:id/upload",
   ...sellerAuth,
   upload.single("file"),
+  validateParams(IdParamSchema),
   assetsController.uploadImageAsset.bind(assetsController),
 );
 
@@ -183,6 +185,7 @@ router.post(
   "/seller/:id/upload",
   ...sellerAuth,
   upload.single("file"),
+  validateParams(IdParamSchema),
   assetsController.uploadImageAsset.bind(assetsController),
 );
 
@@ -255,6 +258,7 @@ sellerAssetsRouter.post(
 sellerAssetsRouter.post(
   "/:id/upload",
   upload.single("file"),
+  validateParams(IdParamSchema),
   assetsController.uploadImageAsset.bind(assetsController),
 );
 sellerAssetsRouter.delete(

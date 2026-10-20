@@ -16,7 +16,8 @@ export interface EnvConfig {
   EXPOSE_STACK: boolean;
   REDIS_URL?: string | undefined;
   AWS_REGION: string;
-  AWS_BUCKET_NAME?: string | undefined;
+  AWS_BUCKET_PRIVATE?: string | undefined;
+  AWS_BUCKET_PREVIEWS?: string | undefined;
   AWS_ACCESS_KEY_ID?: string | undefined;
   AWS_SECRET_ACCESS_KEY?: string | undefined;
   AWS_ENDPOINT?: string | undefined;
@@ -130,7 +131,11 @@ export const env: EnvConfig = {
   NODE_ENV: nodeEnv as EnvConfig["NODE_ENV"],
   DATABASE_URL: getRequiredEnv("DATABASE_URL"),
   CLIENT_URL: clientUrl,
-  SERVER_URL: process.env.SERVER_URL?.trim() || process.env.API_URL?.trim() || process.env.RENDER_EXTERNAL_URL?.trim() || undefined,
+  SERVER_URL:
+    process.env.SERVER_URL?.trim() ||
+    process.env.API_URL?.trim() ||
+    process.env.RENDER_EXTERNAL_URL?.trim() ||
+    undefined,
   ALLOWED_ORIGINS: parsedOrigins,
   JWT_SECRET: getRequiredSecret("JWT_SECRET"),
   JWT_REFRESH_SECRET: getRequiredSecret("JWT_REFRESH_SECRET"),
@@ -139,13 +144,32 @@ export const env: EnvConfig = {
   EXPOSE_STACK: rawExposeStack === "true",
   REDIS_URL: process.env.REDIS_URL?.trim() || undefined,
   AWS_REGION: process.env.AWS_REGION?.trim() || "us-east-1",
-  AWS_BUCKET_NAME: process.env.AWS_BUCKET_NAME?.trim() || undefined,
+  AWS_BUCKET_PRIVATE: process.env.AWS_BUCKET_PRIVATE?.trim() || undefined,
+  AWS_BUCKET_PREVIEWS: process.env.AWS_BUCKET_PREVIEWS?.trim() || undefined,
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID?.trim() || undefined,
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY?.trim() || undefined,
   AWS_ENDPOINT: process.env.AWS_ENDPOINT?.trim() || undefined,
-  STORAGE_DRIVER: (process.env.STORAGE_DRIVER?.trim() as "local" | "r2" | "s3" | "supabase") || "local",
-  LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH?.trim() || (process.platform === "win32" ? "C:\\GH\\sell-digital-assets-storage" : "./storage"),
-  SUPABASE_URL: process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim() || undefined,
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY?.trim() || process.env.VITE_SUPABASE_ANON_KEY?.trim() || undefined,
+  STORAGE_DRIVER:
+    (process.env.STORAGE_DRIVER?.trim() as
+      | "local"
+      | "r2"
+      | "s3"
+      | "supabase") || "local",
+  LOCAL_STORAGE_PATH:
+    process.env.LOCAL_STORAGE_PATH?.trim() ||
+    (process.platform === "win32"
+      ? "C:\\GH\\sell-digital-assets-storage"
+      : "./storage"),
+  SUPABASE_URL:
+    process.env.SUPABASE_URL?.trim() ||
+    process.env.VITE_SUPABASE_URL?.trim() ||
+    (process.env.AWS_ENDPOINT?.includes(".storage.supabase.co")
+      ? `https://${new URL(process.env.AWS_ENDPOINT.trim()).hostname.replace(".storage.supabase.co", ".supabase.co")}`
+      : undefined),
+  SUPABASE_SERVICE_ROLE_KEY:
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
+  SUPABASE_ANON_KEY:
+    process.env.SUPABASE_ANON_KEY?.trim() ||
+    process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+    undefined,
 };
