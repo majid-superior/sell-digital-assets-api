@@ -628,8 +628,12 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id) W
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'storage') THEN
-        -- Best-effort SQL bucket initialization (Supabase JS API also ensures/updates them post-commit)
+        -- Best-effort SQL bucket initialization and object cleanup (Supabase JS/S3 API also ensures them post-commit)
         BEGIN
+            -- Step 20a: Empty both buckets at the database storage level
+            DELETE FROM storage.objects
+            WHERE bucket_id IN ('sell-digital-assets-storage-previews', 'sell-digital-assets-storage-private');
+
             INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
             VALUES (
                 'sell-digital-assets-storage-previews',
@@ -654,8 +658,8 @@ BEGIN
                 public = false,
                 file_size_limit = EXCLUDED.file_size_limit;
         EXCEPTION WHEN OTHERS THEN
-            -- In managed cloud databases where direct SQL access to storage.buckets is restricted,
-            -- this block safely passes, and buckets are provisioned by the Supabase Storage API.
+            -- In managed cloud databases where direct SQL access to storage.buckets/objects is restricted,
+            -- this block safely passes, and buckets are provisioned and emptied by the Supabase/S3 Storage API.
             NULL;
         END;
     END IF;
@@ -1240,7 +1244,7 @@ export async function resetDatabase(): Promise<void> {
       await targetClient.query("COMMIT");
       console.log("✅ Schema applied successfully with ZERO mock data!");
 
-      // If Supabase API credentials are configured, ensure buckets exist via Supabase Storage API
+      // If Supabase API credentials are configured, ensure and empty buckets via Supabase Storage API
       if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
         try {
           const { createClient } = await import("@supabase/supabase-js");
@@ -1274,9 +1278,85 @@ export async function resetDatabase(): Promise<void> {
             }).catch(() => {});
           }
 
-          console.log("🪣  Verified Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
+          // Empty both buckets via Supabase Storage API
+          await supabase.storage.emptyBucket("sell-digital-assets-storage-previews").catch(() => {});
+          await supabase.storage.emptyBucket("sell-digital-assets-storage-private").catch(() => {});
+
+          console.log("🪣  Verified and emptied Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
         } catch {
           // If network error or bucket already exists, proceed smoothly
+        }
+      }
+
+      // If S3 credentials are configured (e.g. Supabase S3 storage), also empty both buckets via S3 API
+      if (
+        process.env.AWS_ENDPOINT &&
+        process.env.AWS_ACCESS_KEY_ID &&
+        process.env.AWS_SECRET_ACCESS_KEY
+      ) {
+        try {
+          const { S3Client, ListObjectsV2Command, DeleteObjectsCommand } = await import("@aws-sdk/client-s3");
+          const s3 = new S3Client({
+            region: process.env.AWS_REGION || "auto",
+            endpoint: process.env.AWS_ENDPOINT,
+            forcePathStyle: true,
+            credentials: {
+              accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            },
+          });
+
+          const buckets = [
+            process.env.AWS_BUCKET_PREVIEWS || "sell-digital-assets-storage-previews",
+            process.env.AWS_BUCKET_PRIVATE || "sell-digital-assets-storage-private",
+          ];
+
+          for (const bucket of buckets) {
+            let continuationToken: string | undefined = undefined;
+            do {
+              const listRes: any = await s3.send(
+                new ListObjectsV2Command({
+                  Bucket: bucket,
+                  ContinuationToken: continuationToken,
+                })
+              );
+              if (listRes.Contents && listRes.Contents.length > 0) {
+                await s3.send(
+                  new DeleteObjectsCommand({
+                    Bucket: bucket,
+                    Delete: {
+                      Objects: listRes.Contents.map((obj: any) => ({ Key: obj.Key! })),
+                      Quiet: true,
+                    },
+                  })
+                );
+              }
+              continuationToken = listRes.NextContinuationToken;
+            } while (continuationToken);
+          }
+          console.log("🧹  Emptied storage buckets via S3 API: sell-digital-assets-storage-previews and sell-digital-assets-storage-private");
+        } catch {
+          // If S3 bucket empty fails or offline, continue smoothly
+        }
+      }
+
+      // Also empty local storage directory if local driver is used
+      if (process.env.STORAGE_DRIVER === "local" || !process.env.STORAGE_DRIVER) {
+        const localPath =
+          process.env.LOCAL_STORAGE_PATH ||
+          (process.platform === "win32"
+            ? "C:\\GH\\sell-digital-assets-storage"
+            : "./storage");
+        if (fs.existsSync(localPath)) {
+          try {
+            const files = fs.readdirSync(localPath);
+            for (const file of files) {
+              fs.rmSync(path.join(localPath, file), { recursive: true, force: true });
+            }
+            console.log(`🧹  Emptied local storage directory: ${localPath}`);
+          } catch {
+            // ignore
+          }
         }
       }
     } catch (schemaErr: any) {
