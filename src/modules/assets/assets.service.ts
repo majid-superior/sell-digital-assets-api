@@ -1130,9 +1130,13 @@ export class AssetsService {
       throw new AppError("Invalid or expired upload signature token", 403);
     }
 
-    if (declaredLength > MAX_UPLOAD_BYTES) {
+    const isMedia = key.startsWith("public/media/");
+    const maxAllowedBytes = isMedia ? 10 * 1024 * 1024 : MAX_UPLOAD_BYTES;
+    const maxAllowedLabel = isMedia ? "10 MB for showcase media" : "500 MB for deliverable packages";
+
+    if (declaredLength > maxAllowedBytes) {
       throw new AppError(
-        "Uploaded file exceeds maximum allowed size (500 MB)",
+        `Uploaded file exceeds maximum allowed size (${maxAllowedLabel}). Please choose a smaller file or compress it.`,
         413,
       );
     }
@@ -1149,10 +1153,10 @@ export class AssetsService {
         callback: TransformCallback,
       ) {
         bytesReceived += chunk.length;
-        if (bytesReceived > MAX_UPLOAD_BYTES) {
+        if (bytesReceived > maxAllowedBytes) {
           callback(
             new AppError(
-              "Uploaded file exceeds maximum allowed size (500 MB)",
+              `Uploaded file exceeds maximum allowed size (${maxAllowedLabel}). Please choose a smaller file or compress it.`,
               413,
             ),
           );

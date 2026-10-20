@@ -93,7 +93,23 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 
 ---
 
-## 4. Verification Checklist for AI Agents
+## 4. Human-Understandable Error Message Standard (MANDATORY RULE FOR AI AGENTS)
+
+1. **Zero Raw Technical Codes**:
+   - Never return cryptic technical errors, unformatted SQL/database exceptions, or raw HTTP status numbers without clear, human-understandable explanations.
+   - Every client-facing error payload must communicate:
+     - **What failed**: Plain English statement of the failure (e.g., "The uploaded file exceeds the maximum allowed file size limit").
+     - **Why it occurred**: The exact constraint or reason (e.g., "Showcase media is limited to 10 MB; Deliverables are limited to 500 MB").
+     - **How to resolve**: Actionable steps for the user (e.g., "Please compress the image or choose a file under 10 MB").
+2. **Multipart & File Upload Limits**:
+   - Multer exceptions (e.g., `LIMIT_FILE_SIZE`, `LIMIT_UNEXPECTED_FILE`, `LIMIT_FILE_COUNT`) must be intercepted and formatted into clean JSON with HTTP 413 or 400 and human explanations.
+   - Direct storage streaming endpoints must enforce separate limits for media (`public/media/` at 10 MB) vs deliverables (`vault/` at 500 MB) and supply clear error messages.
+3. **Database Constraint Sanitization**:
+   - PostgreSQL error codes (`23505`, `23503`, `23514`, `23502`, `22P02`) must always be mapped to readable domain descriptions (e.g., duplicate slug, invalid ID format).
+
+---
+
+## 5. Verification Checklist for AI Agents
 
 Before declaring any backend task complete, verify:
 
@@ -102,3 +118,4 @@ Before declaring any backend task complete, verify:
 3. Any new routes are properly mounted in `src/app.ts` and documented in Swagger (`npm run swagger`).
 4. Security middleware (IP Guard, Helmet, CORS, Rate Limiter) is not bypassed.
 5. In-memory data structures are not used as pseudo-databases; all data changes persist to PostgreSQL.
+6. All error responses provide human-understandable explanations with actionable recovery guidance.

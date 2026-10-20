@@ -60,12 +60,46 @@ export const errorMiddleware = (
     return;
   }
 
-  // 2. Payload Too Large
+  // 2. Payload Too Large (Express Body-Parser)
   if ((err as { type?: string }).type === "entity.too.large") {
     res.status(413).json({
       success: false,
       status: "fail",
-      message: `Request payload exceeds the maximum allowed limit (${env.BODY_LIMIT})`,
+      message: `The submitted request payload exceeds the allowed limit (${env.BODY_LIMIT}). Please reduce the payload size or use multipart file uploads.`,
+      ...(requestId ? { requestId } : {}),
+    });
+    return;
+  }
+
+  // 2b. Multipart Upload Errors (Multer)
+  const errCode = (err as { code?: string }).code;
+  if (err.name === "MulterError" || (typeof errCode === "string" && errCode.startsWith("LIMIT_"))) {
+    let multerStatus = 400;
+    let humanMessage = "File upload failed due to invalid multipart submission.";
+
+    switch (errCode) {
+      case "LIMIT_FILE_SIZE":
+        multerStatus = 413;
+        humanMessage = "The uploaded file exceeds the maximum allowed file size limit. Please choose a smaller file or compress it.";
+        break;
+      case "LIMIT_FILE_COUNT":
+        multerStatus = 400;
+        humanMessage = "Too many files uploaded in a single request. Please upload files in smaller batches.";
+        break;
+      case "LIMIT_UNEXPECTED_FILE":
+        multerStatus = 400;
+        humanMessage = "An unexpected file field was encountered in the upload form. Please check the upload requirements.";
+        break;
+      case "LIMIT_PART_COUNT":
+        multerStatus = 400;
+        humanMessage = "Too many parts submitted in multipart request. Please reduce the number of fields or files.";
+        break;
+    }
+
+    res.status(multerStatus).json({
+      success: false,
+      status: "fail",
+      message: humanMessage,
       ...(requestId ? { requestId } : {}),
     });
     return;
