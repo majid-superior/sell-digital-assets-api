@@ -65,6 +65,16 @@ export interface UpdateAssetDto {
 }
 
 export class AssetsRepository extends BaseRepository<AssetEntity> {
+  private schemaEnsured = false;
+
+  private async ensureSchema(): Promise<void> {
+    if (this.schemaEnsured) return;
+    await this.query(
+      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS seller_feedback TEXT;",
+    );
+    this.schemaEnsured = true;
+  }
+
   async findPublic(filter: AssetPublicFilter = {}) {
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(50, Math.max(1, filter.limit ?? 12));
@@ -330,12 +340,113 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findById(id: string): Promise<AssetEntity | null> {
+    await this.ensureSchema();
     const sql = `
       SELECT a.*
       FROM assets a
       WHERE a.id = $1 AND a.is_active = TRUE AND a.deleted_at IS NULL;
     `;
     const res = await this.query<AssetEntity>(sql, [id]);
+    return res.rows[0] || null;
+  }
+
+  async findByIdForSeller(id: string, sellerId: string): Promise<AssetEntity | null> {
+    await this.ensureSchema();
+    const sql = `
+      SELECT 
+        a.id,
+        a.seller_id,
+        a.category_id,
+        a.title,
+        a.slug,
+        a.short_description,
+        a.full_description,
+        a.preview_url,
+        a.status,
+        a.admin_feedback,
+        a.seller_feedback,
+        a.reviewed_by,
+        a.reviewed_at,
+        a.submitted_at,
+        a.tags,
+        a.technical_specs,
+        a.view_count,
+        a.download_count,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        json_build_object(
+          'id', c.id,
+          'name', c.name,
+          'slug', c.slug
+        ) AS category,
+        json_build_object(
+          'id', u.id,
+          'name', u.name
+        ) AS seller,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', at.id,
+                'tier_type', at.tier_type,
+                'price', at.price::float,
+                'license_terms_summary', at.license_terms_summary
+              ) ORDER BY at.price ASC
+            )
+            FROM asset_tiers at
+            WHERE at.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS tiers,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', am.id,
+                'media_type', am.media_type,
+                'url', am.url,
+                'display_order', am.display_order
+              ) ORDER BY am.display_order ASC
+            )
+            FROM asset_media am
+            WHERE am.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS media,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', af.id,
+                'version', af.version,
+                'file_name', af.file_name,
+                'file_size_bytes', af.file_size_bytes::bigint,
+                'file_checksum_sha256', af.file_checksum_sha256,
+                'manifest_tree', af.manifest_tree,
+                'is_active', af.is_active,
+                'created_at', af.created_at
+              ) ORDER BY af.created_at DESC
+            )
+            FROM asset_files af
+            WHERE af.asset_id = a.id AND af.is_active = TRUE
+          ),
+          '[]'::json
+        ) AS files,
+        (
+          SELECT am.url
+          FROM asset_media am
+          WHERE am.asset_id = a.id AND am.media_type = 'thumbnail'
+          ORDER BY am.display_order ASC
+          LIMIT 1
+        ) AS thumbnail_url
+      FROM assets a
+      JOIN categories c ON a.category_id = c.id
+      JOIN users u ON a.seller_id = u.id
+      WHERE a.id = $1 AND a.seller_id = $2 AND a.deleted_at IS NULL
+      LIMIT 1;
+    `;
+    const res = await this.query<AssetEntity>(sql, [id, sellerId]);
     return res.rows[0] || null;
   }
 
@@ -369,6 +480,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findBySeller(sellerId: string, filter: AssetSellerFilter = {}) {
+    await this.ensureSchema();
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(50, Math.max(1, filter.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -393,8 +505,20 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     const statsSql = `
       SELECT 
         COUNT(*)::int AS total_assets,
+        COUNT(*) FILTER (WHERE a.status = 'published')::int AS published_assets,
+        COUNT(*) FILTER (WHERE a.status = 'pending')::int AS pending_assets,
+        COUNT(*) FILTER (WHERE a.status = 'needs_update')::int AS needs_update_assets,
+        COUNT(*) FILTER (WHERE a.status = 'rejected')::int AS rejected_assets,
+        COUNT(*) FILTER (WHERE a.status = 'draft')::int AS draft_assets,
+        COUNT(*) FILTER (WHERE a.status = 'archived')::int AS archived_assets,
         COALESCE(SUM(view_count), 0)::int AS total_views,
         COALESCE(SUM(download_count), 0)::int AS total_downloads
+      FROM assets a
+      WHERE a.seller_id = $1 AND a.deleted_at IS NULL;
+    `;
+
+    const countSql = `
+      SELECT COUNT(*)::int AS filtered_total
       FROM assets a
       WHERE ${whereClause};
     `;
@@ -403,15 +527,20 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     const dataSql = `
       SELECT 
         a.id,
+        a.seller_id,
         a.category_id,
         a.title,
         a.slug,
         a.short_description,
+        a.full_description,
+        a.preview_url,
         a.status,
         a.admin_feedback,
+        a.seller_feedback,
         a.reviewed_at,
         a.submitted_at,
         a.tags,
+        a.technical_specs,
         a.view_count,
         a.download_count,
         a.created_at,
@@ -437,7 +566,12 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
           WHERE am.asset_id = a.id AND am.media_type = 'thumbnail'
           ORDER BY am.display_order ASC
           LIMIT 1
-        ) AS thumbnail_url
+        ) AS thumbnail_url,
+        (
+          SELECT COUNT(*)::int
+          FROM asset_files af
+          WHERE af.asset_id = a.id AND af.is_active = TRUE
+        ) AS file_count
       FROM assets a
       JOIN categories c ON a.category_id = c.id
       WHERE ${whereClause}
@@ -445,29 +579,44 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       LIMIT $${params.length + 1} OFFSET $${params.length + 2};
     `;
 
-    const [statsResult, dataResult] = await Promise.all([
-      this.query<any>(statsSql, params),
+    const [statsResult, countResult, dataResult] = await Promise.all([
+      this.query<any>(statsSql, [sellerId]),
+      this.query<{ filtered_total: number }>(countSql, params),
       this.query<any>(dataSql, dataParams),
     ]);
 
     const stats = statsResult.rows[0] || {
       total_assets: 0,
+      published_assets: 0,
+      pending_assets: 0,
+      needs_update_assets: 0,
+      rejected_assets: 0,
+      draft_assets: 0,
+      archived_assets: 0,
       total_views: 0,
       total_downloads: 0,
     };
 
+    const filteredTotal = countResult.rows[0]?.filtered_total ?? 0;
+
     return {
       stats: {
-        totalAssets: stats.total_assets,
-        totalViews: stats.total_views,
-        totalDownloads: stats.total_downloads,
+        totalAssets: Number(stats.total_assets) || 0,
+        publishedAssets: Number(stats.published_assets) || 0,
+        pendingAssets: Number(stats.pending_assets) || 0,
+        needsUpdateAssets: Number(stats.needs_update_assets) || 0,
+        rejectedAssets: Number(stats.rejected_assets) || 0,
+        draftAssets: Number(stats.draft_assets) || 0,
+        archivedAssets: Number(stats.archived_assets) || 0,
+        totalViews: Number(stats.total_views) || 0,
+        totalDownloads: Number(stats.total_downloads) || 0,
       },
       data: dataResult.rows,
       pagination: {
-        total: stats.total_assets,
+        total: filteredTotal,
         page,
         limit,
-        totalPages: Math.ceil(stats.total_assets / limit),
+        totalPages: Math.ceil(filteredTotal / limit) || 1,
       },
     };
   }
@@ -622,17 +771,29 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     });
   }
 
-  async updateStatus(id: string, sellerId: string, status: string): Promise<AssetEntity | null> {
+  async updateStatus(
+    id: string,
+    sellerId: string,
+    status: string,
+    sellerFeedback?: string,
+  ): Promise<AssetEntity | null> {
+    await this.ensureSchema();
     const sql = `
       UPDATE assets
       SET 
         status = $1::varchar,
+        seller_feedback = CASE WHEN $4::text IS NOT NULL THEN $4::text ELSE seller_feedback END,
         submitted_at = CASE WHEN $1::varchar = 'pending' THEN CURRENT_TIMESTAMP ELSE submitted_at END,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = $2 AND seller_id = $3 AND deleted_at IS NULL
       RETURNING *;
     `;
-    const res = await this.query<AssetEntity>(sql, [status, id, sellerId]);
+    const res = await this.query<AssetEntity>(sql, [
+      status,
+      id,
+      sellerId,
+      sellerFeedback ?? null,
+    ]);
     return res.rows[0] || null;
   }
 
@@ -655,6 +816,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     page?: number | undefined;
     limit?: number | undefined;
   }) {
+    await this.ensureSchema();
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(100, Math.max(1, filter.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -705,6 +867,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.full_description,
         a.status,
         a.admin_feedback,
+        a.seller_feedback,
         a.reviewed_by,
         a.reviewed_at,
         a.submitted_at,
@@ -795,6 +958,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findByIdForAdmin(id: string): Promise<AssetEntity | null> {
+    await this.ensureSchema();
     const sql = `
       SELECT 
         a.id,
@@ -808,6 +972,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.storage_path,
         a.status,
         a.admin_feedback,
+        a.seller_feedback,
         a.reviewed_by,
         a.reviewed_at,
         a.submitted_at,
@@ -915,12 +1080,13 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     action: "approve" | "reject" | "needs_update",
     feedback?: string,
   ): Promise<AssetEntity | null> {
+    await this.ensureSchema();
     let newStatus: string;
     let finalFeedback: string | null = null;
 
     if (action === "approve") {
       newStatus = "published";
-      finalFeedback = null;
+      finalFeedback = feedback?.trim() ? feedback.trim() : null;
     } else if (action === "reject") {
       newStatus = "rejected";
       finalFeedback = feedback || null;

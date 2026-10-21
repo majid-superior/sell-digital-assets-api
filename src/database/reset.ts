@@ -468,6 +468,7 @@ CREATE TABLE IF NOT EXISTS assets (
     storage_path TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'needs_update', 'published', 'rejected', 'archived', 'under_review')),
     admin_feedback TEXT,
+    seller_feedback TEXT,
     reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at TIMESTAMPTZ,
     submitted_at TIMESTAMPTZ,

@@ -126,6 +126,21 @@ export class AssetsController {
     }
   }
 
+  async getSellerAssetById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const sellerId = this.getSellerId(req);
+      const asset = await assetsService.getSellerAssetById(id, sellerId);
+
+      res.status(200).json({
+        success: true,
+        data: asset,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async updateAsset(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params as { id: string };
@@ -148,9 +163,9 @@ export class AssetsController {
     try {
       const { id } = req.params as { id: string };
       const sellerId = this.getSellerId(req);
-      const { status } = req.body as UpdateAssetStatusInput;
+      const { status, feedback } = req.body as UpdateAssetStatusInput;
 
-      const asset = await assetsService.updateAssetStatus(id, sellerId, status);
+      const asset = await assetsService.updateAssetStatus(id, sellerId, status, feedback);
 
       res.status(200).json({
         success: true,

@@ -175,6 +175,14 @@ export class AssetsService {
     });
   }
 
+  async getSellerAssetById(id: string, sellerId: string) {
+    const asset = await assetsRepository.findByIdForSeller(id, sellerId);
+    if (!asset) {
+      throw new AppError("Asset not found or unauthorized", 404);
+    }
+    return asset;
+  }
+
   async updateAsset(id: string, sellerId: string, input: UpdateAssetInput) {
     const existing = await assetsRepository.findById(id);
     if (!existing || existing.seller_id !== sellerId) {
@@ -206,7 +214,12 @@ export class AssetsService {
     return updated;
   }
 
-  async updateAssetStatus(id: string, sellerId: string, status: string) {
+  async updateAssetStatus(
+    id: string,
+    sellerId: string,
+    status: string,
+    feedback?: string,
+  ) {
     const existing = await assetsRepository.findById(id);
     if (!existing || existing.seller_id !== sellerId) {
       throw new AppError("Asset not found or unauthorized", 404);
@@ -227,6 +240,23 @@ export class AssetsService {
       );
     }
 
+    const trimmedFeedback = feedback?.trim() ? feedback.trim() : undefined;
+
+    // Prevent duplicate submissions or redundant status transitions
+    if (status === "pending" && existing.status === "pending") {
+      if (
+        !trimmedFeedback ||
+        trimmedFeedback === (existing.seller_feedback || "").trim()
+      ) {
+        throw new AppError(
+          "This asset is already submitted and awaiting admin review.",
+          400,
+        );
+      }
+    } else if (status !== "pending" && existing.status === status) {
+      throw new AppError(`Asset is already in '${status}' status.`, 400);
+    }
+
     // When submitting for review, ensure at least one active file upload exists
     if (status === "pending") {
       const activeFile = await licensesRepository.findActiveFile(id);
@@ -238,32 +268,53 @@ export class AssetsService {
       }
     }
 
-    const updated = await assetsRepository.updateStatus(id, sellerId, status);
+    const updated = await assetsRepository.updateStatus(
+      id,
+      sellerId,
+      status,
+      trimmedFeedback,
+    );
     if (!updated) {
       throw new AppError("Failed to transition asset status", 500);
     }
 
-    // If submitted or resubmitted for review, notify admins
+    // If submitted, resubmitted, or replied for review, notify admins
     if (status === "pending") {
       const isResubmit =
         existing.status === "needs_update" || existing.status === "rejected";
+      const isReplyOnPending =
+        existing.status === "pending" && Boolean(trimmedFeedback);
       const seller = await userRepository.findById(sellerId);
       const sellerName = seller?.name || "A seller";
 
+      const feedbackSuffix = trimmedFeedback
+        ? ` Seller note: "${trimmedFeedback}"`
+        : "";
+
       await notificationsService.notifyAdmins({
-        type: isResubmit ? "asset_resubmitted" : "asset_submitted",
-        title: isResubmit
-          ? "Digital Asset Resubmitted for Review"
-          : "New Digital Asset Submitted",
-        message: isResubmit
-          ? `${sellerName} has updated and resubmitted "${existing.title}" after review feedback.`
-          : `${sellerName} has submitted "${existing.title}" for approval.`,
+        type: isReplyOnPending
+          ? "asset_seller_reply"
+          : isResubmit
+            ? "asset_resubmitted"
+            : "asset_submitted",
+        title: isReplyOnPending
+          ? "Seller Responded to Asset Review"
+          : isResubmit
+            ? "Digital Asset Resubmitted for Review"
+            : "New Digital Asset Submitted",
+        message: isReplyOnPending
+          ? `${sellerName} added a response for "${existing.title}".${feedbackSuffix}`
+          : isResubmit
+            ? `${sellerName} has updated and resubmitted "${existing.title}" after review feedback.${feedbackSuffix}`
+            : `${sellerName} has submitted "${existing.title}" for approval.${feedbackSuffix}`,
         data: {
           assetId: id,
           slug: existing.slug,
           sellerId,
+          sellerName,
           title: existing.title,
           isResubmit,
+          sellerFeedback: trimmedFeedback || existing.seller_feedback || null,
         },
       });
     }
@@ -301,6 +352,39 @@ export class AssetsService {
       throw new AppError("Asset not found", 404);
     }
 
+    if (asset.status === "draft" || asset.status === "archived") {
+      throw new AppError(
+        `Cannot review an asset in '${asset.status}' status. The seller must submit it for review first.`,
+        400,
+      );
+    }
+
+    const trimmedFeedback = input.feedback?.trim() || "";
+
+    if (input.action === "approve" && asset.status === "published") {
+      throw new AppError("This asset is already approved and published.", 400);
+    }
+    if (
+      input.action === "reject" &&
+      asset.status === "rejected" &&
+      (asset.admin_feedback || "").trim() === trimmedFeedback
+    ) {
+      throw new AppError(
+        "This asset has already been rejected with the same feedback.",
+        400,
+      );
+    }
+    if (
+      input.action === "needs_update" &&
+      asset.status === "needs_update" &&
+      (asset.admin_feedback || "").trim() === trimmedFeedback
+    ) {
+      throw new AppError(
+        "An update request with this feedback has already been sent for this asset.",
+        400,
+      );
+    }
+
     if (input.action === "approve") {
       const activeFile = await licensesRepository.findActiveFile(assetId);
       if (!activeFile) {
@@ -324,11 +408,17 @@ export class AssetsService {
 
     // Dispatch notification to seller based on admin decision
     if (input.action === "approve") {
+      const noteText = trimmedFeedback ? ` Reviewer note: "${trimmedFeedback}"` : "";
       await notificationsService.notifySeller(asset.seller_id, {
         type: "asset_approved",
         title: "Your Asset Has Been Approved! 🎉",
-        message: `Congratulations! Your digital asset "${asset.title}" has been approved by an administrator and is now live on the marketplace.`,
-        data: { assetId, slug: asset.slug, title: asset.title },
+        message: `Congratulations! Your digital asset "${asset.title}" has been approved by an administrator and is now live on the marketplace.${noteText}`,
+        data: {
+          assetId,
+          slug: asset.slug,
+          title: asset.title,
+          ...(trimmedFeedback ? { feedback: trimmedFeedback } : {}),
+        },
       });
     } else if (input.action === "reject") {
       await notificationsService.notifySeller(asset.seller_id, {

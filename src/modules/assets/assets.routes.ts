@@ -77,6 +77,14 @@ router.get(
   assetsController.getSellerAssets.bind(assetsController),
 );
 
+// GET /api/v1/assets/seller/:id — Get seller's single asset by ID (any status)
+router.get(
+  "/seller/:id",
+  ...sellerAuth,
+  validateParams(IdParamSchema),
+  assetsController.getSellerAssetById.bind(assetsController),
+);
+
 // PATCH /api/v1/assets/seller/:id — Update asset info, description, or specs
 router.patch(
   "/seller/:id",
@@ -214,6 +222,11 @@ sellerAssetsRouter.get(
   validateQuery(SellerAssetQuerySchema),
   assetsController.getSellerAssets.bind(assetsController),
 );
+sellerAssetsRouter.get(
+  "/:id",
+  validateParams(IdParamSchema),
+  assetsController.getSellerAssetById.bind(assetsController),
+);
 sellerAssetsRouter.patch(
   "/:id",
   validateParams(IdParamSchema),
@@ -260,6 +273,11 @@ sellerAssetsRouter.post(
   upload.single("file"),
   validateParams(IdParamSchema),
   assetsController.uploadImageAsset.bind(assetsController),
+);
+sellerAssetsRouter.delete(
+  "/:id/media/:mediaId",
+  validateParams(MediaIdParamSchema),
+  assetsController.deleteMedia.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id/files/:fileId",

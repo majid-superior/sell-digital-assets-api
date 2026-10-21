@@ -172,6 +172,7 @@ export interface AssetEntity {
     | "archived"
     | "under_review";
   admin_feedback?: string | null;
+  seller_feedback?: string | null;
   reviewed_by?: string | null;
   reviewed_at?: Date | string | null;
   submitted_at?: Date | string | null;
