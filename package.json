@@ -10,6 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "db:reset": "tsx src/database/reset.ts",
+    "db:user": "tsx src/database/users.ts",
     "swagger": "tsx src/swagger/swagger.ts"
   },
   "repository": {
