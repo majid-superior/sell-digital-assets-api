@@ -22,7 +22,6 @@ export interface BannerEntity {
   title: string;
   description: string | null;
   supporting_text: string | null;
-  badge_text: string | null;
   badge_type: BannerBadgeType;
   cta_label: string | null;
   cta_url: string | null;
@@ -43,7 +42,6 @@ export interface CreateBannerDbInput {
   title: string;
   description: string | null;
   supporting_text: string | null;
-  badge_text: string | null;
   badge_type: BannerBadgeType;
   cta_label: string | null;
   cta_url: string | null;
@@ -62,7 +60,6 @@ export interface UpdateBannerDbInput {
   title?: string;
   description?: string | null;
   supporting_text?: string | null;
-  badge_text?: string | null;
   badge_type?: BannerBadgeType;
   cta_label?: string | null;
   cta_url?: string | null;
@@ -91,7 +88,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
         title VARCHAR(200) NOT NULL,
         description VARCHAR(500),
         supporting_text VARCHAR(200),
-        badge_text VARCHAR(80),
         badge_type VARCHAR(30) NOT NULL DEFAULT 'special_offer'
           CHECK (badge_type IN ('special_offer', 'hot_deal', 'new_release', 'limited_time', 'announcement', 'flash_sale', 'none')),
         cta_label VARCHAR(80),
@@ -111,6 +107,7 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
         CONSTRAINT chk_banners_title_not_empty CHECK (length(trim(title)) > 0),
         CONSTRAINT chk_banners_schedule_window CHECK (starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at)
       );
+      ALTER TABLE banners DROP COLUMN IF EXISTS badge_text;
       CREATE INDEX IF NOT EXISTS idx_banners_active_schedule
         ON banners (is_active, priority DESC, starts_at, ends_at);
     `);
@@ -130,7 +127,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,
@@ -171,7 +167,7 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
           title ILIKE $1
           OR COALESCE(description, '') ILIKE $1
           OR COALESCE(supporting_text, '') ILIKE $1
-          OR COALESCE(badge_text, '') ILIKE $1
+          OR COALESCE(badge_type, '') ILIKE $1
           OR COALESCE(cta_label, '') ILIKE $1
         )
       `;
@@ -183,7 +179,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,
@@ -217,7 +212,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,
@@ -249,7 +243,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,
@@ -263,15 +256,14 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          timezone,
          created_by
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8,
-         $9, $10, $11, $12, $13, $14, $15, $16
+         $1, $2, $3, $4, $5, $6, $7,
+         $8, $9, $10, $11, $12, $13, $14, $15
        )
        RETURNING
          id,
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,
@@ -290,7 +282,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
         input.title,
         input.description,
         input.supporting_text,
-        input.badge_text,
         input.badge_type,
         input.cta_label,
         input.cta_url,
@@ -329,7 +320,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
     if (input.title !== undefined) addField("title", input.title);
     if (input.description !== undefined) addField("description", input.description);
     if (input.supporting_text !== undefined) addField("supporting_text", input.supporting_text);
-    if (input.badge_text !== undefined) addField("badge_text", input.badge_text);
     if (input.badge_type !== undefined) addField("badge_type", input.badge_type);
     if (input.cta_label !== undefined) addField("cta_label", input.cta_label);
     if (input.cta_url !== undefined) addField("cta_url", input.cta_url);
@@ -358,7 +348,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
          title,
          description,
          supporting_text,
-         badge_text,
          badge_type,
          cta_label,
          cta_url,

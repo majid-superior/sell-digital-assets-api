@@ -642,7 +642,6 @@ CREATE TABLE IF NOT EXISTS banners (
     title VARCHAR(200) NOT NULL,
     description VARCHAR(500),
     supporting_text VARCHAR(200),
-    badge_text VARCHAR(80),
     badge_type VARCHAR(30) NOT NULL DEFAULT 'special_offer'
         CHECK (badge_type IN ('special_offer', 'hot_deal', 'new_release', 'limited_time', 'announcement', 'flash_sale', 'none')),
     cta_label VARCHAR(80),

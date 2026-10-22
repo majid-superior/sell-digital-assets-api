@@ -22,8 +22,6 @@ export interface PublicBannerDto {
   description: string | null;
   supporting_text: string | null;
   supportingText: string | null;
-  badge_text: string | null;
-  badgeText: string | null;
   badge_type: BannerBadgeType;
   badgeType: BannerBadgeType;
   cta_label: string | null;
@@ -71,16 +69,6 @@ export interface PaginatedAdminBannersResult {
     totalPages: number;
   };
 }
-
-const DEFAULT_BADGE_LABELS: Record<BannerBadgeType, string | null> = {
-  special_offer: "Special Offer",
-  hot_deal: "Hot Deal",
-  new_release: "New Release",
-  limited_time: "Limited Time",
-  announcement: "Announcement",
-  flash_sale: "Flash Sale",
-  none: null,
-};
 
 /**
  * Converts a wall-clock date/time string (either ISO with offset/Z or local "YYYY-MM-DDTHH:mm[:ss]"
@@ -230,10 +218,6 @@ function toIsoOrNull(val: Date | string | null | undefined): string | null {
 
 function toPublicBannerDto(entity: BannerEntity): PublicBannerDto {
   const badgeType: BannerBadgeType = entity.badge_type || "special_offer";
-  const resolvedBadgeText =
-    badgeType === "none"
-      ? null
-      : entity.badge_text?.trim() || DEFAULT_BADGE_LABELS[badgeType] || null;
   const startsAt = toIsoOrNull(entity.starts_at);
   const endsAt = toIsoOrNull(entity.ends_at);
   const showCta =
@@ -247,8 +231,6 @@ function toPublicBannerDto(entity: BannerEntity): PublicBannerDto {
     description: entity.description ?? null,
     supporting_text: entity.supporting_text ?? null,
     supportingText: entity.supporting_text ?? null,
-    badge_text: resolvedBadgeText,
-    badgeText: resolvedBadgeText,
     badge_type: badgeType,
     badgeType,
     cta_label: showCta ? (entity.cta_label?.trim() ?? null) : (entity.cta_label ?? null),
@@ -407,12 +389,6 @@ export class BannersService {
 
     const badgeType: BannerBadgeType =
       input.badgeType ?? input.badge_type ?? "special_offer";
-    const rawBadgeText =
-      input.badgeText !== undefined ? input.badgeText : input.badge_text;
-    const badgeText =
-      badgeType === "none"
-        ? null
-        : rawBadgeText?.trim() || DEFAULT_BADGE_LABELS[badgeType] || null;
 
     const showCta = input.showCta ?? input.show_cta ?? true;
     const ctaLabel =
@@ -445,7 +421,6 @@ export class BannersService {
           ? input.supportingText
           : input.supporting_text
         )?.trim() || null,
-      badge_text: badgeText,
       badge_type: badgeType,
       cta_label: ctaLabel,
       cta_url: ctaUrl,
@@ -520,18 +495,6 @@ export class BannersService {
     const nextBadgeType: BannerBadgeType =
       input.badgeType ?? input.badge_type ?? existing.badge_type;
 
-    const hasBadgeTextUpdate =
-      input.badgeText !== undefined || input.badge_text !== undefined;
-    const rawBadgeText =
-      input.badgeText !== undefined ? input.badgeText : input.badge_text;
-
-    const nextBadgeText =
-      nextBadgeType === "none"
-        ? null
-        : hasBadgeTextUpdate
-          ? rawBadgeText?.trim() || DEFAULT_BADGE_LABELS[nextBadgeType] || null
-          : existing.badge_text || DEFAULT_BADGE_LABELS[nextBadgeType] || null;
-
     const nextShowCta =
       input.showCta ?? input.show_cta ?? existing.show_cta;
 
@@ -578,7 +541,6 @@ export class BannersService {
           ? input.description?.trim() || null
           : existing.description,
       supporting_text: nextSupportingText,
-      badge_text: nextBadgeText,
       badge_type: nextBadgeType,
       cta_label: nextCtaLabel,
       cta_url: nextCtaUrl,
