@@ -11,6 +11,7 @@ export interface DefaultThemeConfig {
   id?: number;
   name: string;
   slug: string;
+  mode: "light" | "dark";
   is_active: boolean;
   color_hex_map: typeof COLOR_HEX_MAP;
   color_tokens: typeof COLOR_TOKENS;
@@ -21,6 +22,7 @@ export const defaultTheme: DefaultThemeConfig = {
   id: 1,
   name: "Default Theme",
   slug: "default",
+  mode: "dark",
   is_active: true,
   color_hex_map: COLOR_HEX_MAP,
   color_tokens: COLOR_TOKENS,

@@ -4,18 +4,24 @@
  * Supports synchronized Light & Dark themes with the application theme switcher.
  */
 (function () {
-  // 1. Immediately apply saved theme to avoid FOUC
+  // 1. Immediately apply saved theme (falling back to Dark mode) to avoid FOUC
   try {
     var storedTheme = localStorage.getItem('theme');
-    var isDark = storedTheme === 'dark' || (!storedTheme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if (isDark) {
+    var theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : 'dark';
+    if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.style.colorScheme = 'dark';
     } else {
       document.documentElement.classList.remove('dark');
       document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.style.colorScheme = 'light';
     }
-  } catch (e) {}
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.style.colorScheme = 'dark';
+  }
 
   function initLayout() {
     const swaggerUiDiv = document.getElementById('swagger-ui');

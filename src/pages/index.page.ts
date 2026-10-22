@@ -9,9 +9,10 @@ import { renderFooter } from "./components/footer.component.js";
 
 export function renderIndexPage(data: SystemStatus): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <meta name="color-scheme" content="dark light" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="${escapeHtml(organization.description)}" />
   <title>${escapeHtml(organization.title)} | API</title>
@@ -22,15 +23,21 @@ export function renderIndexPage(data: SystemStatus): string {
     (function() {
       try {
         var stored = localStorage.getItem('theme');
-        var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (isDark) {
+        var theme = stored === 'dark' || stored === 'light' ? stored : 'dark';
+        if (theme === 'dark') {
           document.documentElement.classList.add('dark');
           document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.style.colorScheme = 'dark';
         } else {
           document.documentElement.classList.remove('dark');
           document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.style.colorScheme = 'light';
         }
-      } catch (e) {}
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
+      }
     })();
   </script>
 

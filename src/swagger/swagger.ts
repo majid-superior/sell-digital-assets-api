@@ -61,6 +61,10 @@ const doc = {
       description: "Admin asset moderation, approval, rejection, and review feedback",
     },
     {
+      name: "Banners",
+      description: "Promotional announcement banners CRUD, scheduling, priority, and public delivery",
+    },
+    {
       name: "Notifications",
       description: "In-app notifications for admins and sellers regarding asset submissions & decisions",
     },
@@ -321,6 +325,7 @@ const routes = [
   "./src/modules/assets/licenses.routes.ts",
   "./src/modules/assets/storage.routes.ts",
   "./src/modules/notifications/notifications.routes.ts",
+  "./src/modules/banners/banners.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -999,6 +1004,53 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         methods.patch.summary = "Mark single notification as read";
         methods.patch.description =
           "Marks a specific notification as read by UUID";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/banners")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Banners"];
+        if (
+          normalizedPath !== "/api/v1/banners/active" &&
+          normalizedPath !== "/api/v1/banners/public"
+        ) {
+          method.security = [{ bearerAuth: [] }];
+        }
+      }
+      if (
+        (normalizedPath === "/api/v1/banners/active" ||
+          normalizedPath === "/api/v1/banners/public") &&
+        methods.get
+      ) {
+        methods.get.summary = "Get active promotional banners";
+        methods.get.description =
+          "Returns only currently active and schedule-eligible promotional banners ordered by priority";
+      } else if (normalizedPath === "/api/v1/banners") {
+        if (methods.get) {
+          methods.get.summary = "List all promotional banners (Admin only)";
+          methods.get.description =
+            "Returns all promotional banners with computed status and summary metrics";
+        }
+        if (methods.post) {
+          methods.post.summary = "Create promotional banner (Admin only)";
+          methods.post.description =
+            "Creates a new promotional banner in PostgreSQL";
+        }
+      } else if (normalizedPath === "/api/v1/banners/{id}/status" && methods.patch) {
+        methods.patch.summary = "Toggle promotional banner active status (Admin only)";
+        methods.patch.description =
+          "Activates or deactivates a promotional banner by UUID";
+      } else if (normalizedPath === "/api/v1/banners/{id}") {
+        if (methods.get) {
+          methods.get.summary = "Get promotional banner by ID (Admin only)";
+        }
+        if (methods.patch) {
+          methods.patch.summary = "Update promotional banner (Admin only)";
+        }
+        if (methods.put) {
+          methods.put.summary = "Replace/Update promotional banner (Admin only)";
+        }
+        if (methods.delete) {
+          methods.delete.summary = "Delete promotional banner (Admin only)";
+        }
       }
     }
   }

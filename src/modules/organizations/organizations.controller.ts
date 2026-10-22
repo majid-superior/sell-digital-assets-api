@@ -3,9 +3,10 @@ import { organizationsService } from "./organizations.service.js";
 import type { UpdateOrganizationInput } from "./organizations.schema.js";
 
 export class OrganizationsController {
-  async getOrganization(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getOrganization(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await organizationsService.getOrganization();
+      const isAdmin = req.user?.role === "admin";
+      const data = await organizationsService.getOrganization(isAdmin);
       res.status(200).json({
         success: true,
         data,
@@ -41,9 +42,10 @@ export class OrganizationsController {
     }
   }
 
-  async getSystemSettings(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getSystemSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await organizationsService.getSystemSettings();
+      const isAdmin = req.user?.role === "admin";
+      const data = await organizationsService.getSystemSettings(isAdmin);
       res.status(200).json({
         success: true,
         data,

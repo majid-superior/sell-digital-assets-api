@@ -18,9 +18,10 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
     : "The requested route is not registered on this API server or is blocked from direct browser access:";
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <meta name="color-scheme" content="dark light" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${pageTitle}</title>
   <link rel="icon" type="${escapeHtml(organization.favicon.type)}" href="${escapeHtml(organization.favicon.url)}" />
@@ -30,15 +31,21 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
     (function() {
       try {
         var stored = localStorage.getItem('theme');
-        var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (isDark) {
+        var theme = stored === 'dark' || stored === 'light' ? stored : 'dark';
+        if (theme === 'dark') {
           document.documentElement.classList.add('dark');
           document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.style.colorScheme = 'dark';
         } else {
           document.documentElement.classList.remove('dark');
           document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.style.colorScheme = 'light';
         }
-      } catch (e) {}
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
+      }
     })();
   </script>
 

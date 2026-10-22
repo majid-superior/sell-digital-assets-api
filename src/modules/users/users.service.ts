@@ -1,5 +1,8 @@
 import { userRepository, type UserEntity, type PaginationQuery, type PaginatedResult } from "../../database/repositories/user.repository.js";
 import { AppError } from "../../core/errors/app-error.js";
+import { hashPassword } from "../../core/security/password.js";
+import { revokeAllUserTokens } from "../../core/security/tokens.js";
+import { authService } from "../auth/auth.service.js";
 import type { UpdateUserInput } from "./users.schema.js";
 
 export class UsersService {
@@ -25,15 +28,30 @@ export class UsersService {
       throw new AppError("User not found", 404);
     }
 
+    let passwordHash: string | undefined;
+    if (data.password) {
+      authService.validatePasswordPolicy(data.password);
+      passwordHash = await hashPassword(data.password);
+    }
+
     const normalizedStatus =
       data.status === "deactive" ? "suspended" : data.status;
 
     const updated = await userRepository.update(id, {
+      name: data.name,
+      passwordHash,
       status: normalizedStatus,
+      ...(normalizedStatus === "active" && !user.email_verified_at
+        ? { emailVerifiedAt: new Date() }
+        : {}),
     });
 
     if (!updated) {
       throw new AppError("User not found", 404);
+    }
+
+    if (passwordHash || (normalizedStatus && normalizedStatus !== "active")) {
+      await revokeAllUserTokens(id);
     }
 
     const { password_hash, ...safeUser } = updated;
@@ -47,6 +65,7 @@ export class UsersService {
     }
 
     await userRepository.update(id, { status: "suspended" });
+    await revokeAllUserTokens(id);
   }
 }
 

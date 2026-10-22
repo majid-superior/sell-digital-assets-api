@@ -177,14 +177,16 @@ export class UserRepository extends BaseRepository<UserEntity> {
     role?: string | number;
     authProvider?: string;
     status?: string;
+    emailVerifiedAt?: Date | null;
   }): Promise<UserEntity> {
     const roleId = resolveRoleId(data.role);
     const authProvider = data.authProvider || "local";
     const status = data.status || "active";
+    const emailVerifiedAt = data.emailVerifiedAt === undefined ? new Date() : data.emailVerifiedAt;
 
     const insertRes = await this.query<{ id: string }>(
-      `INSERT INTO users (role_id, name, email, password_hash, auth_provider, status) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
+      `INSERT INTO users (role_id, name, email, password_hash, auth_provider, status, email_verified_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) 
        RETURNING id`,
       [
         roleId,
@@ -193,6 +195,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
         data.passwordHash || null,
         authProvider,
         status,
+        emailVerifiedAt,
       ],
     );
 
@@ -214,10 +217,15 @@ export class UserRepository extends BaseRepository<UserEntity> {
   ): Promise<void> {
     await this.query(
       `UPDATE users 
-       SET failed_login_attempts = failed_login_attempts + 1,
+       SET failed_login_attempts = CASE
+             WHEN locked_until IS NOT NULL AND locked_until <= CURRENT_TIMESTAMP THEN 1
+             ELSE failed_login_attempts + 1
+           END,
            locked_until = CASE 
-             WHEN failed_login_attempts + 1 >= $2 
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= CURRENT_TIMESTAMP THEN 1 ELSE failed_login_attempts + 1 END) >= $2 
              THEN CURRENT_TIMESTAMP + ($3 || ' minutes')::interval 
+             WHEN locked_until IS NOT NULL AND locked_until <= CURRENT_TIMESTAMP
+             THEN NULL
              ELSE locked_until 
            END
        WHERE id = $1`,
@@ -232,6 +240,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
       passwordHash?: string | undefined;
       status?: string | undefined;
       role?: string | number | undefined;
+      emailVerifiedAt?: Date | null | undefined;
     },
   ): Promise<UserEntity | null> {
     const fields: string[] = [];
@@ -253,6 +262,10 @@ export class UserRepository extends BaseRepository<UserEntity> {
     if (data.role !== undefined) {
       fields.push(`role_id = $${idx++}`);
       values.push(resolveRoleId(data.role));
+    }
+    if (data.emailVerifiedAt !== undefined) {
+      fields.push(`email_verified_at = $${idx++}`);
+      values.push(data.emailVerifiedAt);
     }
 
     if (fields.length === 0) {

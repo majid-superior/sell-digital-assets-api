@@ -3,13 +3,16 @@ import crypto from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../errors/app-error.js";
 import { getSystemSettings, type SystemSettings } from "../../data/organizations.js";
+import { tokenRevocationRepository } from "../../database/repositories/token-revocation.repository.js";
 
 export interface AuthUserPayload {
   id: string;
   email: string;
   role: string;
   jti?: string;
+  iat?: number;
   exp?: number;
+  rememberMe?: boolean;
 }
 
 export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
@@ -22,8 +25,31 @@ export interface GeneratedTokens {
   refreshExpiresAt: Date;
 }
 
-// Revoked refresh token JTI store mapping jti -> expiration timestamp (ms)
+// Local write-through cache backed by PostgreSQL revoked_tokens table
 const revokedRefreshTokens = new Map<string, number>();
+const userRevocationEpochs = new Map<string, number>();
+let initialHydrationStarted = false;
+
+function ensureHydrated(): void {
+  if (initialHydrationStarted) return;
+  initialHydrationStarted = true;
+  void tokenRevocationRepository
+    .loadActiveRevocations()
+    .then((rows) => {
+      const now = Date.now();
+      for (const row of rows) {
+        if (row.expMs > now) {
+          if (row.jti.startsWith("user_epoch:")) {
+            const userId = row.jti.slice("user_epoch:".length);
+            userRevocationEpochs.set(userId, row.createdMs);
+          } else {
+            revokedRefreshTokens.set(row.jti, row.expMs);
+          }
+        }
+      }
+    })
+    .catch(() => {});
+}
 
 function pruneExpiredRevocations(): void {
   const now = Date.now();
@@ -35,6 +61,7 @@ function pruneExpiredRevocations(): void {
 }
 
 export function isRefreshTokenRevoked(jti: string): boolean {
+  ensureHydrated();
   pruneExpiredRevocations();
   const expMs = revokedRefreshTokens.get(jti);
   if (!expMs) return false;
@@ -45,13 +72,56 @@ export function isRefreshTokenRevoked(jti: string): boolean {
   return true;
 }
 
-export function revokeRefreshToken(tokenOrJti: string, expiresAtMs?: number): void {
-  if (!tokenOrJti) return;
+export async function isTokenRevokedAsync(
+  jti?: string,
+  userId?: string,
+  iatSeconds?: number,
+): Promise<boolean> {
+  ensureHydrated();
+  pruneExpiredRevocations();
+
+  if (jti) {
+    if (isRefreshTokenRevoked(jti)) {
+      return true;
+    }
+    const dbRevoked = await tokenRevocationRepository.isJtiRevoked(jti);
+    if (dbRevoked) {
+      const defaultExpiry = Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+      revokedRefreshTokens.set(jti, defaultExpiry);
+      return true;
+    }
+  }
+
+  if (userId && iatSeconds) {
+    const tokenIssuedMs = iatSeconds * 1000;
+    const cachedEpochMs = userRevocationEpochs.get(userId);
+    if (cachedEpochMs && tokenIssuedMs + 1000 < cachedEpochMs) {
+      return true;
+    }
+    const dbEpochMs = await tokenRevocationRepository.getUserRevocationEpochMs(userId);
+    if (dbEpochMs) {
+      userRevocationEpochs.set(userId, dbEpochMs);
+      if (tokenIssuedMs + 1000 < dbEpochMs) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function revokeRefreshToken(
+  tokenOrJti: string,
+  expiresAtMs?: number,
+  userId?: string,
+): string | undefined {
+  if (!tokenOrJti) return undefined;
+  ensureHydrated();
   pruneExpiredRevocations();
 
   const defaultExpiry = Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
-  // If a raw JWT was passed, verify/decode it to extract jti and exp
+  // If a raw JWT was passed, verify/decode it to extract jti, exp, and user id
   if (tokenOrJti.includes(".")) {
     try {
       const decoded = jwt.verify(tokenOrJti, env.JWT_REFRESH_SECRET, {
@@ -60,35 +130,94 @@ export function revokeRefreshToken(tokenOrJti: string, expiresAtMs?: number): vo
       if (decoded.jti) {
         const expMs = decoded.exp ? decoded.exp * 1000 : expiresAtMs || defaultExpiry;
         revokedRefreshTokens.set(decoded.jti, expMs);
+        void tokenRevocationRepository.revokeJti(
+          decoded.jti,
+          new Date(expMs),
+          decoded.id || userId,
+        );
       }
+      return decoded.id || userId;
     } catch {
       // Ignore already invalid or expired tokens during revocation
+      return userId;
     }
-    return;
   }
 
-  revokedRefreshTokens.set(tokenOrJti, expiresAtMs || defaultExpiry);
+  const finalExpMs = expiresAtMs || defaultExpiry;
+  revokedRefreshTokens.set(tokenOrJti, finalExpMs);
+  void tokenRevocationRepository.revokeJti(tokenOrJti, new Date(finalExpMs), userId);
+  return userId;
+}
+
+export function revokeAccessToken(
+  tokenOrJti: string,
+  expiresAtMs?: number,
+  userId?: string,
+): string | undefined {
+  if (!tokenOrJti) return undefined;
+  ensureHydrated();
+  pruneExpiredRevocations();
+
+  const defaultExpiry = Date.now() + 24 * 60 * 60 * 1000;
+
+  if (tokenOrJti.includes(".")) {
+    try {
+      const decoded = jwt.verify(tokenOrJti, env.JWT_SECRET, {
+        algorithms: ["HS256"],
+      }) as JwtPayload & AuthUserPayload;
+      if (decoded.jti) {
+        const expMs = decoded.exp ? decoded.exp * 1000 : expiresAtMs || defaultExpiry;
+        revokedRefreshTokens.set(decoded.jti, expMs);
+        void tokenRevocationRepository.revokeJti(
+          decoded.jti,
+          new Date(expMs),
+          decoded.id || userId,
+        );
+      }
+      return decoded.id || userId;
+    } catch {
+      return userId;
+    }
+  }
+
+  const finalExpMs = expiresAtMs || defaultExpiry;
+  revokedRefreshTokens.set(tokenOrJti, finalExpMs);
+  void tokenRevocationRepository.revokeJti(tokenOrJti, new Date(finalExpMs), userId);
+  return userId;
+}
+
+export async function revokeAllUserTokens(userId: string): Promise<void> {
+  if (!userId) return;
+  ensureHydrated();
+  const epochMs = await tokenRevocationRepository.revokeAllForUser(userId);
+  userRevocationEpochs.set(userId, epochMs);
 }
 
 export function generateTokens(
   user: AuthUserPayload,
-  customSettings?: Partial<SystemSettings>,
+  customSettings?: Partial<SystemSettings> & { rememberMe?: boolean },
 ): GeneratedTokens {
+  ensureHydrated();
   const currentSettings = getSystemSettings();
   const settings = customSettings
     ? { ...currentSettings, ...customSettings }
     : currentSettings;
 
+  const accessJti = crypto.randomUUID();
   const accessPayload = {
     id: user.id,
     email: user.email,
     role: user.role || "user",
+    jti: accessJti,
   };
 
   const jti = crypto.randomUUID();
   const refreshPayload = {
-    ...accessPayload,
+    id: user.id,
+    email: user.email,
+    role: user.role || "user",
     jti,
+    rememberMe: Boolean(customSettings?.rememberMe ?? user.rememberMe),
   };
 
   const accessMinutes = Math.max(1, settings.accessTokenTtlMinutes || 15);
@@ -122,10 +251,18 @@ export function verifyAccessToken(token: string): AuthUserPayload {
   const decoded = jwt.verify(token, env.JWT_SECRET, {
     algorithms: ["HS256"],
   }) as JwtPayload & AuthUserPayload;
+
+  if (decoded.jti && isRefreshTokenRevoked(decoded.jti)) {
+    throw new AppError("Access token has been revoked. Please sign in again.", 401);
+  }
+
   return {
     id: decoded.id,
     email: decoded.email,
     role: decoded.role,
+    ...(decoded.jti ? { jti: decoded.jti } : {}),
+    ...(decoded.iat ? { iat: decoded.iat } : {}),
+    ...(decoded.exp ? { exp: decoded.exp } : {}),
   };
 }
 
@@ -143,7 +280,8 @@ export function verifyRefreshToken(token: string): AuthUserPayload {
     email: decoded.email,
     role: decoded.role,
     ...(decoded.jti ? { jti: decoded.jti } : {}),
+    ...(decoded.iat ? { iat: decoded.iat } : {}),
     ...(decoded.exp ? { exp: decoded.exp } : {}),
+    ...(decoded.rememberMe !== undefined ? { rememberMe: Boolean(decoded.rememberMe) } : {}),
   };
 }
-

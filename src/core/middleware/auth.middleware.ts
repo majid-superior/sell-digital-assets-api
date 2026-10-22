@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error.js";
-import { verifyAccessToken, type AuthUserPayload } from "../security/tokens.js";
+import { verifyAccessToken, isTokenRevokedAsync, type AuthUserPayload } from "../security/tokens.js";
 import { userRepository } from "../../database/repositories/user.repository.js";
+import { getSystemSettings } from "../../data/organizations.js";
 
 declare global {
   namespace Express {
@@ -81,10 +82,22 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
   try {
     const decoded = verifyAccessToken(token);
 
+    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat)) {
+      return next(new AppError("Authentication session has ended or been revoked. Please sign in again.", 401));
+    }
+
     // Verify account exists and is actively permitted to access the platform
     const user = await resolveAuthenticatedUser(decoded.id);
     if (!user || user.status !== "active") {
       return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+    }
+
+    // Enforce maintenance mode for non-admin users
+    const settings = getSystemSettings();
+    if (settings.maintenanceMode && user.role !== "admin") {
+      return next(
+        new AppError("Platform is currently undergoing scheduled maintenance. Please try again later.", 503),
+      );
     }
 
     req.user = {
@@ -94,6 +107,9 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
     };
     next();
   } catch (err: unknown) {
+    if (err instanceof AppError) {
+      return next(err);
+    }
     if ((err as Error).name === "TokenExpiredError") {
       return next(new AppError("Access token expired. Please refresh your token.", 401));
     }
@@ -122,13 +138,16 @@ export const optionalAuthenticate = async (
 
   try {
     const decoded = verifyAccessToken(token);
-    const user = await resolveAuthenticatedUser(decoded.id);
-    if (user && user.status === "active") {
-      req.user = {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      };
+    const isRevoked = await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat);
+    if (!isRevoked) {
+      const user = await resolveAuthenticatedUser(decoded.id);
+      if (user && user.status === "active") {
+        req.user = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        };
+      }
     }
   } catch {
     // Ignore invalid/expired token for optional auth; downstream logic will verify licenseKey if unauthenticated

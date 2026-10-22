@@ -34,6 +34,7 @@ import downloadsRoutes from "./modules/assets/downloads.routes.js";
 import licensesRoutes from "./modules/assets/licenses.routes.js";
 import storageRoutes from "./modules/assets/storage.routes.js";
 import notificationsRoutes from "./modules/notifications/notifications.routes.js";
+import bannersRoutes from "./modules/banners/banners.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
 
@@ -146,6 +147,7 @@ if (fs.existsSync(swaggerFilePath)) {
     "Assets - Public",
     "Assets - Seller",
     "Assets - Admin",
+    "Banners",
     "Notifications",
     "Downloads",
     "Licenses",
@@ -200,14 +202,14 @@ app.use("/", pagesRoutes);
 // ============================================================================
 // PIPELINE STEPS 6-10: Domain Modules (REST APIs), Scoped CSP & Rate Limiting
 // ============================================================================
-app.use("/api/v1", (_req: Request, res: Response, next: NextFunction) => {
+app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'none'; frame-ancestors 'none'",
   );
   next();
 });
-app.use("/api/v1", generalLimiter);
+app.use("/api", generalLimiter);
 
 // ----------------------------------------------------------------------------
 // Strict API v1 Routes (/api/v1/*)
@@ -226,6 +228,8 @@ app.use("/api/v1/downloads", downloadsRoutes);
 app.use("/api/v1/licenses", licensesRoutes);
 app.use("/api/v1/storage", storageRoutes);
 app.use("/api/v1/notifications", notificationsRoutes);
+app.use("/api/v1/banners", bannersRoutes);
+app.use("/api/banners", bannersRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

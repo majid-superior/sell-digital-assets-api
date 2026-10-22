@@ -26,7 +26,9 @@ export type PaginationQueryInput = z.infer<typeof PaginationQuerySchema>;
 export type UuidParamInput = z.infer<typeof UuidParamSchema>;
 
 export const UpdateUserSchema = z.object({
-  status: z.enum(["active", "deactive", "pending", "suspended", "banned"]),
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(100).optional(),
+  password: z.string().min(4, "Password must be at least 4 characters").max(128).optional(),
+  status: z.enum(["active", "deactive", "pending", "suspended", "banned"]).optional(),
 });
 
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;

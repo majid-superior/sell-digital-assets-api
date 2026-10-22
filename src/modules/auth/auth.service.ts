@@ -4,8 +4,11 @@ import {
   generateTokens,
   verifyRefreshToken,
   revokeRefreshToken,
+  revokeAccessToken,
+  isTokenRevokedAsync,
   type AuthUserPayload,
 } from "../../core/security/tokens.js";
+import { invalidateAuthUserCache } from "../../core/middleware/auth.middleware.js";
 import { getSystemSettings } from "../../data/organizations.js";
 import { AppError } from "../../core/errors/app-error.js";
 import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.schema.js";
@@ -14,9 +17,9 @@ import type { RegisterUserInput, SignInUserInput, UpdateMeInput } from "./auth.s
 const DUMMY_HASH = "$2a$12$K8aUoQZJj4Ptw4q69E/f0u86P4FvL.8Qy/nZgK8Zl3wzMkm1w2KWW";
 
 export class AuthService {
-  private validatePasswordPolicy(password: string): void {
+  public validatePasswordPolicy(password: string): void {
     const settings = getSystemSettings();
-    const minLength = Math.max(4, settings.passwordMinLength || 4);
+    const minLength = Math.max(4, settings.passwordMinLength || 8);
 
     if (password.length < minLength) {
       throw new AppError(`Password must be at least ${minLength} characters long.`, 400);
@@ -29,6 +32,13 @@ export class AuthService {
 
   async register(input: RegisterUserInput) {
     const settings = getSystemSettings();
+    if (settings.maintenanceMode) {
+      throw new AppError(
+        "Platform is currently under maintenance. User registration is temporarily unavailable. Please try again later.",
+        503,
+      );
+    }
+
     if (!settings.allowUserRegistration) {
       throw new AppError("User registration is currently disabled.", 403);
     }
@@ -49,6 +59,7 @@ export class AuthService {
       email: input.email,
       passwordHash,
       role,
+      emailVerifiedAt: settings.requireEmailVerification ? null : new Date(),
     });
 
     const tokens = generateTokens({
@@ -104,17 +115,24 @@ export class AuthService {
       );
     }
 
-    // 4. Account status checks
+    // 4. Account status & email verification checks
     if (user.status !== "active") {
       throw new AppError(`Your account is currently ${user.status}. Please contact support.`, 403);
+    }
+
+    if (settings.requireEmailVerification && !user.email_verified_at && user.role !== "admin") {
+      throw new AppError(
+        "Email verification is required before signing in. Please verify your email address or contact support.",
+        403,
+      );
     }
 
     // 5. Record successful sign-in and reset failure counter
     await userRepository.updateLastSignIn(user.id);
 
     const customSettings = input.rememberMe
-      ? { refreshTokenTtlDays: settings.rememberMeTtlDays || 30 }
-      : undefined;
+      ? { refreshTokenTtlDays: settings.rememberMeTtlDays || 30, rememberMe: true }
+      : { rememberMe: false };
 
     const tokens = generateTokens(
       {
@@ -140,6 +158,10 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const decoded: AuthUserPayload = verifyRefreshToken(refreshToken);
 
+    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat)) {
+      throw new AppError("Refresh token has been revoked. Please sign in again.", 401);
+    }
+
     // Verify user still exists in the database
     const user = await userRepository.findById(decoded.id);
     if (!user) {
@@ -150,17 +172,30 @@ export class AuthService {
       throw new AppError(`Account is currently ${user.status}`, 403);
     }
 
+    const settings = getSystemSettings();
+    if (settings.maintenanceMode && user.role !== "admin") {
+      throw new AppError("Platform is currently under maintenance. Please try again later.", 503);
+    }
+
     // Rotate refresh token: revoke the consumed token's jti so it cannot be replayed
     if (decoded.jti) {
       const expMs = decoded.exp ? decoded.exp * 1000 : undefined;
-      revokeRefreshToken(decoded.jti, expMs);
+      revokeRefreshToken(decoded.jti, expMs, user.id);
     }
 
-    const tokens = generateTokens({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
+    // Preserve rememberMe TTL across token rotation
+    const customSettings = decoded.rememberMe
+      ? { refreshTokenTtlDays: settings.rememberMeTtlDays || 30, rememberMe: true }
+      : { rememberMe: false };
+
+    const tokens = generateTokens(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      customSettings,
+    );
 
     return {
       user: {
@@ -174,9 +209,17 @@ export class AuthService {
     };
   }
 
-  async signOut(refreshToken?: string): Promise<void> {
+  async signOut(refreshToken?: string, accessToken?: string): Promise<void> {
+    let userId: string | undefined;
     if (refreshToken) {
-      revokeRefreshToken(refreshToken);
+      userId = revokeRefreshToken(refreshToken);
+    }
+    if (accessToken) {
+      const accessUserId = revokeAccessToken(accessToken, undefined, userId);
+      userId = userId || accessUserId;
+    }
+    if (userId) {
+      invalidateAuthUserCache(userId);
     }
   }
 
@@ -197,13 +240,14 @@ export class AuthService {
 
     let passwordHash: string | undefined;
     if (data.password) {
+      if (!data.currentPassword) {
+        throw new AppError("Current password is required to set a new password", 400);
+      }
       this.validatePasswordPolicy(data.password);
-      if (data.currentPassword) {
-        const hashToCompare = user.password_hash || "";
-        const isValid = await comparePassword(data.currentPassword, hashToCompare);
-        if (!isValid) {
-          throw new AppError("Current password does not match", 400);
-        }
+      const hashToCompare = user.password_hash || "";
+      const isValid = await comparePassword(data.currentPassword, hashToCompare);
+      if (!isValid) {
+        throw new AppError("Current password does not match", 400);
       }
       passwordHash = await hashPassword(data.password);
     }
@@ -226,11 +270,35 @@ export class AuthService {
     if (!user) {
       throw new AppError("User not found", 404);
     }
-    const updated = await userRepository.update(userId, {
-      role: "seller",
+
+    if (user.role === "admin") {
+      throw new AppError(
+        "Administrator accounts already hold full platform permissions and cannot be converted to a seller account.",
+        400,
+      );
+    }
+
+    const updated =
+      user.role === "seller"
+        ? user
+        : await userRepository.update(userId, {
+            role: "seller",
+          });
+
+    invalidateAuthUserCache(userId);
+
+    const targetUser = updated || user;
+    const { password_hash, ...safeUser } = targetUser;
+    const tokens = generateTokens({
+      id: targetUser.id,
+      email: targetUser.email,
+      role: targetUser.role,
     });
-    const { password_hash, ...safeUser } = updated!;
-    return safeUser;
+
+    return {
+      user: safeUser,
+      tokens,
+    };
   }
 }
 

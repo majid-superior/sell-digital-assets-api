@@ -1,35 +1,39 @@
 /**
  * AssetDrop / Sell Digital Assets - Client Theme Switcher
- * Handles local storage persistence, HTML root attribute sync, and OS preference matching.
+ * Handles local storage persistence, HTML root attribute sync, and Dark Mode default fallback.
  */
 (function() {
   const THEME_STORAGE_KEY = 'theme';
+  const DEFAULT_THEME = 'dark';
 
   function getSavedTheme() {
     try {
       const stored = localStorage.getItem(THEME_STORAGE_KEY);
       if (stored === 'dark' || stored === 'light') return stored;
     } catch (e) {}
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+    return DEFAULT_THEME;
   }
 
-  function applyTheme(theme) {
-    const isDark = theme === 'dark';
+  function applyTheme(theme, persist = true) {
+    const resolvedTheme = theme === 'light' || theme === 'dark' ? theme : DEFAULT_THEME;
+    const isDark = resolvedTheme === 'dark';
     const root = document.documentElement;
 
     if (isDark) {
       root.classList.add('dark');
       root.setAttribute('data-theme', 'dark');
+      root.style.colorScheme = 'dark';
     } else {
       root.classList.remove('dark');
       root.setAttribute('data-theme', 'light');
+      root.style.colorScheme = 'light';
     }
 
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch (e) {}
+    if (persist) {
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
+      } catch (e) {}
+    }
 
     // Update aria-label and titles on toggle buttons
     const toggleBtns = document.querySelectorAll('.theme-toggle-btn');
@@ -40,27 +44,21 @@
   }
 
   function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme') || getSavedTheme();
+    const currentAttr = document.documentElement.getAttribute('data-theme');
+    const current = currentAttr === 'dark' || currentAttr === 'light' ? currentAttr : getSavedTheme();
     const next = current === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
+    applyTheme(next, true);
   }
 
-  // Listen for system theme changes if user has not explicitly set preference
-  if (window.matchMedia) {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', function(e) {
-        try {
-          if (!localStorage.getItem(THEME_STORAGE_KEY)) {
-            applyTheme(e.matches ? 'dark' : 'light');
-          }
-        } catch (err) {}
-      });
-    }
-  }
+  // Sync across tabs if theme preference changes or is cleared in localStorage
+  window.addEventListener('storage', function(e) {
+    if (e.key && e.key !== THEME_STORAGE_KEY) return;
+    applyTheme(getSavedTheme(), false);
+  });
 
-  // Bind click handlers when DOM is ready
+  // Bind click handlers and sync initial state when DOM is ready
   document.addEventListener('DOMContentLoaded', function() {
+    applyTheme(getSavedTheme(), false);
     const buttons = document.querySelectorAll('.theme-toggle-btn');
     buttons.forEach(btn => {
       btn.addEventListener('click', toggleTheme);

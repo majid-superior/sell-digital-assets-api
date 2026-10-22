@@ -61,7 +61,7 @@ export class ThemeService {
       id: defaultTheme.id ?? 1,
       name: defaultTheme.name,
       slug: defaultTheme.slug,
-      mode: "dark",
+      mode: defaultTheme.mode || "dark",
       is_active: defaultTheme.is_active,
       color_hex_map: defaultTheme.color_hex_map as unknown as Record<string, any>,
       color_tokens: defaultTheme.color_tokens as unknown as Record<string, string>,

@@ -1,20 +1,20 @@
 import { Router } from "express";
 import { organizationsController } from "./organizations.controller.js";
-import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
+import { authenticate, optionalAuthenticate, authorize } from "../../core/middleware/auth.middleware.js";
 import { validateBody } from "../../core/validation/validate.middleware.js";
 import { UpdateOrganizationSchema, SystemSettingsSchema } from "./organizations.schema.js";
 
 const router = Router();
 
-// Public: Get organization & platform configuration
-router.get("/", organizationsController.getOrganization.bind(organizationsController));
+// Public: Get organization & platform configuration (sanitizes internal security settings for non-admins)
+router.get("/", optionalAuthenticate, organizationsController.getOrganization.bind(organizationsController));
 
 // Public: Get all supported currencies from currencies table
 router.get("/currencies", organizationsController.getCurrencies.bind(organizationsController));
 
-// System Settings Endpoints
-router.get("/settings/system", organizationsController.getSystemSettings.bind(organizationsController));
-router.get("/system-settings", organizationsController.getSystemSettings.bind(organizationsController));
+// System Settings Endpoints (returns full settings to admins, public policy subset to non-admins)
+router.get("/settings/system", optionalAuthenticate, organizationsController.getSystemSettings.bind(organizationsController));
+router.get("/system-settings", optionalAuthenticate, organizationsController.getSystemSettings.bind(organizationsController));
 
 router.patch(
   "/settings/system",

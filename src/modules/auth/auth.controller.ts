@@ -59,7 +59,13 @@ export class AuthController {
   async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const refreshToken = req.body?.refreshToken || req.cookies?.refreshToken;
-      await authService.signOut(refreshToken);
+      const authHeader = req.headers.authorization;
+      const accessToken =
+        authHeader && authHeader.startsWith("Bearer ")
+          ? authHeader.split(" ")[1]
+          : req.cookies?.accessToken;
+
+      await authService.signOut(refreshToken, accessToken);
 
       res.clearCookie("accessToken", { httpOnly: true, secure: true, sameSite: "strict" });
       res.clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "strict" });
@@ -113,12 +119,15 @@ export class AuthController {
         throw new AppError("Authentication required", 401);
       }
 
-      const user = await authService.becomeSeller(req.user.id);
+      const result = await authService.becomeSeller(req.user.id);
       res.status(200).json({
         success: true,
         message: "Account upgraded to Seller successfully. Welcome to the Seller Studio!",
-        data: user,
-        user,
+        data: result.user,
+        user: result.user,
+        tokens: result.tokens,
+        token: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
       });
     } catch (error) {
       next(error);

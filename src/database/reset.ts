@@ -235,6 +235,17 @@ INSERT INTO users (
 )
 ON CONFLICT (id) DO NOTHING;
 
+-- Step 6b: Revoked Tokens & Session Invalidation Table
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    jti VARCHAR(128) PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens (expires_at);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_user_id ON revoked_tokens (user_id);
+
 -- Step 7: Categories Table (Taxonomy tree for digital assets)
 CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
@@ -387,7 +398,7 @@ INSERT INTO themes (
 ) VALUES (
     '${defaultTheme.name.replace(/'/g, "''")}',
     '${defaultTheme.slug.replace(/'/g, "''")}',
-    'dark',
+    '${(defaultTheme.mode || "dark").replace(/'/g, "''")}',
     ${defaultTheme.is_active ? "TRUE" : "FALSE"},
     '${JSON.stringify(defaultTheme.color_hex_map).replace(/'/g, "''")}'::jsonb,
     '${JSON.stringify(defaultTheme.color_tokens).replace(/'/g, "''")}'::jsonb,
@@ -624,6 +635,42 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id) WHERE is_read = FALSE;
+
+-- Step 19b: Promotional Banners System
+CREATE TABLE IF NOT EXISTS banners (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(500),
+    supporting_text VARCHAR(200),
+    badge_text VARCHAR(80),
+    badge_type VARCHAR(30) NOT NULL DEFAULT 'special_offer'
+        CHECK (badge_type IN ('special_offer', 'hot_deal', 'new_release', 'limited_time', 'announcement', 'flash_sale', 'none')),
+    cta_label VARCHAR(80),
+    cta_url VARCHAR(500),
+    show_cta BOOLEAN NOT NULL DEFAULT TRUE,
+    is_dismissible BOOLEAN NOT NULL DEFAULT TRUE,
+    appearance VARCHAR(30) NOT NULL DEFAULT 'primary'
+        CHECK (appearance IN ('primary', 'secondary', 'tertiary', 'inverse', 'surface', 'accent')),
+    priority INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+    timezone VARCHAR(80) NOT NULL DEFAULT 'UTC',
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_banners_title_not_empty CHECK (length(trim(title)) > 0),
+    CONSTRAINT chk_banners_schedule_window CHECK (starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_banners_active_schedule
+    ON banners (is_active, priority DESC, starts_at, ends_at);
+
+DROP TRIGGER IF EXISTS trg_banners_updated_at ON banners;
+CREATE TRIGGER trg_banners_updated_at
+BEFORE UPDATE ON banners
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
 
 -- Step 20: Supabase Storage Buckets (Safe Initialization)
 DO $$

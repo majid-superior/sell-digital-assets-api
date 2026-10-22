@@ -3,7 +3,7 @@ import { z } from "zod";
 export const RegisterUserSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().trim().email("Invalid email address").max(255),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  password: z.string().min(4, "Password must be at least 4 characters").max(128),
   role: z.enum(["buyer", "seller", "customer", "guest"]).optional().default("buyer"),
 });
 
@@ -22,7 +22,7 @@ export const UpdateMeSchema = z
   .object({
     name: z.string().trim().min(2, "Name must be at least 2 characters").max(100).optional(),
     currentPassword: z.string().min(1, "Current password cannot be empty").optional(),
-    password: z.string().min(6, "New password must be at least 6 characters").max(128).optional(),
+    password: z.string().min(4, "New password must be at least 4 characters").max(128).optional(),
   })
   .refine(
     (data) => {

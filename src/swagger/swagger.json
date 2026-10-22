@@ -49,6 +49,10 @@
       "description": "Admin asset moderation, approval, rejection, and review feedback"
     },
     {
+      "name": "Banners",
+      "description": "Promotional announcement banners CRUD, scheduling, priority, and public delivery"
+    },
+    {
       "name": "Notifications",
       "description": "In-app notifications for admins and sellers regarding asset submissions & decisions"
     },
@@ -225,6 +229,13 @@
         "parameters": [
           {
             "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
             "in": "header",
             "schema": {
               "type": "string"
@@ -674,6 +685,13 @@
         "parameters": [
           {
             "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
             "in": "header",
             "schema": {
               "type": "string"
@@ -1435,6 +1453,39 @@
       }
     },
     "/api/v1/assets/seller/{id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
       "patch": {
         "description": "Updates asset metadata, descriptions, technical specs, or pricing tiers",
         "parameters": [
@@ -1536,6 +1587,9 @@
                 "type": "object",
                 "properties": {
                   "status": {
+                    "example": "any"
+                  },
+                  "feedback": {
                     "example": "any"
                   }
                 }
@@ -2088,6 +2142,46 @@
       }
     },
     "/api/v1/seller/assets/{id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
       "patch": {
         "description": "Updates asset metadata, descriptions, technical specs, or pricing tiers",
         "parameters": [
@@ -2210,6 +2304,9 @@
                 "type": "object",
                 "properties": {
                   "status": {
+                    "example": "any"
+                  },
+                  "feedback": {
                     "example": "any"
                   }
                 }
@@ -2398,6 +2495,57 @@
           }
         ],
         "summary": "Confirm media preview upload"
+      }
+    },
+    "/api/v1/seller/assets/{id}/media/{mediaId}": {
+      "delete": {
+        "description": "Archives and soft-deletes an asset owned by the authenticated seller",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Assets - Seller"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Soft-delete and archive seller asset"
       }
     },
     "/api/v1/seller/assets/{id}/files/{fileId}": {
@@ -3052,6 +3200,346 @@
           }
         ],
         "summary": "Mark single notification as read"
+      }
+    },
+    "/api/v1/banners/active": {
+      "get": {
+        "description": "Returns only currently active and schedule-eligible promotional banners ordered by priority",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "summary": "Get active promotional banners"
+      }
+    },
+    "/api/v1/banners/public": {
+      "get": {
+        "description": "Returns only currently active and schedule-eligible promotional banners ordered by priority",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "summary": "Get active promotional banners"
+      }
+    },
+    "/api/v1/banners": {
+      "get": {
+        "description": "Returns all promotional banners with computed status and summary metrics",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List all promotional banners (Admin only)"
+      },
+      "post": {
+        "description": "Creates a new promotional banner in PostgreSQL",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create promotional banner (Admin only)"
+      }
+    },
+    "/api/v1/banners/{id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get promotional banner by ID (Admin only)"
+      },
+      "patch": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update promotional banner (Admin only)"
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Replace/Update promotional banner (Admin only)"
+      },
+      "delete": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delete promotional banner (Admin only)"
+      }
+    },
+    "/api/v1/banners/{id}/status": {
+      "patch": {
+        "description": "Activates or deactivates a promotional banner by UUID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isActive": {
+                    "example": "any"
+                  },
+                  "is_active": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Banners"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Toggle promotional banner active status (Admin only)"
       }
     }
   },
