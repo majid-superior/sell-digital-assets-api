@@ -5,7 +5,12 @@ import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
-import { isSslRequired, resilientDnsLookup } from "../config/database.js";
+import {
+  isSslRequired,
+  resilientDnsLookup,
+  createResilientSocket,
+  installResilientDns,
+} from "../config/database.js";
 import { hashPassword, comparePassword } from "../core/security/password.js";
 import { authService } from "../modules/auth/auth.service.js";
 import { generateTokens } from "../core/security/tokens.js";
@@ -15,10 +20,8 @@ import {
   type UserProfile,
 } from "../data/users.js";
 
-// Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
-if (typeof dns.setDefaultResultOrder === "function") {
-  dns.setDefaultResultOrder("ipv4first");
-}
+// Prioritize IPv4 DNS lookups and activate resilient public DNS fallback
+installResilientDns();
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -46,9 +49,12 @@ export const DEFAULT_TEST_PASSWORD = "123456789";
 
 export const DEFAULT_LOCAL_DATABASE_URL =
   process.env.LOCAL_DATABASE_URL ||
+  (process.env.DATABASE_URL && !isSslRequired(process.env.DATABASE_URL) ? process.env.DATABASE_URL : undefined) ||
   "postgresql://postgres:P%40ssw0rd@localhost:5432/sell_digital_assets";
 
-export const DEFAULT_LIVE_DATABASE_URL = process.env.DATABASE_URL || "";
+export const DEFAULT_LIVE_DATABASE_URL =
+  process.env.PROD_DATABASE_URL ||
+  (isSslRequired(process.env.DATABASE_URL || "") ? process.env.DATABASE_URL : "");
 
 export interface SeedOptions {
   /**
@@ -162,7 +168,7 @@ export async function promptTargetDatabase(options?: SeedOptions): Promise<{ url
   }
   if (options?.target === "live") {
     if (!liveUrl) {
-      throw new Error("DATABASE_URL environment variable is missing for live database.");
+      throw new Error("PROD_DATABASE_URL environment variable is missing for live database.");
     }
     return { url: liveUrl, target: "live" };
   }
@@ -177,7 +183,7 @@ export async function promptTargetDatabase(options?: SeedOptions): Promise<{ url
     process.argv.includes("-2")
   ) {
     if (!liveUrl) {
-      throw new Error("DATABASE_URL environment variable is missing for live database.");
+      throw new Error("PROD_DATABASE_URL environment variable is missing for live database.");
     }
     return { url: liveUrl, target: "live" };
   }
@@ -207,7 +213,7 @@ export async function promptTargetDatabase(options?: SeedOptions): Promise<{ url
         }
         if (choice === "2") {
           if (!liveUrl) {
-            console.error("❌ Error: DATABASE_URL environment variable is missing for live database.");
+            console.error("❌ Error: PROD_DATABASE_URL environment variable is missing for live database.");
             process.exit(1);
           }
           return { url: liveUrl, target: "live" };
@@ -219,8 +225,8 @@ export async function promptTargetDatabase(options?: SeedOptions): Promise<{ url
     }
   }
 
-  // 5. Non-interactive fallback (defaults to live if available, else local)
-  return { url: liveUrl || localUrl, target: liveUrl ? "live" : "local" };
+  // 5. Non-interactive fallback defaults strictly to local database to protect live database
+  return { url: localUrl, target: "local" };
 }
 
 /**
@@ -272,10 +278,11 @@ export async function seedUsers(options: SeedOptions = {}): Promise<SeedResult> 
   const targetPool = new Pool({
     connectionString: targetUrl,
     ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+    stream: () => createResilientSocket(),
     lookup: resilientDnsLookup,
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
   } as any);
 
   try {

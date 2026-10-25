@@ -7,7 +7,12 @@ import pg from "pg";
 import dotenv from "dotenv";
 import sharp from "sharp";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { isSslRequired, resilientDnsLookup } from "../config/database.js";
+import {
+  isSslRequired,
+  resilientDnsLookup,
+  createResilientSocket,
+  installResilientDns,
+} from "../config/database.js";
 import {
   assetTemplates,
   generateRandomTiers,
@@ -17,10 +22,8 @@ import {
   type AssetMediaSeed,
 } from "../data/assets.js";
 
-// Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
-if (typeof dns.setDefaultResultOrder === "function") {
-  dns.setDefaultResultOrder("ipv4first");
-}
+// Prioritize IPv4 DNS lookups and activate resilient public DNS fallback
+installResilientDns();
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -644,6 +647,7 @@ export async function seedAssets(): Promise<DigitalAssetData[]> {
   const pool = new Pool({
     connectionString: targetUrl,
     ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+    stream: () => createResilientSocket(),
     lookup: resilientDnsLookup,
     max: 10,
     idleTimeoutMillis: 30000,

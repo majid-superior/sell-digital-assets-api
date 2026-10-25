@@ -11,12 +11,15 @@ import { defaultCategories, flattenCategories } from "../data/categories.js";
 import { defaultCurrencies } from "../data/currencies.js";
 import { defaultTheme } from "../data/themes.js";
 import { defaultLicenseTiers } from "../data/license-tiers.js";
-import { resilientDnsLookup, isSslRequired } from "../config/database.js";
+import {
+  resilientDnsLookup,
+  isSslRequired,
+  createResilientSocket,
+  installResilientDns,
+} from "../config/database.js";
 
-// Prioritize IPv4 DNS lookups to avoid EAI_AGAIN timeouts on Windows/Node.js
-if (typeof dns.setDefaultResultOrder === "function") {
-  dns.setDefaultResultOrder("ipv4first");
-}
+// Prioritize IPv4 DNS lookups and activate resilient public DNS fallback
+installResilientDns();
 
 const { Client } = pg;
 
@@ -787,7 +790,9 @@ async function fallbackDatabaseBackup(
   const dumpClient = new Client({
     connectionString: databaseUrl,
     ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-  });
+    stream: () => createResilientSocket(),
+    lookup: resilientDnsLookup,
+  } as any);
   await dumpClient.connect();
   try {
     const lines: string[] = [
@@ -855,7 +860,11 @@ async function backupDatabase(
   if (!isCloudDb) {
     const maintenanceUrl = new URL(databaseUrl);
     maintenanceUrl.pathname = "/postgres";
-    const checkClient = new Client({ connectionString: maintenanceUrl.toString() });
+    const checkClient = new Client({
+      connectionString: maintenanceUrl.toString(),
+      stream: () => createResilientSocket(),
+      lookup: resilientDnsLookup,
+    } as any);
     try {
       await checkClient.connect();
       const res = await checkClient.query(
@@ -875,6 +884,7 @@ async function backupDatabase(
     const testClient = new Client({
       connectionString: databaseUrl,
       ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+      stream: () => createResilientSocket(),
       lookup: resilientDnsLookup,
     } as any);
     try {
@@ -915,10 +925,23 @@ async function backupDatabase(
         "--if-exists",
         "--no-owner",
         "--no-privileges",
+        ...(isCloudDb ? ["--schema=public"] : []),
       ];
 
+      const dumpTimeoutMs = isCloudDb ? 60000 : 30000;
+
       await new Promise<void>((resolve, reject) => {
-        const child = child_process.spawn(pgDumpPath, args, {
+        let child: child_process.ChildProcess | null = null;
+        const timer = setTimeout(() => {
+          if (child) {
+            try {
+              child.kill();
+            } catch {}
+          }
+          reject(new Error(`pg_dump process timed out after ${dumpTimeoutMs / 1000}s`));
+        }, dumpTimeoutMs);
+
+        child = child_process.spawn(pgDumpPath, args, {
           env: {
             ...process.env,
             PGPASSWORD: password,
@@ -933,6 +956,7 @@ async function backupDatabase(
         });
 
         child.on("close", (code) => {
+          clearTimeout(timer);
           if (code === 0) {
             resolve();
           } else {
@@ -940,7 +964,10 @@ async function backupDatabase(
           }
         });
 
-        child.on("error", (err) => reject(err));
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
       });
 
       const stats = fs.statSync(backupFilePath);
@@ -1098,7 +1125,9 @@ export async function resetDatabase(): Promise<void> {
 
     const maintenanceClient = new Client({
       connectionString: maintenanceUrl.toString(),
-    });
+      stream: () => createResilientSocket(),
+      lookup: resilientDnsLookup,
+    } as any);
 
     try {
       await maintenanceClient.connect();
@@ -1147,6 +1176,7 @@ export async function resetDatabase(): Promise<void> {
       targetClient = new Client({
         connectionString: databaseUrl,
         ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+        stream: () => createResilientSocket(),
         lookup: resilientDnsLookup,
       } as any);
 

@@ -1,4 +1,5 @@
 import dns from "node:dns";
+import net from "node:net";
 import pg from "pg";
 import { env, isLocalDatabaseUrl } from "./env.js";
 import { logger } from "../core/logger/index.js";
@@ -45,37 +46,123 @@ publicResolver.setServers(["8.8.8.8", "1.1.1.1"]);
 export const resilientDnsLookup = (
   hostname: string,
   options: any,
-  callback: (err: NodeJS.ErrnoException | null, address?: string, family?: number) => void,
+  callback?: (err: NodeJS.ErrnoException | null, address?: any, family?: number) => void,
 ): void => {
+  let cb = callback;
+  let opts = options;
+  if (typeof options === "function") {
+    cb = options;
+    opts = {};
+  }
+  if (!cb) return;
+
   if (
+    !hostname ||
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
     /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
   ) {
-    return dns.lookup(hostname, options, callback as any);
+    return dns.lookup(hostname, opts, cb);
   }
 
-  dns.lookup(hostname, options, (err, address, family) => {
-    if (err) {
+  dns.lookup(hostname, opts, (err, ...res) => {
+    if (err && (err.code === "EAI_AGAIN" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT")) {
       publicResolver.resolve4(hostname, (resErr, addresses) => {
-        if (resErr || !addresses || addresses.length === 0) {
-          return callback(err);
+        if (!resErr && addresses && addresses.length > 0) {
+          if (opts && opts.all) {
+            return cb!(null, addresses.map((addr) => ({ address: addr, family: 4 })));
+          }
+          return cb!(null, addresses[0], 4);
         }
-        return callback(null, addresses[0], 4);
+        return cb!(err, ...res);
       });
     } else {
-      callback(null, address, family);
+      cb!(err, ...res);
     }
   });
 };
 
+/**
+ * Creates a net.Socket that explicitly passes resilientDnsLookup to .connect().
+ * This guarantees pg.Client and pg.Pool bypass Windows local DNS EAI_AGAIN issues.
+ */
+export function createResilientSocket(): net.Socket {
+  const socket = new net.Socket();
+  const origConnect = socket.connect.bind(socket);
+  socket.connect = function (optionsOrPort: any, ...rest: any[]): net.Socket {
+    if (typeof optionsOrPort === "number") {
+      const port = optionsOrPort;
+      const host = rest[0];
+      const cb = typeof rest[1] === "function" ? rest[1] : undefined;
+      return origConnect({ port, host, lookup: resilientDnsLookup }, cb);
+    }
+    if (typeof optionsOrPort === "object" && optionsOrPort !== null) {
+      return origConnect({ ...optionsOrPort, lookup: optionsOrPort.lookup || resilientDnsLookup }, rest[0]);
+    }
+    return origConnect(optionsOrPort, ...rest);
+  };
+  return socket;
+}
+
+let isDnsHooked = false;
+export function installResilientDns(): void {
+  if (isDnsHooked) return;
+  isDnsHooked = true;
+
+  if (typeof dns.setDefaultResultOrder === "function") {
+    dns.setDefaultResultOrder("ipv4first");
+  }
+
+  const origLookup = dns.lookup;
+  dns.lookup = function (
+    hostname: string,
+    options: any,
+    callback?: any,
+  ): any {
+    let cb = callback;
+    let opts = options;
+    if (typeof options === "function") {
+      cb = options;
+      opts = {};
+    }
+
+    if (
+      !hostname ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    ) {
+      return origLookup(hostname, opts, cb);
+    }
+
+    return origLookup(hostname, opts, (err: NodeJS.ErrnoException | null, ...res: any[]) => {
+      if (err && (err.code === "EAI_AGAIN" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT")) {
+        publicResolver.resolve4(hostname, (resErr, addresses) => {
+          if (!resErr && addresses && addresses.length > 0) {
+            if (opts && opts.all) {
+              return cb(null, addresses.map((addr) => ({ address: addr, family: 4 })));
+            }
+            return cb(null, addresses[0], 4);
+          }
+          return cb(err, ...res);
+        });
+      } else {
+        cb(err, ...res);
+      }
+    });
+  } as any;
+}
+
+installResilientDns();
+
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+  stream: () => createResilientSocket(),
   lookup: resilientDnsLookup,
   max: 20, // Max concurrent clients in the pool
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
 } as any);
 
 pool.on("error", (err: Error) => {
