@@ -94,6 +94,58 @@ export class AssetsService {
     return result;
   }
 
+  async getFeaturedAssets(limit = 12) {
+    const assets = await assetsRepository.findFeatured(limit);
+
+    // Security sanitization: storage_path is strictly excluded from public listings
+    if (assets && Array.isArray(assets)) {
+      for (const item of assets) {
+        delete (item as any).storage_path;
+      }
+    }
+
+    return assets;
+  }
+
+  async getCuratedAssets(limit = 24, categorySlug?: string) {
+    const assets = await assetsRepository.findCurated(limit, categorySlug);
+
+    // Security sanitization: storage_path is strictly excluded from public listings
+    if (assets && Array.isArray(assets)) {
+      for (const item of assets) {
+        delete (item as any).storage_path;
+      }
+    }
+
+    return assets;
+  }
+
+  async setCuratedStatus(id: string, isCurated: boolean) {
+    const asset = await assetsRepository.findByIdForAdmin(id);
+    if (!asset) {
+      throw new AppError(`Asset '${id}' not found`, 404);
+    }
+    if (isCurated) {
+      if (asset.status !== "published") {
+        throw new AppError(
+          `Only published assets can be marked as curated. Current status is '${asset.status}'.`,
+          400,
+        );
+      }
+      if (!asset.is_active || (asset as any).deleted_at) {
+        throw new AppError(
+          "Archived or deleted assets cannot be marked as curated.",
+          400,
+        );
+      }
+    }
+    const updated = await assetsRepository.setCuratedStatus(id, isCurated);
+    if (!updated) {
+      throw new AppError(`Failed to update curation status for asset '${id}'`, 500);
+    }
+    return updated;
+  }
+
   async getAssetBySlug(slug: string) {
     const asset = await assetsRepository.findBySlug(slug);
     if (!asset || asset.status !== "published") {
@@ -257,12 +309,20 @@ export class AssetsService {
       throw new AppError(`Asset is already in '${status}' status.`, 400);
     }
 
-    // When submitting for review, ensure at least one active file upload exists
+    // When submitting for review, ensure at least one active file upload and cover thumbnail exist
     if (status === "pending") {
       const activeFile = await licensesRepository.findActiveFile(id);
       if (!activeFile) {
         throw new AppError(
           "Cannot submit asset for review without at least one active deliverable payload file uploaded.",
+          400,
+        );
+      }
+
+      const thumbnail = await assetsRepository.findThumbnailByAssetId(id);
+      if (!thumbnail) {
+        throw new AppError(
+          "Cannot submit asset for review without a main cover thumbnail. Please upload a cover image in the Media tab.",
           400,
         );
       }
@@ -390,6 +450,14 @@ export class AssetsService {
       if (!activeFile) {
         throw new AppError(
           "Cannot approve an asset without at least one active deliverable payload file uploaded",
+          400,
+        );
+      }
+
+      const thumbnail = await assetsRepository.findThumbnailByAssetId(assetId);
+      if (!thumbnail) {
+        throw new AppError(
+          "Cannot approve an asset without a main cover thumbnail uploaded",
           400,
         );
       }

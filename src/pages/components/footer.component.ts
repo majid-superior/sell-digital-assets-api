@@ -1,7 +1,7 @@
 import { escapeHtml } from "../page.utils.js";
 import { organization } from "../../data/organizations.js";
 
-export function renderFooter(timestamp: string | Date | number): string {
+export function renderFooter(timestamp: string | Date | number = new Date()): string {
   const formattedTime = new Date(timestamp).toLocaleTimeString();
 
   return `

@@ -61,6 +61,16 @@
           <span>Status Dashboard</span>
         </a>
 
+        <!-- Lock / Sign Out Documentation -->
+        <a href="/doc/logout" class="btn btn-secondary" title="Lock Documentation & Sign Out">
+          <!-- Lucide Lock -->
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Lock Docs</span>
+        </a>
+
         <!-- Light/Dark Mode Switcher Matching App Icon Style -->
         <button type="button" class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle Theme" title="Toggle Theme">
           <!-- Lucide Sun (Shown in Dark Mode) -->

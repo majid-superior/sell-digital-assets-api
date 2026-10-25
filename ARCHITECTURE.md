@@ -24,6 +24,12 @@ graph TD
     end
 ```
 
+### 1.1 Environment Isolation & Mandatory Localhost Database Architecture
+- **Strict Localhost Development Exclusivity**: Localhost development (`npm run dev`) and automated testing (`npm test`) must strictly and exclusively connect to the designated local PostgreSQL database (`LOCAL_DATABASE_URL`). Connecting to remote cloud or production databases from localhost is strictly forbidden.
+- **Fail-Fast Safeguards**: If local database configuration is missing, the application fails immediately with clear guidance and cannot silently fall back to live production credentials.
+- **Production Protection**: Live cloud database credentials reside exclusively in `PROD_DATABASE_URL` (or production host environment variables) and are only accessible when `NODE_ENV=production`. Destructive operations (`db:reset`, table drops) against production are guarded by `ALLOW_LIVE_DB_RESET=true` and manual confirmation.
+- **Infrastructure Error Masking**: Database, socket, connection, and DNS errors are mapped to safe HTTP 503 responses with human-understandable guidance. Detailed diagnostics with redacted credentials are kept strictly in secure server logs.
+
 ---
 
 ## 2. Request Execution Pipeline

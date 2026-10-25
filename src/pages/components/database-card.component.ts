@@ -3,8 +3,12 @@ import { escapeHtml, formatDatabaseName } from "../page.utils.js";
 
 export function renderDatabaseCard(database: SystemStatus["database"]): string {
   const isDbConnected = database.connected;
+  const isLocalDb = database.isLocal ?? true;
   const dbStatusText = isDbConnected ? "Connected" : "Disconnected";
   const dbBadgeClass = isDbConnected ? "badge-secondary" : "badge-error";
+
+  const targetBadgeText = isLocalDb ? "Local DB" : "Live DB";
+  const targetBadgeClass = isLocalDb ? "badge-local" : "badge-live";
 
   return `
       <section class="card">
@@ -20,17 +24,29 @@ export function renderDatabaseCard(database: SystemStatus["database"]): string {
             </div>
             <h2 class="card-title">PostgreSQL Database</h2>
           </div>
-          <span class="badge ${dbBadgeClass}">
-            <span class="beacon ${isDbConnected ? 'online' : 'offline'}"></span>
-            <span>${dbStatusText}</span>
-          </span>
+          <div class="card-badges">
+            <span class="badge ${targetBadgeClass}" title="Database Target: ${isLocalDb ? 'Localhost Database' : 'Live Cloud Database'}">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                ${
+                  isLocalDb
+                    ? '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>'
+                    : '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path>'
+                }
+              </svg>
+              <span>${targetBadgeText}</span>
+            </span>
+            <span class="badge ${dbBadgeClass}">
+              <span class="beacon ${isDbConnected ? 'online' : 'offline'}"></span>
+              <span>${dbStatusText}</span>
+            </span>
+          </div>
         </div>
 
         <div class="metrics-list">
           <div class="metric-row">
             <span class="metric-label">Connection</span>
             <span class="metric-value" style="color: var(${isDbConnected ? '--color-secondary' : '--color-error'});">
-              ${isDbConnected ? 'Active Connection' : 'Disconnected'}
+              ${isDbConnected ? `Active Connection (${isLocalDb ? 'Local' : 'Live'})` : 'Disconnected'}
             </span>
           </div>
           <div class="metric-row">

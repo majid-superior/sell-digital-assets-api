@@ -15,7 +15,7 @@ export function renderActionsBar(port: number | string): string {
           Refresh Status
         </button>
 
-        <a href="/doc/" class="btn btn-secondary">
+        <a href="/doc/" class="btn btn-secondary" title="View API Documentation (Admin Password Required)">
           <!-- Lucide BookOpen -->
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>

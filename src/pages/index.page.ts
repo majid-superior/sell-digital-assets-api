@@ -6,6 +6,7 @@ import { renderServerCard } from "./components/server-card.component.js";
 import { renderDatabaseCard } from "./components/database-card.component.js";
 import { renderActionsBar } from "./components/actions.component.js";
 import { renderFooter } from "./components/footer.component.js";
+import { renderDocModal } from "./components/doc-modal.component.js";
 
 export function renderIndexPage(data: SystemStatus): string {
   return `<!DOCTYPE html>
@@ -63,6 +64,9 @@ export function renderIndexPage(data: SystemStatus): string {
     <!-- Footer -->
     ${renderFooter(data.server.timestamp)}
   </main>
+
+  <!-- Interactive Documentation Access Modal -->
+  ${renderDocModal()}
 </body>
 </html>`;
 }

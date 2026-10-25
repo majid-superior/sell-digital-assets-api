@@ -915,6 +915,10 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         methods.get.summary = "Get marketplace category tree";
         methods.get.description =
           "Returns active hierarchical category tree for asset discovery";
+      } else if (normalizedPath === "/api/v1/assets/featured" && methods.get) {
+        methods.get.summary = "Get curated featured marketplace assets";
+        methods.get.description =
+          "Returns curated and top-performing published digital assets for landing showcases";
       } else if (normalizedPath === "/api/v1/assets/{slug}" && methods.get) {
         methods.get.summary = "Get published asset details by slug";
         methods.get.description =

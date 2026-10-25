@@ -84,6 +84,7 @@ export const AdminAssetQuerySchema = z.object({
   sellerId: z.string().uuid().optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   search: z.string().trim().optional(),
+  is_curated: z.preprocess((val) => val === "true" ? true : val === "false" ? false : val, z.boolean().optional()).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -103,6 +104,25 @@ export const AssetQuerySchema = z.object({
 });
 
 export type AssetQueryInput = z.infer<typeof AssetQuerySchema>;
+
+export const FeaturedAssetQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+});
+
+export type FeaturedAssetQueryInput = z.infer<typeof FeaturedAssetQuerySchema>;
+
+export const CuratedAssetQuerySchema = z.object({
+  categorySlug: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(24),
+});
+
+export type CuratedAssetQueryInput = z.infer<typeof CuratedAssetQuerySchema>;
+
+export const CurateAssetSchema = z.object({
+  is_curated: z.boolean().default(true),
+});
+
+export type CurateAssetInput = z.infer<typeof CurateAssetSchema>;
 
 export const SellerAssetQuerySchema = z.object({
   status: AssetStatusEnum.optional(),

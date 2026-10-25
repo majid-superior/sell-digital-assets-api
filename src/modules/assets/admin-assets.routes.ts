@@ -9,6 +9,7 @@ import {
 import {
   AdminReviewAssetSchema,
   AdminAssetQuerySchema,
+  CurateAssetSchema,
   IdParamSchema,
 } from "./assets.schema.js";
 
@@ -44,6 +45,14 @@ router.post(
   validateParams(IdParamSchema),
   validateBody(AdminReviewAssetSchema),
   assetsController.adminReviewAsset.bind(assetsController),
+);
+
+// PATCH /api/v1/admin/assets/:id/curate — Toggle curated status
+router.patch(
+  "/:id/curate",
+  validateParams(IdParamSchema),
+  validateBody(CurateAssetSchema),
+  assetsController.setCuratedStatus.bind(assetsController),
 );
 
 export default router;

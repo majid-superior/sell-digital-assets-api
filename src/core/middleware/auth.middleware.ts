@@ -65,15 +65,31 @@ async function resolveAuthenticatedUser(userId: string): Promise<CachedAuthUser 
   return entry;
 }
 
-export const authenticate = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+/**
+ * Extracts a JWT bearer access token from request Authorization header or cookies.
+ * Supports case-insensitive 'Bearer' scheme, variable whitespace, and accessToken cookies.
+ */
+export function extractAuthToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
-  let token: string | undefined;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.split(" ")[1];
-  } else if (req.cookies && req.cookies.accessToken) {
-    token = req.cookies.accessToken;
+  if (authHeader) {
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (match && match[1]?.trim()) {
+      return match[1].trim();
+    }
   }
+
+  if (req.cookies && typeof req.cookies.accessToken === "string") {
+    const raw = req.cookies.accessToken.replace(/^["']|["']$/g, "").trim();
+    if (raw) {
+      return raw;
+    }
+  }
+
+  return undefined;
+}
+
+export const authenticate = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  const token = extractAuthToken(req);
 
   if (!token) {
     return next(new AppError("Authentication required. Please provide a valid Bearer token.", 401));
@@ -123,14 +139,7 @@ export const optionalAuthenticate = async (
   _res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  const authHeader = req.headers.authorization;
-  let token: string | undefined;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.split(" ")[1];
-  } else if (req.cookies && req.cookies.accessToken) {
-    token = req.cookies.accessToken;
-  }
+  const token = extractAuthToken(req);
 
   if (!token) {
     return next();

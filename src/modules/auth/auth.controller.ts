@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { authService } from "./auth.service.js";
 import { AppError } from "../../core/errors/app-error.js";
+import { extractAuthToken } from "../../core/middleware/auth.middleware.js";
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -59,11 +60,7 @@ export class AuthController {
   async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const refreshToken = req.body?.refreshToken || req.cookies?.refreshToken;
-      const authHeader = req.headers.authorization;
-      const accessToken =
-        authHeader && authHeader.startsWith("Bearer ")
-          ? authHeader.split(" ")[1]
-          : req.cookies?.accessToken;
+      const accessToken = extractAuthToken(req);
 
       await authService.signOut(refreshToken, accessToken);
 

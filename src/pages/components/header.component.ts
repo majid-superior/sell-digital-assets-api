@@ -2,20 +2,71 @@ import type { SystemStatus } from "../status.service.js";
 import { organization } from "../../data/organizations.js";
 import { escapeHtml } from "../page.utils.js";
 
-export function renderHeader(data?: SystemStatus | null): string {
-  const isAllGood = data?.overallStatus === "operational";
-  const overallBadgeClass = isAllGood ? "badge-secondary" : "badge-error";
-  const overallText = isAllGood ? "All Systems Operational" : "System Degraded";
+export interface HeaderOptions {
+  showBadge?: boolean;
+  badgeHtml?: string;
+  badgeText?: string;
+  isError?: boolean;
+  showDocsLink?: boolean;
+  navLink?: {
+    href: string;
+    text: string;
+    title?: string;
+    iconSvg?: string;
+  } | null;
+}
 
-  const badgeHtml = data
-    ? `<div class="badge ${overallBadgeClass}">
+export function renderHeader(
+  data?: SystemStatus | null,
+  options?: HeaderOptions,
+): string {
+  let badgeHtml = "";
+
+  if (options?.showBadge === false) {
+    badgeHtml = "";
+  } else if (options?.badgeHtml !== undefined) {
+    badgeHtml = options.badgeHtml;
+  } else if (data) {
+    const isAllGood = data.overallStatus === "operational";
+    const overallBadgeClass = isAllGood ? "badge-secondary" : "badge-error";
+    const overallText = isAllGood ? "All Systems Operational" : "System Degraded";
+    badgeHtml = `<div class="badge ${overallBadgeClass}">
           <span class="beacon ${isAllGood ? 'online' : 'offline'}"></span>
           <span>${overallText}</span>
-        </div>`
-    : `<div class="badge badge-error">
-          <span class="beacon offline"></span>
-          <span>404 Not Found</span>
         </div>`;
+  } else if (options?.isError) {
+    const errorText = options.badgeText || "404 Not Found";
+    badgeHtml = `<div class="badge badge-error">
+          <span class="beacon offline"></span>
+          <span>${escapeHtml(errorText)}</span>
+        </div>`;
+  }
+
+  // Navigation action button in header
+  let navButtonHtml = "";
+  if (options?.navLink) {
+    const icon =
+      options.navLink.iconSvg ||
+      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+      </svg>`;
+    navButtonHtml = `
+      <a href="${escapeHtml(options.navLink.href)}" class="btn btn-secondary" title="${escapeHtml(options.navLink.title || options.navLink.text)}">
+        ${icon}
+        <span>${escapeHtml(options.navLink.text)}</span>
+      </a>`;
+  } else if (options?.showDocsLink !== false) {
+    navButtonHtml = `
+      <!-- Navigate to Swagger API Docs -->
+      <a href="/doc/" class="btn btn-secondary" title="View Swagger API Documentation (Admin Password Required)">
+        <!-- Lucide BookOpen -->
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+        <span>API Docs</span>
+      </a>`;
+  }
 
   return `
     <header class="header">
@@ -31,16 +82,7 @@ export function renderHeader(data?: SystemStatus | null): string {
 
       <div class="header-actions">
         ${badgeHtml}
-
-        <!-- Navigate to Swagger API Docs -->
-        <a href="/doc/" class="btn btn-secondary" title="View Swagger API Documentation">
-          <!-- Lucide BookOpen -->
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-          </svg>
-          <span>API Docs</span>
-        </a>
+        ${navButtonHtml}
 
         <!-- Light/Dark Mode Switcher -->
         <button type="button" class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle Theme" title="Toggle Theme">

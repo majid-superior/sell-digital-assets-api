@@ -13,6 +13,9 @@ import {
   UpdateAssetSchema,
   UpdateAssetStatusSchema,
   AssetQuerySchema,
+  FeaturedAssetQuerySchema,
+  CuratedAssetQuerySchema,
+  CurateAssetSchema,
   SellerAssetQuerySchema,
   PresignFileUploadSchema,
   ConfirmFileUploadSchema,
@@ -48,6 +51,20 @@ router.get(
 router.get(
   "/categories",
   assetsController.getCategoriesTree.bind(assetsController),
+);
+
+// GET /api/v1/assets/featured — Curated featured assets showcase
+router.get(
+  "/featured",
+  validateQuery(FeaturedAssetQuerySchema),
+  assetsController.getFeaturedAssets.bind(assetsController),
+);
+
+// GET /api/v1/assets/curated — Curated assets showcase
+router.get(
+  "/curated",
+  validateQuery(CuratedAssetQuerySchema),
+  assetsController.getCuratedAssets.bind(assetsController),
 );
 
 // GET /api/v1/assets — Filtered & paginated discovery list

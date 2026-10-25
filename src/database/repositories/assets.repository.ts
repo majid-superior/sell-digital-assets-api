@@ -72,6 +72,12 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     await this.query(
       "ALTER TABLE assets ADD COLUMN IF NOT EXISTS seller_feedback TEXT;",
     );
+    await this.query(
+      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE;",
+    );
+    await this.query(
+      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_curated BOOLEAN NOT NULL DEFAULT FALSE;",
+    );
     this.schemaEnsured = true;
   }
 
@@ -160,6 +166,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.created_at,
         a.updated_at,
         json_build_object(
@@ -236,6 +245,212 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     };
   }
 
+  async findFeatured(limit = 12): Promise<AssetEntity[]> {
+    await this.ensureSchema();
+    const safeLimit = Math.min(50, Math.max(1, limit));
+
+    const sql = `
+      SELECT 
+        a.id,
+        a.seller_id,
+        a.category_id,
+        a.title,
+        a.slug,
+        a.short_description,
+        a.full_description,
+        a.preview_url,
+        a.status,
+        a.tags,
+        a.technical_specs,
+        a.view_count,
+        a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        json_build_object(
+          'id', c.id,
+          'name', c.name,
+          'slug', c.slug
+        ) AS category,
+        json_build_object(
+          'id', u.id,
+          'name', u.name
+        ) AS seller,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', at.id,
+                'tier_type', at.tier_type,
+                'price', at.price::float,
+                'license_terms_summary', at.license_terms_summary
+              ) ORDER BY at.price ASC
+            )
+            FROM asset_tiers at
+            WHERE at.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS tiers,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', am.id,
+                'media_type', am.media_type,
+                'url', am.url,
+                'display_order', am.display_order
+              ) ORDER BY am.display_order ASC
+            )
+            FROM asset_media am
+            WHERE am.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS media,
+        (
+          SELECT COALESCE(MIN(at.price), 0)::float
+          FROM asset_tiers at
+          WHERE at.asset_id = a.id
+        ) AS min_price,
+        (
+          SELECT COUNT(*)::int
+          FROM asset_files af
+          WHERE af.asset_id = a.id AND af.is_active = TRUE
+        ) AS file_count
+      FROM assets a
+      JOIN categories c ON a.category_id = c.id
+      JOIN users u ON a.seller_id = u.id
+      WHERE a.is_active = TRUE
+        AND a.deleted_at IS NULL
+        AND a.status = 'published'
+      ORDER BY 
+        (CASE WHEN a.is_featured = TRUE THEN 0 ELSE 1 END),
+        a.download_count DESC,
+        a.view_count DESC,
+        a.created_at DESC
+      LIMIT $1;
+    `;
+
+    const res = await this.query<AssetEntity>(sql, [safeLimit]);
+    return res.rows;
+  }
+
+  async findCurated(limit = 24, categorySlug?: string): Promise<AssetEntity[]> {
+    await this.ensureSchema();
+    const safeLimit = Math.min(50, Math.max(1, limit));
+
+    const conditions: string[] = [
+      "a.is_active = TRUE",
+      "a.deleted_at IS NULL",
+      "a.status = 'published'",
+      "a.is_curated = TRUE",
+    ];
+    const params: unknown[] = [];
+
+    if (categorySlug) {
+      params.push(categorySlug);
+      conditions.push(`c.slug = $${params.length}`);
+    }
+
+    params.push(safeLimit);
+    const sql = `
+      SELECT 
+        a.id,
+        a.seller_id,
+        a.category_id,
+        a.title,
+        a.slug,
+        a.short_description,
+        a.full_description,
+        a.preview_url,
+        a.status,
+        a.tags,
+        a.technical_specs,
+        a.view_count,
+        a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
+        a.created_at,
+        a.updated_at,
+        json_build_object(
+          'id', c.id,
+          'name', c.name,
+          'slug', c.slug
+        ) AS category,
+        json_build_object(
+          'id', u.id,
+          'name', u.name,
+          'store_name', u.name
+        ) AS seller,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', at.id,
+                'tier_type', at.tier_type,
+                'price', at.price::float,
+                'license_terms_summary', at.license_terms_summary
+              ) ORDER BY at.price ASC
+            )
+            FROM asset_tiers at
+            WHERE at.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS tiers,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', am.id,
+                'media_type', am.media_type,
+                'url', am.url,
+                'display_order', am.display_order
+              ) ORDER BY am.display_order ASC
+            )
+            FROM asset_media am
+            WHERE am.asset_id = a.id
+          ),
+          '[]'::json
+        ) AS media,
+        (
+          SELECT COALESCE(MIN(at.price), 0)::float
+          FROM asset_tiers at
+          WHERE at.asset_id = a.id
+        ) AS min_price,
+        (
+          SELECT COUNT(*)::int
+          FROM asset_files af
+          WHERE af.asset_id = a.id AND af.is_active = TRUE
+        ) AS file_count
+      FROM assets a
+      JOIN categories c ON a.category_id = c.id
+      JOIN users u ON a.seller_id = u.id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY 
+        a.updated_at DESC,
+        a.created_at DESC
+      LIMIT $${params.length};
+    `;
+
+    const res = await this.query<AssetEntity>(sql, params);
+    return res.rows;
+  }
+
+  async setCuratedStatus(id: string, isCurated: boolean): Promise<AssetEntity | null> {
+    await this.ensureSchema();
+    const sql = `
+      UPDATE assets
+      SET is_curated = $1, updated_at = NOW()
+      WHERE id = $2 AND deleted_at IS NULL
+      RETURNING *;
+    `;
+    const res = await this.query<AssetEntity>(sql, [isCurated, id]);
+    if (res.rows.length === 0) return null;
+    return this.findByIdForAdmin(id);
+  }
+
   async findBySlug(slug: string): Promise<AssetEntity | null> {
     const sql = `
       SELECT 
@@ -252,6 +467,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.created_at,
         a.updated_at,
         json_build_object(
@@ -372,6 +590,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -543,6 +764,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.created_at,
         a.updated_at,
         json_build_object('id', c.id, 'name', c.name, 'slug', c.slug) AS category,
@@ -813,6 +1037,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     sellerId?: string | undefined;
     categoryId?: number | undefined;
     search?: string | undefined;
+    is_curated?: boolean | undefined;
     page?: number | undefined;
     limit?: number | undefined;
   }) {
@@ -827,6 +1052,11 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     if (filter.status) {
       params.push(filter.status);
       conditions.push(`a.status = $${params.length}`);
+    }
+
+    if (filter.is_curated !== undefined) {
+      params.push(filter.is_curated);
+      conditions.push(`a.is_curated = $${params.length}`);
     }
 
     if (filter.sellerId) {
@@ -875,6 +1105,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -980,6 +1213,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.technical_specs,
         a.view_count,
         a.download_count,
+        a.is_featured,
+        a.is_curated,
+        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -1213,6 +1449,16 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       WHERE id = $1 AND asset_id = $2;
     `;
     const res = await this.query<AssetMediaEntity>(sql, [mediaId, assetId]);
+    return res.rows[0] || null;
+  }
+
+  async findThumbnailByAssetId(assetId: string): Promise<AssetMediaEntity | null> {
+    const sql = `
+      SELECT * FROM asset_media
+      WHERE asset_id = $1 AND media_type = 'thumbnail'
+      LIMIT 1;
+    `;
+    const res = await this.query<AssetMediaEntity>(sql, [assetId]);
     return res.rows[0] || null;
   }
 

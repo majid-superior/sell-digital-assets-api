@@ -57,7 +57,10 @@ export function renderErrorPage(urlPath: string, statusCode: number = 404, custo
 </head>
 <body>
   <main class="container">
-    ${renderHeader()}
+    ${renderHeader(null, {
+      isError: true,
+      badgeText: statusCode === 404 ? "404 Not Found" : `${statusCode} Error`,
+    })}
 
     <div class="error-wrapper">
       <section class="error-card">

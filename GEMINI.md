@@ -43,12 +43,24 @@
 
 ## 2. Database Standards & Conventions
 
-1. **Connection Pooling**:
-   - All database interactions use the centralized singleton pool (`src/config/database.ts`).
-   - Always prioritize IPv4 DNS lookups (`dns.setDefaultResultOrder("ipv4first")`) to prevent timeout issues (`EAI_AGAIN`) when connecting to remote cloud databases (Render, Supabase, Neon).
-   - In production, enforce SSL with `rejectUnauthorized: false` for managed cloud certificates.
+1. **Mandatory Environment Separation & Local Database Rule (STRICT ARCHITECTURE STANDARD)**:
+   - **Localhost Development & Testing Exclusivity**:
+     - Localhost development (`npm run dev`) and automated tests (`npm test`) MUST strictly and exclusively connect to the designated local PostgreSQL database (`LOCAL_DATABASE_URL`).
+     - Connecting to a remote, managed cloud, or live production database from localhost development or automated tests is strictly prohibited.
+     - Configuration loading (`src/config/env.ts`) MUST enforce that in `NODE_ENV=development` and `NODE_ENV=test`, the resolved database URL is a local host (`localhost`, `127.0.0.1`).
+     - If local database configuration is missing or points to a remote cloud host, the system MUST fail-fast with a clear, human-understandable safeguard error.
+     - Never silently fall back to live production credentials.
+   - **Production Isolation & Protection**:
+     - Production credentials must be separated in `PROD_DATABASE_URL` or hosting environment variables and are only accessible when `NODE_ENV=production`.
+     - Destructive operations (`db:reset`, table drops, schema truncation) against production are blocked by safety guards and require explicit confirmation (`ALLOW_LIVE_DB_RESET=true` or typing `CONFIRM RESET PRODUCTION`).
 
-2. **Database Schema & Migrations**:
+2. **Connection Pooling & Resilient Connectivity**:
+   - All database interactions use the centralized singleton pool (`src/config/database.ts`).
+   - Always prioritize IPv4 DNS lookups (`dns.setDefaultResultOrder("ipv4first")`) to prevent timeout issues (`EAI_AGAIN`) when connecting to remote cloud databases.
+   - In production, enforce SSL with `rejectUnauthorized: false` for managed cloud certificates. Localhost database connections must never enable SSL.
+   - Database credentials in connection strings must be sanitized (`***`) in all application logs (`maskDatabaseUrl()`).
+
+3. **Database Schema & Migrations**:
    - The consolidated schema migration and automated seed script is `src/database/reset.ts` (`npm run db:reset`).
    - Critical configuration tables (`organizations` singleton `id = 1`) are protected against accidental truncation via the trigger `prevent_table_truncate()` and deletion via `no_delete_organizations`.
    - Always use `CITEXT` for email columns to enforce case-insensitive uniqueness at the database level.
@@ -95,16 +107,23 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 
 ## 4. Human-Understandable Error Message Standard (MANDATORY RULE FOR AI AGENTS)
 
-1. **Zero Raw Technical Codes**:
-   - Never return cryptic technical errors, unformatted SQL/database exceptions, or raw HTTP status numbers without clear, human-understandable explanations.
+1. **Zero Raw Technical Codes & Infrastructure Masking**:
+   - Never return cryptic technical errors, unformatted SQL/database exceptions, socket errors (`ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`), DNS errors (`EAI_AGAIN`, `getaddrinfo`), or raw HTTP status numbers in client-facing responses.
+   - Database connection and infrastructure failures must always be intercepted by `errorMiddleware` and returned as HTTP 503 with safe, human-readable guidance: `"The service is temporarily unavailable. Please try again in a few moments."`
    - Every client-facing error payload must communicate:
      - **What failed**: Plain English statement of the failure (e.g., "The uploaded file exceeds the maximum allowed file size limit").
      - **Why it occurred**: The exact constraint or reason (e.g., "Showcase media is limited to 10 MB; Deliverables are limited to 500 MB").
      - **How to resolve**: Actionable steps for the user (e.g., "Please compress the image or choose a file under 10 MB").
-2. **Multipart & File Upload Limits**:
+2. **Safe Logging & Credential Redaction**:
+   - Detailed diagnostics (error names, stack traces, request IDs) are preserved strictly in secure server logs.
+   - Connection strings, passwords, JWT secrets, and bearer tokens must always be redacted (`***`) before logging (`sanitizeSecrets()`, `maskDatabaseUrl()`).
+3. **Authentication Resilience**:
+   - Database and network connection failures must never be reported as invalid credentials.
+   - Temporary infrastructure failures must return HTTP 503 rather than HTTP 401.
+4. **Multipart & File Upload Limits**:
    - Multer exceptions (e.g., `LIMIT_FILE_SIZE`, `LIMIT_UNEXPECTED_FILE`, `LIMIT_FILE_COUNT`) must be intercepted and formatted into clean JSON with HTTP 413 or 400 and human explanations.
    - Direct storage streaming endpoints must enforce separate limits for media (`public/media/` at 10 MB) vs deliverables (`vault/` at 500 MB) and supply clear error messages.
-3. **Database Constraint Sanitization**:
+5. **Database Constraint Sanitization**:
    - PostgreSQL error codes (`23505`, `23503`, `23514`, `23502`, `22P02`) must always be mapped to readable domain descriptions (e.g., duplicate slug, invalid ID format).
 
 ---

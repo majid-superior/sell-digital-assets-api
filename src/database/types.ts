@@ -180,6 +180,8 @@ export interface AssetEntity {
   technical_specs?: Record<string, unknown>;
   view_count?: number;
   download_count?: number;
+  is_featured?: boolean;
+  is_curated?: boolean;
   is_active?: boolean;
   deleted_at?: Date | string | null;
   created_at?: Date | string;

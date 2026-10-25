@@ -22,6 +22,15 @@ import { httpLogger } from "./core/logger/index.js";
 // Browser Pages (1: Index / Status, 2: Error Page)
 import pagesRoutes from "./pages/pages.routes.js";
 import { renderErrorPage } from "./pages/error.page.js";
+import { renderDocAuthPage } from "./pages/doc-auth.page.js";
+import {
+  verifyAdminPassword,
+  createDocAccessToken,
+  isDocAuthorized,
+  DOC_COOKIE_NAME,
+  DOC_STATE_COOKIE_NAME,
+  DOC_COOKIE_MAX_AGE_MS,
+} from "./core/security/doc-auth.service.js";
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
@@ -35,6 +44,7 @@ import licensesRoutes from "./modules/assets/licenses.routes.js";
 import storageRoutes from "./modules/assets/storage.routes.js";
 import notificationsRoutes from "./modules/notifications/notifications.routes.js";
 import bannersRoutes from "./modules/banners/banners.routes.js";
+import heroRoutes from "./modules/hero/hero.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
 
@@ -123,7 +133,7 @@ app.use(
 );
 
 // ============================================================================
-// Automated Swagger UI Documentation (/doc, /docs, /openapi.json)
+// Automated Swagger UI Documentation (/doc, /docs, /openapi.json) - Protected
 // ============================================================================
 const swaggerDistPath = path.resolve(
   process.cwd(),
@@ -133,6 +143,91 @@ const swaggerSrcPath = path.resolve(process.cwd(), "src/swagger/swagger.json");
 const swaggerFilePath = fs.existsSync(swaggerDistPath)
   ? swaggerDistPath
   : swaggerSrcPath;
+
+// Documentation Authentication Handlers (Unlock & Lock / Sign Out)
+app.post("/doc/auth", async (req: Request, res: Response) => {
+  const rawPassword = req.body?.password;
+  const acceptsJson = Boolean(
+    req.headers.accept?.includes("application/json") || req.is("application/json"),
+  );
+
+  if (!rawPassword || typeof rawPassword !== "string" || !rawPassword.trim()) {
+    if (acceptsJson) {
+      return res.status(400).json({
+        success: false,
+        status: "fail",
+        message: "Administrator password is required.",
+      });
+    }
+    return res
+      .status(400)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(renderDocAuthPage({ errorMessage: "Administrator password is required." }));
+  }
+
+  const isValid = await verifyAdminPassword(rawPassword);
+  if (!isValid) {
+    if (acceptsJson) {
+      return res.status(401).json({
+        success: false,
+        status: "fail",
+        message: "Invalid administrator password. Please try again.",
+      });
+    }
+    return res
+      .status(401)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(
+        renderDocAuthPage({
+          errorMessage: "Invalid administrator password. Please try again.",
+        }),
+      );
+  }
+
+  // Grant session access: issue JWT cookie + client state cookie
+  const token = createDocAccessToken();
+  const isSecure = env.NODE_ENV === "production";
+
+  res.cookie(DOC_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: "lax",
+    maxAge: DOC_COOKIE_MAX_AGE_MS,
+    path: "/",
+  });
+
+  res.cookie(DOC_STATE_COOKIE_NAME, "1", {
+    httpOnly: false,
+    secure: isSecure,
+    sameSite: "lax",
+    maxAge: DOC_COOKIE_MAX_AGE_MS,
+    path: "/",
+  });
+
+  const redirectUrl =
+    typeof req.body?.redirect === "string" && req.body.redirect.startsWith("/doc")
+      ? req.body.redirect
+      : "/doc/";
+
+  if (acceptsJson) {
+    return res.status(200).json({
+      success: true,
+      message: "Documentation unlocked successfully",
+      redirectUrl,
+    });
+  }
+
+  return res.redirect(303, redirectUrl);
+});
+
+const handleDocLogout = (_req: Request, res: Response) => {
+  res.clearCookie(DOC_COOKIE_NAME, { path: "/" });
+  res.clearCookie(DOC_STATE_COOKIE_NAME, { path: "/" });
+  res.redirect(303, "/doc/");
+};
+
+app.get("/doc/logout", handleDocLogout);
+app.post("/doc/logout", handleDocLogout);
 
 if (fs.existsSync(swaggerFilePath)) {
   const swaggerFile = JSON.parse(fs.readFileSync(swaggerFilePath, "utf8"));
@@ -162,6 +257,43 @@ if (fs.existsSync(swaggerFilePath)) {
     });
   }
 
+  app.get("/docs", (_req: Request, res: Response) =>
+    res.redirect(301, "/doc/"),
+  );
+
+  // Guard OpenAPI JSON specification
+  app.get("/openapi.json", (req: Request, res: Response) => {
+    if (!isDocAuthorized(req)) {
+      return res.status(401).json({
+        success: false,
+        status: "fail",
+        message: "Administrator authorization required to view OpenAPI specification.",
+      });
+    }
+    return res.json(swaggerFile);
+  });
+
+  // Guard Swagger UI Documentation Router (/doc, /doc/*)
+  app.use("/doc", (req: Request, res: Response, next: NextFunction) => {
+    if (isDocAuthorized(req)) {
+      return next();
+    }
+
+    const acceptsHtml = req.accepts(["html", "json"]) === "html";
+    if (!acceptsHtml) {
+      return res.status(401).json({
+        success: false,
+        status: "fail",
+        message: "Administrator authorization required to access API documentation.",
+      });
+    }
+
+    return res
+      .status(200)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(renderDocAuthPage({ redirectUrl: req.originalUrl }));
+  });
+
   app.use(
     "/doc",
     swaggerUi.serveFiles(swaggerFile, {}),
@@ -181,12 +313,6 @@ if (fs.existsSync(swaggerFilePath)) {
         filter: true,
       },
     }),
-  );
-  app.get("/docs", (_req: Request, res: Response) =>
-    res.redirect(301, "/doc/"),
-  );
-  app.get("/openapi.json", (_req: Request, res: Response) =>
-    res.json(swaggerFile),
   );
 } else {
   console.warn(
@@ -230,6 +356,8 @@ app.use("/api/v1/storage", storageRoutes);
 app.use("/api/v1/notifications", notificationsRoutes);
 app.use("/api/v1/banners", bannersRoutes);
 app.use("/api/banners", bannersRoutes);
+app.use("/api/v1/hero", heroRoutes);
+app.use("/api/hero", heroRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

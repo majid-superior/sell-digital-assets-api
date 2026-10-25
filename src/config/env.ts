@@ -4,8 +4,10 @@ dotenv.config();
 
 export interface EnvConfig {
   PORT: number;
-  NODE_ENV: "development" | "production";
+  NODE_ENV: "development" | "production" | "test";
   DATABASE_URL: string;
+  LOCAL_DATABASE_URL?: string | undefined;
+  PROD_DATABASE_URL?: string | undefined;
   CLIENT_URL: string;
   SERVER_URL?: string | undefined;
   ALLOWED_ORIGINS: string[];
@@ -48,12 +50,82 @@ function getRequiredSecret(key: string, minLength: number = 32): string {
   return value;
 }
 
-const nodeEnv = getRequiredEnv("NODE_ENV");
-if (nodeEnv !== "development" && nodeEnv !== "production") {
-  throw new Error(
-    `CRITICAL CONFIGURATION ERROR: NODE_ENV must be either 'development' or 'production', received: '${nodeEnv}'`,
+export function isLocalDatabaseHost(host: string): boolean {
+  const normalized = host.toLowerCase().trim();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]" ||
+    normalized === "0.0.0.0" ||
+    normalized === "host.docker.internal" ||
+    normalized === "postgres" ||
+    normalized === "db" ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal")
   );
 }
+
+export function isLocalDatabaseUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return isLocalDatabaseHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function resolveDatabaseUrl(environment: "development" | "production" | "test"): string {
+  const localDbUrl = process.env.LOCAL_DATABASE_URL?.trim();
+  const rawDbUrl = process.env.DATABASE_URL?.trim();
+  const prodDbUrl = process.env.PROD_DATABASE_URL?.trim() || process.env.LIVE_DATABASE_URL?.trim();
+
+  if (environment === "development" || environment === "test") {
+    // 1. Mandatory Localhost Development Principle:
+    // Local development and automated testing must strictly use a local database.
+    if (localDbUrl) {
+      if (!isLocalDatabaseUrl(localDbUrl)) {
+        throw new Error(
+          `CRITICAL CONFIGURATION ERROR: LOCAL_DATABASE_URL must point to a local PostgreSQL instance (e.g., localhost or 127.0.0.1). Received host: '${new URL(localDbUrl).hostname}'. Connecting to remote/cloud databases during local development is strictly prohibited.`,
+        );
+      }
+      return localDbUrl;
+    }
+
+    if (rawDbUrl && isLocalDatabaseUrl(rawDbUrl)) {
+      return rawDbUrl;
+    }
+
+    // Safety guard: prevent accidental fallback to remote production database
+    if (rawDbUrl && !isLocalDatabaseUrl(rawDbUrl)) {
+      throw new Error(
+        `CRITICAL ARCHITECTURE SAFEGUARD: Environment safeguard prevented connection to a live/production database during local development (NODE_ENV=${environment}). Local development and automated testing must connect to a local PostgreSQL database and cannot silently fall back to production credentials. Please define LOCAL_DATABASE_URL=postgresql://postgres:<password>@localhost:5432/sell_digital_assets in .env.`,
+      );
+    }
+
+    throw new Error(
+      `CRITICAL CONFIGURATION ERROR: Missing local database configuration for ${environment} environment. Please define LOCAL_DATABASE_URL=postgresql://postgres:<password>@localhost:5432/sell_digital_assets in .env.`,
+    );
+  }
+
+  // Production environment:
+  const targetUrl = rawDbUrl || prodDbUrl;
+  if (!targetUrl) {
+    throw new Error(
+      `CRITICAL CONFIGURATION ERROR: DATABASE_URL is required in production environment. No fallback value is permitted.`,
+    );
+  }
+  return targetUrl;
+}
+
+const rawNodeEnv = getRequiredEnv("NODE_ENV");
+if (rawNodeEnv !== "development" && rawNodeEnv !== "production" && rawNodeEnv !== "test") {
+  throw new Error(
+    `CRITICAL CONFIGURATION ERROR: NODE_ENV must be either 'development', 'production', or 'test', received: '${rawNodeEnv}'`,
+  );
+}
+const nodeEnv = rawNodeEnv as EnvConfig["NODE_ENV"];
+const resolvedDatabaseUrl = resolveDatabaseUrl(nodeEnv);
 
 const rawPort = getRequiredEnv("PORT");
 const port = parseInt(rawPort, 10);
@@ -117,6 +189,23 @@ if (rawAllowedOrigins) {
   }
 }
 
+// Automatically register local host/loopback origins for the server's own port
+// so Swagger UI, local pages, and self-hosted static assets are always accessible
+registerOrigin(`http://localhost:${port}`, "PORT");
+registerOrigin(`http://127.0.0.1:${port}`, "PORT");
+registerOrigin(`http://[::1]:${port}`, "PORT");
+
+// If SERVER_URL / API_URL is explicitly configured, register its origin as well
+const serverUrlCandidate =
+  process.env.SERVER_URL?.trim() ||
+  process.env.API_URL?.trim() ||
+  process.env.RENDER_EXTERNAL_URL?.trim() ||
+  undefined;
+
+if (serverUrlCandidate) {
+  registerOrigin(serverUrlCandidate, "SERVER_URL");
+}
+
 const clientUrl = primaryClientUrl.replace(/\/+$/, "");
 
 const rawExposeStack = getRequiredEnv("EXPOSE_STACK");
@@ -128,14 +217,12 @@ if (rawExposeStack !== "true" && rawExposeStack !== "false") {
 
 export const env: EnvConfig = {
   PORT: port,
-  NODE_ENV: nodeEnv as EnvConfig["NODE_ENV"],
-  DATABASE_URL: getRequiredEnv("DATABASE_URL"),
+  NODE_ENV: nodeEnv,
+  DATABASE_URL: resolvedDatabaseUrl,
+  LOCAL_DATABASE_URL: process.env.LOCAL_DATABASE_URL?.trim() || undefined,
+  PROD_DATABASE_URL: process.env.PROD_DATABASE_URL?.trim() || undefined,
   CLIENT_URL: clientUrl,
-  SERVER_URL:
-    process.env.SERVER_URL?.trim() ||
-    process.env.API_URL?.trim() ||
-    process.env.RENDER_EXTERNAL_URL?.trim() ||
-    undefined,
+  SERVER_URL: serverUrlCandidate,
   ALLOWED_ORIGINS: parsedOrigins,
   JWT_SECRET: getRequiredSecret("JWT_SECRET"),
   JWT_REFRESH_SECRET: getRequiredSecret("JWT_REFRESH_SECRET"),

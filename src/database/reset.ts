@@ -487,6 +487,8 @@ CREATE TABLE IF NOT EXISTS assets (
     technical_specs JSONB NOT NULL DEFAULT '{}'::jsonb,
     view_count INT NOT NULL DEFAULT 0,
     download_count INT NOT NULL DEFAULT 0,
+    is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    is_curated BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -500,6 +502,8 @@ CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
 CREATE INDEX IF NOT EXISTS idx_assets_preview_url ON assets (preview_url) WHERE preview_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_storage_path ON assets (storage_path) WHERE storage_path IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_active ON assets (is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_curated ON assets (is_curated) WHERE is_curated = TRUE AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_featured ON assets (is_featured) WHERE is_featured = TRUE AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_tags_gin ON assets USING GIN (tags);
 
 DROP TRIGGER IF EXISTS trg_assets_updated_at ON assets;
@@ -963,8 +967,9 @@ async function backupDatabase(
 async function promptTargetDatabase(): Promise<string> {
   const localUrl =
     process.env.LOCAL_DATABASE_URL ||
+    (process.env.DATABASE_URL && !isSslRequired(process.env.DATABASE_URL) ? process.env.DATABASE_URL : undefined) ||
     "postgresql://postgres:P%40ssw0rd@localhost:5432/sell_digital_assets";
-  const liveUrl = process.env.DATABASE_URL;
+  const liveUrl = process.env.PROD_DATABASE_URL || (isSslRequired(process.env.DATABASE_URL || "") ? process.env.DATABASE_URL : undefined);
 
   // Command-line flag shortcuts (for scripting or automated environments)
   if (process.argv.includes("--local") || process.argv.includes("-1")) {
@@ -977,7 +982,13 @@ async function promptTargetDatabase(): Promise<string> {
   ) {
     if (!liveUrl) {
       console.error(
-        "❌ Error: DATABASE_URL environment variable is missing for live database.",
+        "❌ Error: PROD_DATABASE_URL environment variable is missing for live database.",
+      );
+      process.exit(1);
+    }
+    if (process.env.ALLOW_LIVE_DB_RESET !== "true") {
+      console.error(
+        "🛑 SAFEGUARD BLOCKED: Resetting the live database via CLI flags requires ALLOW_LIVE_DB_RESET=true.",
       );
       process.exit(1);
     }
@@ -995,8 +1006,8 @@ async function promptTargetDatabase(): Promise<string> {
       console.log("\n=======================================================");
       console.log("             DATABASE RESET UTILITY                   ");
       console.log("=======================================================");
-      console.log("  [1] Local Database (localhost:5432/sell_digital_assets)");
-      console.log("  [2] Live Database  (Supabase / Cloud)");
+      console.log("  [1] Local Database (localhost:5432/sell_digital_assets) [SAFE]");
+      console.log("  [2] Live Database  (Supabase / Cloud) [PRODUCTION - DANGEROUS]");
       console.log("=======================================================");
 
       while (true) {
@@ -1009,9 +1020,19 @@ async function promptTargetDatabase(): Promise<string> {
         if (choice === "2") {
           if (!liveUrl) {
             console.error(
-              "❌ Error: DATABASE_URL environment variable is missing for live database.",
+              "❌ Error: PROD_DATABASE_URL environment variable is missing for live database.",
             );
             process.exit(1);
+          }
+
+          console.log("\n⚠️  DANGER: You selected the LIVE / PRODUCTION CLOUD database!");
+          const confirmText = (
+            await rl.question("Type 'CONFIRM RESET PRODUCTION' to proceed or anything else to cancel: ")
+          ).trim();
+
+          if (confirmText !== "CONFIRM RESET PRODUCTION") {
+            console.log("🛡️  Reset of live database cancelled by user.");
+            process.exit(0);
           }
           return liveUrl;
         }
@@ -1022,7 +1043,7 @@ async function promptTargetDatabase(): Promise<string> {
     }
   }
 
-  // Non-interactive fallback defaults to local to protect live database
+  // Non-interactive fallback defaults strictly to local database to protect live database
   return localUrl;
 }
 

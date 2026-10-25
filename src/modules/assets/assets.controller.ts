@@ -34,6 +34,55 @@ export class AssetsController {
   // PUBLIC / DISCOVERY CATALOG
   // ============================================================================
 
+  async getFeaturedAssets(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 12;
+      const safeLimit = Math.min(50, Math.max(1, isNaN(limit) ? 12 : limit));
+      const assets = await assetsService.getFeaturedAssets(safeLimit);
+
+      res.status(200).json({
+        success: true,
+        data: assets,
+        message: "Featured assets retrieved successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getCuratedAssets(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 24;
+      const categorySlug = typeof req.query.categorySlug === "string" ? req.query.categorySlug : undefined;
+      const safeLimit = Math.min(50, Math.max(1, isNaN(limit) ? 24 : limit));
+      const assets = await assetsService.getCuratedAssets(safeLimit, categorySlug);
+
+      res.status(200).json({
+        success: true,
+        data: assets,
+        message: "Curated assets retrieved successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setCuratedStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const { is_curated } = req.body;
+      const updated = await assetsService.setCuratedStatus(id, Boolean(is_curated));
+
+      res.status(200).json({
+        success: true,
+        data: updated,
+        message: `Asset curation status updated to ${is_curated ? "curated" : "not curated"}`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getPublicAssets(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const query = (req.query as unknown as AssetQueryInput) || {};
