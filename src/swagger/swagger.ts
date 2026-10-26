@@ -326,6 +326,7 @@ const routes = [
   "./src/modules/assets/storage.routes.ts",
   "./src/modules/notifications/notifications.routes.ts",
   "./src/modules/banners/banners.routes.ts",
+  "./src/modules/hero/hero.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {

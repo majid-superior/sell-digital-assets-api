@@ -163,12 +163,17 @@ body {
   opacity: 1 !important;
 }
 
+.brand-info {
+  min-width: 0;
+}
+
 .brand-info h1 {
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-on-background);
   line-height: 1.25;
+  overflow-wrap: break-word;
 }
 
 .brand-info p {
@@ -257,7 +262,7 @@ body {
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: var(--spacing-lg);
 }
 
@@ -314,11 +319,14 @@ body {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-outline-variant);
   font-size: 0.875rem;
+  min-width: 0;
+  gap: var(--spacing-sm);
 }
 
 .metric-label {
   color: var(--color-on-surface-variant);
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .metric-value {
@@ -326,6 +334,10 @@ body {
   font-family: var(--font-mono);
   font-size: 0.825rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  text-align: right;
 }
 
 /* Actions Card & Quick Links */
@@ -1332,4 +1344,104 @@ p.description {
 [data-theme="dark"] .swagger-ui .dialog-ux .modal-ux-content h4,
 .dark .swagger-ui .dialog-ux .modal-ux-content h4 {
   color: var(--color-on-background) !important;
+}
+
+/* --------------------------------------------------------------------------
+   10. RESPONSIVE BREAKPOINTS & MOBILE-FIRST OPTIMIZATION
+   -------------------------------------------------------------------------- */
+.swagger-ui .opblock .opblock-summary {
+  flex-wrap: wrap;
+}
+
+.swagger-ui table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.swagger-ui .opblock-body pre {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .actions-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quick-links {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .quick-links .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+
+  .header-actions {
+    justify-content: flex-end;
+  }
+
+  .modal-dialog {
+    max-width: calc(100vw - 2rem);
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: var(--spacing-md);
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .metric-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .metric-value {
+    text-align: left;
+  }
+
+  .brand-wrap {
+    gap: var(--spacing-sm);
+  }
+
+  .brand-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .brand-info h1 {
+    font-size: 1.15rem;
+  }
 }

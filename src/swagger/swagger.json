@@ -3734,6 +3734,50 @@
         }
       }
     },
+    "/api/v1/hero/update-frontend-json": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/hero/internal/update-hero-json": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/hero": {
       "get": {
         "description": "",
@@ -3799,10 +3843,31 @@
                   "subtitle": {
                     "example": "any"
                   },
+                  "detail": {
+                    "example": "any"
+                  },
+                  "category_name": {
+                    "example": "any"
+                  },
+                  "categoryName": {
+                    "example": "any"
+                  },
+                  "category_slug": {
+                    "example": "any"
+                  },
+                  "categorySlug": {
+                    "example": "any"
+                  },
                   "sort_order": {
                     "example": "any"
                   },
+                  "sortOrder": {
+                    "example": "any"
+                  },
                   "is_active": {
+                    "example": "any"
+                  },
+                  "isActive": {
                     "example": "any"
                   }
                 }
@@ -3847,6 +3912,9 @@
                 "type": "object",
                 "properties": {
                   "is_active": {
+                    "example": "any"
+                  },
+                  "isActive": {
                     "example": "any"
                   }
                 }

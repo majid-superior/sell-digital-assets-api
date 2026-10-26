@@ -243,7 +243,20 @@ erDiagram
 
 ---
 
-## 6. Operational & Build Runbook
+## 6. Mobile-First Developer UI & Documentation Standards
+
+1. **System Views & Developer UI Geometry**:
+   - The master stylesheet (`public/css/style.css`) styles all server-rendered HTML pages (Status page at `/status`, error views, and Swagger UI documentation at `/docs`).
+   - The status metric grid uses fluid auto-fit tracks (`grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr))`) and converts to a single column on mobile viewports.
+   - All metric rows and brand text containers specify `min-width: 0;` and `.metric-value` applies `overflow-wrap: anywhere; word-break: break-word;` to prevent hashes, UUIDs, or URLs from widening the layout beyond the viewport.
+   - Swagger UI tables and payload blocks are explicitly wrapped with `-webkit-overflow-scrolling: touch; overflow-x: auto; max-width: 100%;` to contain broad schemas.
+
+2. **Strict Zero-Overflow Principle**:
+   - Global `overflow-x: hidden` band-aids on body elements are prohibited. Layout overflow must be resolved through responsive flex-wrapping, intrinsic min-width constraints, and media queries.
+
+---
+
+## 7. Operational & Build Runbook
 
 ```powershell
 # Development server with hot-reload

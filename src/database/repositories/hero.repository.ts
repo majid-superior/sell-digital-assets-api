@@ -5,6 +5,9 @@ export interface HeroImageEntity extends QueryResultRow {
   id: string;
   title: string;
   subtitle: string | null;
+  detail: string | null;
+  category_name: string | null;
+  category_slug: string | null;
   image_url: string;
   storage_key: string | null;
   sort_order: number;
@@ -14,29 +17,35 @@ export interface HeroImageEntity extends QueryResultRow {
 }
 
 export interface CreateHeroImageDbInput {
+  id?: string | undefined;
   title: string;
-  subtitle?: string | null;
+  subtitle?: string | null | undefined;
+  detail?: string | null | undefined;
+  category_name?: string | null | undefined;
+  category_slug?: string | null | undefined;
   image_url: string;
-  storage_key?: string | null;
-  sort_order?: number;
-  is_active?: boolean;
+  storage_key?: string | null | undefined;
+  sort_order?: number | undefined;
+  is_active?: boolean | undefined;
 }
 
 export interface UpdateHeroImageDbInput {
-  title?: string;
-  subtitle?: string | null;
-  image_url?: string;
-  storage_key?: string | null;
-  sort_order?: number;
-  is_active?: boolean;
+  title?: string | undefined;
+  subtitle?: string | null | undefined;
+  detail?: string | null | undefined;
+  category_name?: string | null | undefined;
+  category_slug?: string | null | undefined;
+  image_url?: string | undefined;
+  storage_key?: string | null | undefined;
+  sort_order?: number | undefined;
+  is_active?: boolean | undefined;
 }
 
 export class HeroRepository extends BaseRepository<HeroImageEntity> {
   private tableEnsured = false;
 
   /**
-   * Lazily ensures the hero_images table exists in PostgreSQL so existing deployments
-   * work immediately without requiring manual migrations.
+   * Lazily ensures the hero_images table and all required columns exist in PostgreSQL.
    */
   private async ensureTable(): Promise<void> {
     if (this.tableEnsured) return;
@@ -45,6 +54,9 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title VARCHAR(200) NOT NULL DEFAULT 'Hero Slide',
         subtitle VARCHAR(200),
+        detail TEXT,
+        category_name VARCHAR(150),
+        category_slug VARCHAR(150),
         image_url TEXT NOT NULL,
         storage_key VARCHAR(500),
         sort_order INT NOT NULL DEFAULT 0,
@@ -52,6 +64,9 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS detail TEXT;
+      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS category_name VARCHAR(150);
+      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS category_slug VARCHAR(150);
       CREATE INDEX IF NOT EXISTS idx_hero_images_active_order 
         ON hero_images (is_active, sort_order ASC, created_at DESC);
     `);
@@ -61,13 +76,16 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
   /**
    * Returns active hero images for public landing page showcase, up to limit.
    */
-  async findActive(limit = 15): Promise<HeroImageEntity[]> {
+  async findActive(limit = 20): Promise<HeroImageEntity[]> {
     await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `SELECT
          id,
          title,
          subtitle,
+         detail,
+         category_name,
+         category_slug,
          image_url,
          storage_key,
          sort_order,
@@ -93,6 +111,9 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
          id,
          title,
          subtitle,
+         detail,
+         category_name,
+         category_slug,
          image_url,
          storage_key,
          sort_order,
@@ -115,6 +136,9 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
          id,
          title,
          subtitle,
+         detail,
+         category_name,
+         category_slug,
          image_url,
          storage_key,
          sort_order,
@@ -135,17 +159,28 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
     await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `INSERT INTO hero_images (
+         id,
          title,
          subtitle,
+         detail,
+         category_name,
+         category_slug,
          image_url,
          storage_key,
          sort_order,
          is_active
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ) VALUES (
+         COALESCE($1, gen_random_uuid()),
+         $2, $3, $4, $5, $6, $7, $8, $9, $10
+       )
        RETURNING *`,
       [
+        input.id ?? null,
         input.title,
         input.subtitle ?? null,
+        input.detail ?? null,
+        input.category_name ?? null,
+        input.category_slug ?? null,
         input.image_url,
         input.storage_key ?? null,
         input.sort_order ?? 0,
@@ -189,6 +224,18 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
     if (input.subtitle !== undefined) {
       fields.push(`subtitle = $${idx++}`);
       values.push(input.subtitle);
+    }
+    if (input.detail !== undefined) {
+      fields.push(`detail = $${idx++}`);
+      values.push(input.detail);
+    }
+    if (input.category_name !== undefined) {
+      fields.push(`category_name = $${idx++}`);
+      values.push(input.category_name);
+    }
+    if (input.category_slug !== undefined) {
+      fields.push(`category_slug = $${idx++}`);
+      values.push(input.category_slug);
     }
     if (input.image_url !== undefined) {
       fields.push(`image_url = $${idx++}`);

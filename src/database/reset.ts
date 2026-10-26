@@ -11,6 +11,7 @@ import { defaultCategories, flattenCategories } from "../data/categories.js";
 import { defaultCurrencies } from "../data/currencies.js";
 import { defaultTheme } from "../data/themes.js";
 import { defaultLicenseTiers } from "../data/license-tiers.js";
+import { defaultHeroImages } from "../data/hero-images.js";
 import {
   resilientDnsLookup,
   isSslRequired,
@@ -678,6 +679,32 @@ BEFORE UPDATE ON banners
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
+-- Step 19c: Hero Showcase Images System
+CREATE TABLE IF NOT EXISTS hero_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(200) NOT NULL DEFAULT 'Hero Slide',
+    subtitle VARCHAR(200),
+    detail TEXT,
+    category_name VARCHAR(150),
+    category_slug VARCHAR(150),
+    image_url TEXT NOT NULL,
+    storage_key VARCHAR(500),
+    sort_order INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_hero_images_title_not_empty CHECK (length(trim(title)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hero_images_active_order 
+    ON hero_images (is_active, sort_order ASC, created_at DESC);
+
+DROP TRIGGER IF EXISTS trg_hero_images_updated_at ON hero_images;
+CREATE TRIGGER trg_hero_images_updated_at
+BEFORE UPDATE ON hero_images
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
 -- Step 20: Supabase Storage Buckets (Safe Initialization)
 DO $$
 BEGIN
@@ -1338,6 +1365,55 @@ export async function resetDatabase(): Promise<void> {
         }
       }
       console.log(`✅ Seeded ${slugToIdMap.size} digital asset categories successfully!`);
+
+      // Dynamically seed Hero Showcase Images from hero-images.ts
+      console.log("🌱 Seeding Hero Showcase Images from hero-images.ts...");
+      let heroSeededCount = 0;
+      for (const img of defaultHeroImages) {
+        await targetClient.query(
+          `INSERT INTO hero_images (
+              id,
+              title,
+              subtitle,
+              detail,
+              category_name,
+              category_slug,
+              image_url,
+              storage_key,
+              sort_order,
+              is_active,
+              created_at,
+              updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO UPDATE SET
+              title = EXCLUDED.title,
+              subtitle = EXCLUDED.subtitle,
+              detail = EXCLUDED.detail,
+              category_name = EXCLUDED.category_name,
+              category_slug = EXCLUDED.category_slug,
+              image_url = EXCLUDED.image_url,
+              storage_key = EXCLUDED.storage_key,
+              sort_order = EXCLUDED.sort_order,
+              is_active = EXCLUDED.is_active,
+              updated_at = CURRENT_TIMESTAMP`,
+          [
+            img.id,
+            img.title,
+            img.subtitle ?? null,
+            img.detail ?? null,
+            img.categoryName ?? null,
+            img.categorySlug ?? null,
+            img.imageUrl,
+            img.storageKey ?? null,
+            img.sortOrder,
+            img.isActive,
+            img.createdAt,
+            img.updatedAt,
+          ],
+        );
+        heroSeededCount++;
+      }
+      console.log(`✅ Seeded ${heroSeededCount} hero showcase images successfully!`);
 
       await targetClient.query("COMMIT");
       console.log("✅ Schema applied successfully with ZERO mock data!");

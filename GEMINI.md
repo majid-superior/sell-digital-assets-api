@@ -128,7 +128,20 @@ All REST endpoints must return responses adhering to this uniform JSON envelope:
 
 ---
 
-## 5. Verification Checklist for AI Agents
+## 5. Mobile-First Developer UI & Documentation Overflow Standards
+
+1. **Responsive System Pages & Developer UI**:
+   - Developer-facing HTML views (Status Page, 404/500 Error Pages, Documentation Access Modal, and Swagger UI at `/docs`) must be mobile-first and free of horizontal scrolling down to 320px viewport widths.
+   - Status cards grid must use fluid responsive tracks: `grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));` and wrap to single columns on small screens.
+   - Metric rows must specify `min-width: 0;` and `.metric-value` must use `overflow-wrap: anywhere; word-break: break-word;` so long hashes, UUIDs, or URLs never cause page overflow.
+   - Swagger UI parameters, response bodies, and operation summary tables must provide responsive horizontal scrolling inside their boundaries: `overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch;`.
+
+2. **Strict Zero Horizontal Overflow Policy**:
+   - Never use global `overflow-x: hidden` on `body` or `html` to mask overflowing elements. Layout geometry issues must be resolved at the source using intrinsic sizing, flex wrapping, and responsive media queries.
+
+---
+
+## 6. Verification Checklist for AI Agents
 
 Before declaring any backend task complete, verify:
 
@@ -138,3 +151,4 @@ Before declaring any backend task complete, verify:
 4. Security middleware (IP Guard, Helmet, CORS, Rate Limiter) is not bypassed.
 5. In-memory data structures are not used as pseudo-databases; all data changes persist to PostgreSQL.
 6. All error responses provide human-understandable explanations with actionable recovery guidance.
+7. **Developer UI & Docs Verification**: Verify that the Status page and Swagger UI documentation render cleanly on mobile viewports (320px–480px) and desktop without horizontal scrollbars or truncated metrics.

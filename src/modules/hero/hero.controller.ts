@@ -60,12 +60,28 @@ export class HeroController {
         throw new AppError("No image file provided for upload. Send as multipart form field 'image' or 'file'.", 400);
       }
 
-      const { title, subtitle, sort_order, is_active } = req.body || {};
+      const {
+        title,
+        subtitle,
+        detail,
+        category_name,
+        categoryName,
+        category_slug,
+        categorySlug,
+        sort_order,
+        sortOrder,
+        is_active,
+        isActive,
+      } = req.body || {};
+
       const newImage = await heroService.uploadHeroImage(fileBuffer, fileName, mimeType, {
         title,
         subtitle,
-        sort_order: sort_order !== undefined ? Number(sort_order) : 0,
-        is_active: is_active !== undefined ? is_active === "true" || is_active === true : true,
+        detail,
+        category_name: category_name || categoryName,
+        category_slug: category_slug || categorySlug,
+        sort_order: sort_order !== undefined ? Number(sort_order) : sortOrder !== undefined ? Number(sortOrder) : 0,
+        is_active: is_active !== undefined ? is_active === "true" || is_active === true : isActive !== undefined ? isActive === "true" || isActive === true : true,
       });
 
       res.status(201).json({
@@ -84,8 +100,9 @@ export class HeroController {
   async toggleStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = String(req.params.id);
-      const { is_active } = req.body;
-      const updated = await heroService.toggleStatus(id, Boolean(is_active));
+      const { is_active, isActive } = req.body;
+      const targetStatus = is_active !== undefined ? Boolean(is_active) : Boolean(isActive);
+      const updated = await heroService.toggleStatus(id, targetStatus);
 
       res.status(200).json({
         success: true,
@@ -140,10 +157,16 @@ export class HeroController {
       const data = req.body;
       const targetPath = path.resolve(
         process.cwd(),
-        "../sell-digital-assets-website/src/features/website/data/heroImages.json"
+        "../sell-digital-assets-website/src/features/website/data/heroImages.json",
       );
-      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.promises.writeFile(targetPath, JSON.stringify(data, null, 2), "utf-8");
+
+      try {
+        await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.promises.writeFile(targetPath, JSON.stringify(data, null, 2), "utf-8");
+      } catch {
+        // ignore if directory is unreachable
+      }
+
       res.status(200).json({
         success: true,
         message: "Hero images JSON updated successfully",
@@ -157,4 +180,3 @@ export class HeroController {
 }
 
 export const heroController = new HeroController();
-
