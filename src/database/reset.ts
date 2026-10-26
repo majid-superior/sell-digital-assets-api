@@ -705,6 +705,29 @@ BEFORE UPDATE ON hero_images
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
+-- Step 19d: Seller Custom Storefronts
+CREATE TABLE IF NOT EXISTS seller_storefronts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seller_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    url VARCHAR(50) UNIQUE,
+    title VARCHAR(150) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    banner_url TEXT NOT NULL DEFAULT '',
+    featured_asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
+    is_visible BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_seller_storefronts_url ON seller_storefronts (LOWER(url));
+CREATE INDEX IF NOT EXISTS idx_seller_storefronts_seller ON seller_storefronts (seller_id);
+
+DROP TRIGGER IF EXISTS trg_seller_storefronts_updated_at ON seller_storefronts;
+CREATE TRIGGER trg_seller_storefronts_updated_at
+BEFORE UPDATE ON seller_storefronts
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
 -- Step 20: Supabase Storage Buckets (Safe Initialization)
 DO $$
 BEGIN

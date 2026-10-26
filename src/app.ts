@@ -45,6 +45,7 @@ import storageRoutes from "./modules/assets/storage.routes.js";
 import notificationsRoutes from "./modules/notifications/notifications.routes.js";
 import bannersRoutes from "./modules/banners/banners.routes.js";
 import heroRoutes from "./modules/hero/hero.routes.js";
+import { sellerStorefrontRouter, publicStorefrontRouter } from "./modules/storefront/storefront.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
 
@@ -358,6 +359,10 @@ app.use("/api/v1/banners", bannersRoutes);
 app.use("/api/banners", bannersRoutes);
 app.use("/api/v1/hero", heroRoutes);
 app.use("/api/hero", heroRoutes);
+app.use("/api/v1/seller/storefront", sellerStorefrontRouter);
+app.use("/api/seller/storefront", sellerStorefrontRouter);
+app.use("/api/v1/catalog/storefronts", publicStorefrontRouter);
+app.use("/api/catalog/storefronts", publicStorefrontRouter);
 
 // ============================================================================
 // 404 Catch-All Handler
