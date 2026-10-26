@@ -1288,9 +1288,18 @@ export class AssetsService {
       throw new AppError("Invalid or expired upload signature token", 403);
     }
 
+    const isStorefrontBanner = key.startsWith("public/media/storefront/");
     const isMedia = key.startsWith("public/media/");
-    const maxAllowedBytes = isMedia ? 10 * 1024 * 1024 : MAX_UPLOAD_BYTES;
-    const maxAllowedLabel = isMedia ? "10 MB for showcase media" : "500 MB for deliverable packages";
+    const maxAllowedBytes = isStorefrontBanner
+      ? 3 * 1024 * 1024
+      : isMedia
+        ? 10 * 1024 * 1024
+        : MAX_UPLOAD_BYTES;
+    const maxAllowedLabel = isStorefrontBanner
+      ? "3 MB for storefront banners"
+      : isMedia
+        ? "10 MB for showcase media"
+        : "500 MB for deliverable packages";
 
     if (declaredLength > maxAllowedBytes) {
       throw new AppError(

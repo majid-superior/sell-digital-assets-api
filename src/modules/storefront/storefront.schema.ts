@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const MAX_STOREFRONT_BANNER_BYTES = 3 * 1024 * 1024; // 3 MB max file size (no min limit)
+
 export const RESERVED_STOREFRONT_SLUGS = new Set([
   "admin",
   "administrator",
@@ -51,6 +53,29 @@ export const RESERVED_STOREFRONT_SLUGS = new Set([
   "storefront",
 ]);
 
+export const PresignStorefrontBannerSchema = z.object({
+  fileName: z
+    .string()
+    .trim()
+    .min(1, "Banner file name is required")
+    .max(255, "Banner file name cannot exceed 255 characters"),
+  contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+  fileSizeBytes: z
+    .number()
+    .int()
+    .min(0)
+    .max(
+      MAX_STOREFRONT_BANNER_BYTES,
+      "Banner image exceeds the 3 MB maximum size limit."
+    )
+    .optional()
+    .default(0),
+});
+
+export type PresignStorefrontBannerInput = z.infer<
+  typeof PresignStorefrontBannerSchema
+>;
+
 export const UpdateStorefrontSchema = z.object({
   url: z
     .string()
@@ -78,7 +103,15 @@ export const UpdateStorefrontSchema = z.object({
   bannerUrl: z
     .string()
     .trim()
-    .min(1, "Storefront banner image is required"),
+    .min(1, "Storefront banner image is required")
+    .max(2048, "Banner URL cannot exceed 2048 characters")
+    .refine(
+      (val) =>
+        val.startsWith("http://") ||
+        val.startsWith("https://") ||
+        val.startsWith("/"),
+      "Banner must be uploaded to storage before saving storefront settings."
+    ),
   featuredAssetId: z.string().optional().default(""),
   isVisible: z.boolean().default(true),
 });
@@ -93,4 +126,15 @@ export const StorefrontSlugParamSchema = z.object({
 });
 
 export type StorefrontSlugParamInput = z.infer<typeof StorefrontSlugParamSchema>;
+
+export const CheckStorefrontUrlQuerySchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .min(1, "Storefront URL is required"),
+});
+
+export type CheckStorefrontUrlQueryInput = z.infer<
+  typeof CheckStorefrontUrlQuerySchema
+>;
 

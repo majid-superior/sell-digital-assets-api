@@ -1,7 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import { storefrontService } from "./storefront.service.js";
 import { AppError } from "../../core/errors/app-error.js";
-import type { UpdateStorefrontInput, StorefrontSlugParamInput } from "./storefront.schema.js";
+import type {
+  CheckStorefrontUrlQueryInput,
+  PresignStorefrontBannerInput,
+  UpdateStorefrontInput,
+  StorefrontSlugParamInput,
+} from "./storefront.schema.js";
 
 export class StorefrontController {
   private getSellerId(req: Request): string {
@@ -40,14 +45,29 @@ export class StorefrontController {
     }
   }
 
-  async uploadBanner(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async presignBannerUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const sellerId = this.getSellerId(req);
-      const result = await storefrontService.uploadStorefrontBanner(sellerId, req.file);
+      const body = req.body as PresignStorefrontBannerInput;
+      const result = await storefrontService.presignBannerUpload(sellerId, body);
       res.status(200).json({
         success: true,
         data: result,
-        message: "Banner uploaded successfully",
+        message: "Presigned banner upload URL generated successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async checkUrlAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sellerId = this.getSellerId(req);
+      const { url } = req.query as unknown as CheckStorefrontUrlQueryInput;
+      const result = await storefrontService.checkUrlAvailability(sellerId, url);
+      res.status(200).json({
+        success: true,
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -69,4 +89,3 @@ export class StorefrontController {
 }
 
 export const storefrontController = new StorefrontController();
-

@@ -4024,7 +4024,36 @@
         }
       }
     },
-    "/api/v1/seller/storefront/banner": {
+    "/api/v1/seller/storefront/check-url": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/seller/storefront/banner/presign": {
       "post": {
         "description": "",
         "parameters": [
@@ -4118,7 +4147,36 @@
         }
       }
     },
-    "/api/v1/catalog/storefronts/banner": {
+    "/api/v1/catalog/storefronts/check-url": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/catalog/storefronts/banner/presign": {
       "post": {
         "description": "",
         "parameters": [

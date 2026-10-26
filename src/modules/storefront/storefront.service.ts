@@ -1,64 +1,19 @@
 import crypto from "node:crypto";
-import sharp from "sharp";
 import { env } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { storageService, localStorageService } from "../../core/storage/index.js";
 import { storefrontRepository } from "./storefront.repository.js";
 import { userRepository } from "../../database/repositories/user.repository.js";
 import { assetsRepository } from "../../database/repositories/assets.repository.js";
-import type { UpdateStorefrontInput } from "./storefront.schema.js";
-
-const MAX_STOREFRONT_BANNER_BYTES = 3 * 1024 * 1024; // 3 MB max file size (no min limit)
-const ALLOWED_BANNER_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const BANNER_WIDTH = 1200;
-const BANNER_HEIGHT = 400;
-
-/**
- * Verifies binary magic bytes for PNG, JPEG, and WebP formats to prevent MIME spoofing.
- */
-function hasValidImageMagicBytes(buf: Buffer): boolean {
-  if (buf.length < 4) return false;
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buf.length >= 8 &&
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47 &&
-    buf[4] === 0x0d &&
-    buf[5] === 0x0a &&
-    buf[6] === 0x1a &&
-    buf[7] === 0x0a
-  ) {
-    return true;
-  }
-
-  // JPEG: FF D8 FF
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return true;
-  }
-
-  // WebP: "RIFF" (52 49 46 46) at 0..3 and "WEBP" (57 45 42 50) at 8..11
-  if (
-    buf.length >= 12 &&
-    buf[0] === 0x52 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x46 &&
-    buf[8] === 0x57 &&
-    buf[9] === 0x45 &&
-    buf[10] === 0x42 &&
-    buf[11] === 0x50
-  ) {
-    return true;
-  }
-
-  return false;
-}
+import {
+  MAX_STOREFRONT_BANNER_BYTES,
+  RESERVED_STOREFRONT_SLUGS,
+  type PresignStorefrontBannerInput,
+  type UpdateStorefrontInput,
+} from "./storefront.schema.js";
 
 /**
- * Extracts a storefront storage key from a stored banner URL if it belongs to local/managed storage.
+ * Extracts a storefront storage key from a stored banner URL if it belongs to managed storage.
  */
 function extractStorefrontStorageKey(bannerUrl?: string | null): string | null {
   if (!bannerUrl) return null;
@@ -67,7 +22,13 @@ function extractStorefrontStorageKey(bannerUrl?: string | null): string | null {
     if (queryIdx !== -1) {
       const searchParams = new URLSearchParams(bannerUrl.slice(queryIdx + 1));
       const key = searchParams.get("key");
-      if (key && key.startsWith("public/media/storefront/") && !key.includes("..")) {
+      if (
+        key &&
+        key.startsWith("public/media/storefront/") &&
+        !key.includes("..") &&
+        !key.includes("\\") &&
+        !key.includes("\0")
+      ) {
         return key;
       }
     }
@@ -87,7 +48,7 @@ export class StorefrontService {
       (env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") &&
       env.AWS_ENDPOINT
     ) {
-      return `${env.AWS_ENDPOINT}/${storageKey}`;
+      return `${env.AWS_ENDPOINT.replace(/\/+$/, "")}/${storageKey}`;
     }
 
     const expiresAt = Date.now() + 31536000000; // 1 year
@@ -102,6 +63,92 @@ export class StorefrontService {
     )}&token=${token}&expires=${expiresAt}`;
   }
 
+  /**
+   * Generates a presigned direct-to-storage PUT upload URL for a storefront banner (max 3 MB, no min limit).
+   */
+  async presignBannerUpload(
+    sellerId: string,
+    input: PresignStorefrontBannerInput
+  ) {
+    if (input.fileSizeBytes > MAX_STOREFRONT_BANNER_BYTES) {
+      throw new AppError(
+        "Banner image exceeds the 3 MB maximum size limit.",
+        400
+      );
+    }
+
+    const sanitizedFileName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const randomSuffix = crypto.randomBytes(4).toString("hex");
+    const storageKey = `public/media/storefront/${sellerId}/${Date.now()}-${randomSuffix}-${sanitizedFileName}`;
+
+    const presigned = await storageService.generatePresignedUploadUrl(
+      storageKey,
+      input.contentType,
+      900 // 15 minutes
+    );
+
+    const bannerUrl = this.resolvePublicBannerUrl(storageKey);
+
+    return {
+      ...presigned,
+      bannerUrl,
+    };
+  }
+
+  /**
+   * Checks whether a custom storefront URL slug is valid and available for the given seller.
+   */
+  async checkUrlAvailability(sellerId: string, rawUrl: string) {
+    const normalizedUrl = rawUrl.toLowerCase().trim();
+
+    if (normalizedUrl.length < 3) {
+      return {
+        available: false,
+        url: normalizedUrl,
+        reason: "Custom URL must be at least 3 characters (e.g., seller01).",
+      };
+    }
+
+    if (normalizedUrl.length > 30) {
+      return {
+        available: false,
+        url: normalizedUrl,
+        reason: "Custom URL cannot exceed 30 characters.",
+      };
+    }
+
+    if (!/^[a-z0-9][a-z0-9_-]*$/i.test(normalizedUrl)) {
+      return {
+        available: false,
+        url: normalizedUrl,
+        reason: "Only letters, numbers, hyphens (-), and underscores (_) are allowed.",
+      };
+    }
+
+    if (RESERVED_STOREFRONT_SLUGS.has(normalizedUrl)) {
+      return {
+        available: false,
+        url: normalizedUrl,
+        reason: "This URL name is reserved by the system. Please choose another.",
+      };
+    }
+
+    const existing = await storefrontRepository.findByUrl(normalizedUrl);
+    if (existing && existing.seller_id !== sellerId) {
+      return {
+        available: false,
+        url: normalizedUrl,
+        reason:
+          "This custom storefront URL is already in use by another creator. Please choose a different URL.",
+      };
+    }
+
+    return {
+      available: true,
+      url: normalizedUrl,
+    };
+  }
+
   async getStorefrontConfig(sellerId: string) {
     const entity = await storefrontRepository.findBySellerId(sellerId);
     return {
@@ -111,7 +158,9 @@ export class StorefrontService {
       bannerUrl: entity?.banner_url ?? "",
       featuredAssetId: entity?.featured_asset_id ?? "",
       isVisible: Boolean(entity?.is_visible && entity?.url),
-      updatedAt: entity?.updated_at ? new Date(entity.updated_at).toISOString() : undefined,
+      updatedAt: entity?.updated_at
+        ? new Date(entity.updated_at).toISOString()
+        : undefined,
     };
   }
 
@@ -128,6 +177,27 @@ export class StorefrontService {
     const previousEntity = await storefrontRepository.findBySellerId(sellerId);
     const oldStorageKey = extractStorefrontStorageKey(previousEntity?.banner_url);
     const newStorageKey = extractStorefrontStorageKey(input.bannerUrl);
+
+    if (newStorageKey) {
+      const expectedSellerPrefix = `public/media/storefront/${sellerId}/`;
+      const legacySellerPrefix = `public/media/storefront/${sellerId}-`;
+      if (
+        !newStorageKey.startsWith(expectedSellerPrefix) &&
+        !newStorageKey.startsWith(legacySellerPrefix)
+      ) {
+        throw new AppError("Unauthorized banner storage key for this seller.", 403);
+      }
+
+      if (env.STORAGE_DRIVER === "local") {
+        const stats = await storageService.getFileStats(newStorageKey);
+        if (!stats.exists) {
+          throw new AppError(
+            "Uploaded banner file was not found in storage. Please re-upload the banner image.",
+            400
+          );
+        }
+      }
+    }
 
     const entity = await storefrontRepository.upsert(sellerId, {
       ...input,
@@ -150,73 +220,14 @@ export class StorefrontService {
     };
   }
 
-  async uploadStorefrontBanner(sellerId: string, file?: Express.Multer.File) {
-    if (!file || !file.buffer) {
-      throw new AppError("No banner image file was uploaded. Please attach an image file.", 400);
-    }
-
-    if (file.size > MAX_STOREFRONT_BANNER_BYTES) {
-      throw new AppError("Banner image exceeds the 3 MB maximum size limit.", 400);
-    }
-
-    const mimeType = (file.mimetype || "image/webp").toLowerCase();
-    if (!ALLOWED_BANNER_MIME_TYPES.has(mimeType)) {
-      throw new AppError(
-        `Unsupported image format (${mimeType}). Please upload a PNG, JPG, or WebP image.`,
-        400
-      );
-    }
-
-    if (file.buffer.length > 0 && !hasValidImageMagicBytes(file.buffer)) {
-      throw new AppError(
-        "Invalid image file signature. Please upload a genuine PNG, JPG, or WebP image.",
-        400
-      );
-    }
-
-    // Re-encode via sharp to strip EXIF metadata, sanitize polyglots, and optimize WebP payload
-    let optimizedBuffer = file.buffer;
-    let outputMime = "image/webp";
-    let ext = "webp";
-
-    if (file.buffer.length > 0) {
-      try {
-        optimizedBuffer = await sharp(file.buffer, { limitInputPixels: 4096 * 4096 })
-          .rotate() // Auto-orient based on EXIF before stripping metadata
-          .resize(BANNER_WIDTH, BANNER_HEIGHT, {
-            fit: "cover",
-            position: "centre",
-          })
-          .webp({ quality: 88, effort: 4 })
-          .toBuffer();
-      } catch {
-        throw new AppError(
-          "The uploaded file could not be decoded as a valid image. Please try another PNG, JPG, or WebP file.",
-          400
-        );
-      }
-    } else {
-      ext = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "webp";
-      outputMime = mimeType;
-    }
-
-    const randomSuffix = crypto.randomBytes(4).toString("hex");
-    const storageKey = `public/media/storefront/${sellerId}-${Date.now()}-${randomSuffix}.${ext}`;
-
-    await storageService.uploadBuffer(storageKey, optimizedBuffer, outputMime);
-    const downloadUrl = this.resolvePublicBannerUrl(storageKey);
-
-    return {
-      url: downloadUrl,
-      storageKey,
-    };
-  }
-
   async getPublicStorefront(sellerUrl: string) {
     const normalized = sellerUrl.toLowerCase().trim();
     const entity = await storefrontRepository.findByUrl(normalized);
     if (!entity || !entity.is_visible || !entity.url) {
-      throw new AppError(`Storefront "${sellerUrl}" was not found or is currently private.`, 404);
+      throw new AppError(
+        `Storefront "${sellerUrl}" was not found or is currently private.`,
+        404
+      );
     }
 
     const sellerUser = await userRepository.findById(entity.seller_id);
