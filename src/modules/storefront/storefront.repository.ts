@@ -78,10 +78,9 @@ export class StorefrontRepository extends BaseRepository<StorefrontEntity> {
   async upsert(sellerId: string, input: UpsertStorefrontDbInput): Promise<StorefrontEntity> {
     await this.ensureTable();
     const normalizedUrl = input.url.toLowerCase().trim();
-    const safeFeaturedId =
-      input.featuredAssetId && input.featuredAssetId.trim().length > 0
-        ? input.featuredAssetId.trim()
-        : null;
+    const rawFeaturedId = input.featuredAssetId?.trim() || "";
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawFeaturedId);
+    const safeFeaturedId = isUuid ? rawFeaturedId : null;
 
     const result = await this.query<StorefrontEntity>(
       `INSERT INTO seller_storefronts (

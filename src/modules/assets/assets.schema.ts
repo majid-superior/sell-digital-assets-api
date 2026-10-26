@@ -80,7 +80,10 @@ export const AdminReviewAssetSchema = z
 export type AdminReviewAssetInput = z.infer<typeof AdminReviewAssetSchema>;
 
 export const AdminAssetQuerySchema = z.object({
-  status: AssetStatusEnum.optional(),
+  status: z.preprocess(
+    (val) => (typeof val === "string" ? val.toLowerCase().trim() : val),
+    AssetStatusEnum.optional(),
+  ),
   sellerId: z.string().uuid().optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   search: z.string().trim().optional(),
@@ -125,7 +128,10 @@ export const CurateAssetSchema = z.object({
 export type CurateAssetInput = z.infer<typeof CurateAssetSchema>;
 
 export const SellerAssetQuerySchema = z.object({
-  status: AssetStatusEnum.optional(),
+  status: z.preprocess(
+    (val) => (typeof val === "string" ? val.toLowerCase().trim() : val),
+    AssetStatusEnum.optional(),
+  ),
   search: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),

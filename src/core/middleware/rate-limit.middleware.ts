@@ -40,7 +40,7 @@ export function createRateLimitStore(prefix: string): Options["store"] | undefin
 const generalStore = createRateLimitStore("general");
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  max: env.NODE_ENV === "development" ? 5000 : 100, // Limit each IP to 100 requests per window in prod; higher in local dev
   ...(generalStore ? { store: generalStore } : {}),
   standardHeaders: true,
   legacyHeaders: false,
