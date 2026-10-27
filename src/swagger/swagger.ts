@@ -80,6 +80,10 @@ const doc = {
       name: "Storage",
       description: "Local storage simulator and presigned direct delivery endpoints",
     },
+    {
+      name: "Storefront",
+      description: "Seller storefront customization and public storefront catalog",
+    },
   ],
   components: {
     securitySchemes: {
@@ -327,6 +331,7 @@ const routes = [
   "./src/modules/notifications/notifications.routes.ts",
   "./src/modules/banners/banners.routes.ts",
   "./src/modules/hero/hero.routes.ts",
+  "./src/modules/storefront/storefront.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -1055,6 +1060,50 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
         }
         if (methods.delete) {
           methods.delete.summary = "Delete promotional banner (Admin only)";
+        }
+      }
+    } else if (
+      normalizedPath.startsWith("/api/v1/seller/storefront") ||
+      normalizedPath.startsWith("/api/v1/catalog/storefronts")
+    ) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Storefront"];
+        if (normalizedPath.startsWith("/api/v1/seller/storefront")) {
+          method.security = [{ bearerAuth: [] }];
+        }
+      }
+      if (normalizedPath === "/api/v1/seller/storefront") {
+        if (methods.get) {
+          methods.get.summary = "Get authenticated seller storefront configuration";
+        }
+        if (methods.put) {
+          methods.put.summary = "Update authenticated seller storefront configuration";
+        }
+      } else if (normalizedPath === "/api/v1/seller/storefront/check-url" && methods.get) {
+        methods.get.summary = "Check seller storefront custom URL availability";
+      } else if (normalizedPath === "/api/v1/seller/storefront/banner/presign" && methods.post) {
+        methods.post.summary = "Generate presigned URL for seller storefront banner upload";
+      } else if (normalizedPath === "/api/v1/catalog/storefronts/{sellerUrl}" && methods.get) {
+        methods.get.summary = "Get public seller storefront profile and catalog by seller URL";
+      }
+    } else if (normalizedPath.startsWith("/api/v1/seller/team")) {
+      for (const method of Object.values<any>(methods)) {
+        method.tags = ["Users"];
+        method.security = [{ bearerAuth: [] }];
+      }
+      if (normalizedPath === "/api/v1/seller/team") {
+        if (methods.get) {
+          methods.get.summary = "List seller team members";
+        }
+        if (methods.post) {
+          methods.post.summary = "Add sub-user team member (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)";
+        }
+      } else if (normalizedPath === "/api/v1/seller/team/{id}") {
+        if (methods.patch) {
+          methods.patch.summary = "Update seller team member";
+        }
+        if (methods.delete) {
+          methods.delete.summary = "Remove seller team member";
         }
       }
     }

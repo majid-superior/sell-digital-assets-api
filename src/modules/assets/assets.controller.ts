@@ -23,7 +23,7 @@ import type {
 
 export class AssetsController {
   private getSellerId(req: Request): string {
-    const sellerId = req.user?.id;
+    const sellerId = req.actingSellerId || req.user?.id;
     if (!sellerId) {
       throw new AppError("Authentication required: Seller identity is missing.", 401);
     }
@@ -145,8 +145,9 @@ export class AssetsController {
   async createDraftAsset(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const sellerId = this.getSellerId(req);
+      const createdByUserId = req.user?.id || null;
       const body = req.body as CreateAssetInput;
-      const asset = await assetsService.createDraftAsset(sellerId, body);
+      const asset = await assetsService.createDraftAsset(sellerId, body, createdByUserId);
 
       res.status(201).json({
         success: true,
@@ -664,13 +665,18 @@ export class AssetsController {
       const { filePath, sizeBytes, downloadName, mimeType, isInline } =
         await assetsService.resolveDirectDownload({ key, token, expires, filename });
 
-      // Remove restrictive CSP on media downloads so browsers can render inline previews
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+      );
+
       if (isInline) {
-        res.removeHeader("Content-Security-Policy");
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
 
-      res.setHeader("Content-Type", mimeType);
       res.setHeader(
         "Content-Disposition",
         `${isInline ? "inline" : "attachment"}; filename="${encodeURIComponent(downloadName)}"`,

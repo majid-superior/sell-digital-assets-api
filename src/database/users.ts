@@ -377,8 +377,8 @@ export async function seedUsers(options: SeedOptions = {}): Promise<SeedResult> 
             email: string;
             status: string;
           }>(
-            `INSERT INTO users (role_id, name, email, password_hash, auth_provider, status, email_verified_at) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) 
+            `INSERT INTO users (role_id, name, display_name, email, password_hash, auth_provider, status, email_verified_at) 
+             VALUES ($1, $2, $2, $3, $4, $5, $6, $7) 
              RETURNING id, role_id, name, email, status`,
             [
               roleId,

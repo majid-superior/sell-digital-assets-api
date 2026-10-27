@@ -14,9 +14,11 @@ export class NotificationsController {
   async getMyNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = this.getUserId(req);
-      const unreadOnly = req.query.unread === "true";
-      const page = req.query.page ? Number(req.query.page) : 1;
-      const limit = req.query.limit ? Number(req.query.limit) : 20;
+      const unreadOnly = String(req.query.unread) === "true";
+      const parsedPage = Number(req.query.page);
+      const parsedLimit = Number(req.query.limit);
+      const page = Number.isFinite(parsedPage) && parsedPage >= 1 ? Math.floor(parsedPage) : 1;
+      const limit = Number.isFinite(parsedLimit) && parsedLimit >= 1 ? Math.min(50, Math.floor(parsedLimit)) : 20;
 
       const result = await notificationsService.getUserNotifications(userId, {
         unreadOnly,

@@ -228,17 +228,23 @@ erDiagram
 
 ## 5. Security & Cryptographic Architecture
 
-1. **Direct IP Access Defense**:
+1. **Dual JWT Token Lifetimes, Rotation & Revocation**:
+   - **Access Tokens**: Short-lived 15 minutes (`JWT_EXPIRES_IN=15m`), signed with `JWT_SECRET`, carrying user identity and roles.
+   - **Refresh Tokens**: Long-lived 7 days default (`REFRESH_TOKEN_EXPIRES_IN=7d`) or 30 days when Remember Me is enabled (`REFRESH_REMEMBER_EXPIRES_IN=30d`), signed with `REFRESH_TOKEN_SECRET`.
+   - **JTI Blacklisting & Rotation**: Every token is issued with a unique cryptographic `jti` (JWT ID). Token rotation revokes the consumed refresh token's `jti` in PostgreSQL and memory caches immediately upon renewal.
+   - **Sign Out Revocation Resilience**: During logout (`POST /api/v1/auth/signout`), access and refresh tokens are revoked. If token signature verification fails because the token has already expired at the exact moment of logout, `revokeRefreshToken` and `revokeAccessToken` safely fallback to `jwt.decode` to extract the `jti` and complete database and cache revocation.
+
+2. **Direct IP Access Defense**:
    - In production, `ipGuardMiddleware` inspects host headers and immediately drops raw IPv4 or IPv6 requests (HTTP 403), protecting the server against automated scans.
-2. **PostgreSQL Truncation & Deletion Defense**:
+3. **PostgreSQL Truncation & Deletion Defense**:
    - The `organizations` configuration is protected against table truncation by the `prevent_table_truncate()` trigger and against row deletion by the `no_delete_organizations` rule.
-3. **Password Security**:
+4. **Password Security**:
    - Passwords are salt-hashed using `bcryptjs` with 12 rounds. Hashes are excluded by default in repository projections.
-4. **Rate Limiting Tiers**:
+5. **Rate Limiting Tiers**:
    - **General API**: 100 requests per 15 minutes per IP.
    - **Auth Brute-Force Defense**: 5 failed attempts per 15 minutes per IP (`skipSuccessfulRequests: true`).
    - **Asset Download Scraper Defense**: 25 downloads per 1 hour per IP.
-5. **Digital Asset Protection**:
+6. **Digital Asset Protection**:
    - HMAC-SHA256 time-limited signed tokens verified with constant-time equality checks (`crypto.timingSafeEqual`) to eliminate timing attacks.
 
 ---

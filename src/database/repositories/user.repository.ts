@@ -4,10 +4,17 @@ import { invalidateAuthUserCache } from "../../core/middleware/auth.middleware.j
 export interface UserEntity {
   id: string;
   role_id: number;
-  role: string; // Dynamic role slug ('customer', 'seller', 'admin')
+  role: string; // Dynamic role slug ('customer', 'seller', 'admin', 'store_manager', etc.)
   role_name?: string;
+  role_scope?: string;
+  role_allow_public_signup?: boolean;
   name: string;
+  display_name?: string;
   email: string;
+  url?: string;
+  parent_seller_id?: string | null;
+  allowed_permissions?: string[] | Record<string, unknown>;
+  is_active?: boolean;
   password_hash?: string | null;
   auth_provider: string;
   status: string; // 'active', 'pending', 'suspended', 'banned'
@@ -48,28 +55,35 @@ export interface PaginatedResult<T> {
 
 export function resolveRoleId(roleOrId?: string | number): number {
   if (typeof roleOrId === "number") return roleOrId;
-  const normalized = (roleOrId || "buyer").toLowerCase().trim();
+  const normalized = (roleOrId || "BUYER").toUpperCase().trim();
   switch (normalized) {
-    case "admin":
+    case "ADMIN":
       return 1;
-    case "seller":
+    case "SELLER":
       return 2;
-    case "buyer":
-    case "customer":
+    case "BUYER":
+    case "CUSTOMER":
       return 3;
-    case "guest":
+    case "STORE_MANAGER":
       return 4;
+    case "CONTENT_UPLOADER":
+      return 5;
+    case "ANALYST":
+      return 6;
+    case "GUEST":
+      return 7;
     default:
-      return 3; // Default registered user to 'buyer' role ID
+      return 3; // Default registered user to 'BUYER' role ID
   }
 }
 
 export class UserRepository extends BaseRepository<UserEntity> {
   async findByEmail(email: string): Promise<UserEntity | null> {
     const result = await this.query<UserEntity>(
-      `SELECT id, role_id, role, role_name, name, email, password_hash, auth_provider, status, 
-              email_verified_at, failed_login_attempts, locked_until, last_login_at, 
-              created_at, updated_at, deleted_at 
+      `SELECT id, role_id, role, role_name, role_scope, role_allow_public_signup, 
+              name, display_name, email, url, parent_seller_id, allowed_permissions, is_active, 
+              password_hash, auth_provider, status, email_verified_at, failed_login_attempts, 
+              locked_until, last_login_at, created_at, updated_at, deleted_at 
        FROM view_users 
        WHERE email = $1 AND deleted_at IS NULL 
        LIMIT 1`,
@@ -80,15 +94,28 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
   async findById(id: string): Promise<UserEntity | null> {
     const result = await this.query<UserEntity>(
-      `SELECT id, role_id, role, role_name, name, email, password_hash, auth_provider, status, 
-              email_verified_at, failed_login_attempts, locked_until, last_login_at, 
-              created_at, updated_at, deleted_at 
+      `SELECT id, role_id, role, role_name, role_scope, role_allow_public_signup, 
+              name, display_name, email, url, parent_seller_id, allowed_permissions, is_active, 
+              password_hash, auth_provider, status, email_verified_at, failed_login_attempts, 
+              locked_until, last_login_at, created_at, updated_at, deleted_at 
        FROM view_users 
        WHERE id = $1 AND deleted_at IS NULL 
        LIMIT 1`,
       [id],
     );
     return result.rows[0] || null;
+  }
+
+  async findActiveAdminPasswordHashes(limit = 5): Promise<string[]> {
+    const result = await this.query<{ password_hash: string | null }>(
+      `SELECT password_hash
+       FROM view_users
+       WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL AND password_hash IS NOT NULL
+       ORDER BY created_at ASC
+       LIMIT $1`,
+      [limit],
+    );
+    return result.rows.map((r) => r.password_hash!).filter(Boolean);
   }
 
   async findAll(
@@ -103,8 +130,10 @@ export class UserRepository extends BaseRepository<UserEntity> {
     let idx = 1;
 
     if (params.search?.trim()) {
-      conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx} OR id::text ILIKE $${idx})`);
-      values.push(`%${params.search.trim()}%`);
+      conditions.push(
+        `(name ILIKE $${idx} ESCAPE '\\' OR email ILIKE $${idx} ESCAPE '\\' OR id::text ILIKE $${idx} ESCAPE '\\')`,
+      );
+      values.push(`%${this.escapeLike(params.search.trim())}%`);
       idx++;
     }
 
@@ -172,9 +201,14 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
   async create(data: {
     name: string;
+    displayName?: string;
     email: string;
     passwordHash?: string | null;
     role?: string | number;
+    url?: string;
+    parentSellerId?: string | null;
+    allowedPermissions?: string[] | Record<string, unknown>;
+    isActive?: boolean;
     authProvider?: string;
     status?: string;
     emailVerifiedAt?: Date | null;
@@ -183,16 +217,26 @@ export class UserRepository extends BaseRepository<UserEntity> {
     const authProvider = data.authProvider || "local";
     const status = data.status || "active";
     const emailVerifiedAt = data.emailVerifiedAt === undefined ? new Date() : data.emailVerifiedAt;
+    const displayName = (data.displayName || data.name).trim();
+    const name = data.name.trim();
 
     const insertRes = await this.query<{ id: string }>(
-      `INSERT INTO users (role_id, name, email, password_hash, auth_provider, status, email_verified_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      `INSERT INTO users (
+         role_id, name, display_name, email, password_hash, url, 
+         parent_seller_id, allowed_permissions, is_active, auth_provider, status, email_verified_at
+       ) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
        RETURNING id`,
       [
         roleId,
-        data.name.trim(),
+        name,
+        displayName,
         data.email.toLowerCase().trim(),
         data.passwordHash || null,
+        data.url || "",
+        data.parentSellerId || null,
+        JSON.stringify(data.allowedPermissions || []),
+        data.isActive !== undefined ? data.isActive : true,
         authProvider,
         status,
         emailVerifiedAt,
@@ -201,6 +245,19 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
     const createdUser = await this.findById(insertRes.rows[0]!.id);
     return createdUser!;
+  }
+
+  async findTeamMembers(parentSellerId: string): Promise<UserEntity[]> {
+    const result = await this.query<UserEntity>(
+      `SELECT id, role_id, role, role_name, role_scope, role_allow_public_signup, 
+              name, display_name, email, url, parent_seller_id, allowed_permissions, is_active, 
+              auth_provider, status, created_at, updated_at 
+       FROM view_users 
+       WHERE parent_seller_id = $1 AND deleted_at IS NULL 
+       ORDER BY created_at ASC`,
+      [parentSellerId],
+    );
+    return result.rows;
   }
 
   async updateLastSignIn(id: string): Promise<void> {
@@ -237,9 +294,14 @@ export class UserRepository extends BaseRepository<UserEntity> {
     id: string,
     data: {
       name?: string | undefined;
+      displayName?: string | undefined;
       passwordHash?: string | undefined;
       status?: string | undefined;
       role?: string | number | undefined;
+      roleId?: number | undefined;
+      url?: string | undefined;
+      allowedPermissions?: string[] | Record<string, unknown> | undefined;
+      isActive?: boolean | undefined;
       emailVerifiedAt?: Date | null | undefined;
     },
   ): Promise<UserEntity | null> {
@@ -251,6 +313,10 @@ export class UserRepository extends BaseRepository<UserEntity> {
       fields.push(`name = $${idx++}`);
       values.push(data.name.trim());
     }
+    if (data.displayName !== undefined) {
+      fields.push(`display_name = $${idx++}`);
+      values.push(data.displayName.trim());
+    }
     if (data.passwordHash !== undefined) {
       fields.push(`password_hash = $${idx++}`);
       values.push(data.passwordHash);
@@ -259,9 +325,24 @@ export class UserRepository extends BaseRepository<UserEntity> {
       fields.push(`status = $${idx++}`);
       values.push(data.status);
     }
-    if (data.role !== undefined) {
+    if (data.roleId !== undefined) {
+      fields.push(`role_id = $${idx++}`);
+      values.push(data.roleId);
+    } else if (data.role !== undefined) {
       fields.push(`role_id = $${idx++}`);
       values.push(resolveRoleId(data.role));
+    }
+    if (data.url !== undefined) {
+      fields.push(`url = $${idx++}`);
+      values.push(data.url.trim());
+    }
+    if (data.allowedPermissions !== undefined) {
+      fields.push(`allowed_permissions = $${idx++}`);
+      values.push(JSON.stringify(data.allowedPermissions));
+    }
+    if (data.isActive !== undefined) {
+      fields.push(`is_active = $${idx++}`);
+      values.push(data.isActive);
     }
     if (data.emailVerifiedAt !== undefined) {
       fields.push(`email_verified_at = $${idx++}`);

@@ -54,21 +54,18 @@ export function isOriginAllowed(origin: string, req?: Request): boolean {
     }
   }
 
-  // 4. Same-origin request: origin matches current Host or X-Forwarded-Host header
+  // 4. Same-origin request: origin matches configured SERVER_URL or direct Host header (never raw X-Forwarded-Host)
   if (req) {
     try {
       const originHost = new URL(origin).host.toLowerCase();
-      const forwardedHost = req.headers["x-forwarded-host"];
-      const primaryForwardedHost = Array.isArray(forwardedHost)
-        ? forwardedHost[0]
-        : forwardedHost?.split(",")[0]?.trim();
-      const serverHost = (
-        primaryForwardedHost ||
-        req.headers.host ||
-        ""
-      ).toLowerCase();
-
-      if (originHost && serverHost && originHost === serverHost) {
+      if (env.SERVER_URL) {
+        const configuredServerHost = new URL(env.SERVER_URL).host.toLowerCase();
+        if (originHost && configuredServerHost && originHost === configuredServerHost) {
+          return true;
+        }
+      }
+      const hostHeader = typeof req.headers.host === "string" ? req.headers.host.trim().toLowerCase() : "";
+      if (originHost && hostHeader && originHost === hostHeader) {
         return true;
       }
     } catch {

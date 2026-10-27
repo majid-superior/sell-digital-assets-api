@@ -67,6 +67,10 @@
     {
       "name": "Storage",
       "description": "Local storage simulator and presigned direct delivery endpoints"
+    },
+    {
+      "name": "Storefront",
+      "description": "Seller storefront customization and public storefront catalog"
     }
   ],
   "paths": {
@@ -122,6 +126,34 @@
           "Health"
         ],
         "summary": "System health status"
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Authentication"
+        ]
       }
     },
     "/api/v1/auth/signup": {
@@ -374,14 +406,7 @@
             }
           },
           {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
+            "name": "actingSellerId",
             "in": "query",
             "schema": {
               "type": "string"
@@ -405,6 +430,44 @@
           }
         ],
         "summary": "List users (Admin only)"
+      },
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/users/{id}": {
@@ -462,6 +525,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -506,6 +576,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -1405,6 +1482,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1426,6 +1510,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2148,6 +2239,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2174,6 +2272,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2273,6 +2378,13 @@
             }
           },
           {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "content-type",
             "in": "header",
             "schema": {
@@ -2330,6 +2442,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2363,6 +2482,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2403,6 +2529,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2439,6 +2572,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2498,6 +2638,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2534,6 +2681,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2579,6 +2733,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2615,6 +2776,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -2668,6 +2836,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2712,6 +2887,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -3196,6 +3378,9 @@
     "/api/v1/storage/download": {
       "get": {
         "description": "Streams a binary file from local storage using a valid HMAC download token",
+        "produces": [
+          null
+        ],
         "parameters": [
           {
             "name": "host",
@@ -3734,50 +3919,6 @@
         }
       }
     },
-    "/api/v1/hero/update-frontend-json": {
-      "post": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "host",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      }
-    },
-    "/api/v1/hero/internal/update-hero-json": {
-      "post": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "host",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      }
-    },
     "/api/v1/hero": {
       "get": {
         "description": "",
@@ -3992,23 +4133,10 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
           },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      },
-      "put": {
-        "description": "",
-        "parameters": [
           {
-            "name": "host",
-            "in": "header",
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -4021,7 +4149,52 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get authenticated seller storefront configuration"
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update authenticated seller storefront configuration"
       }
     },
     "/api/v1/seller/storefront/check-url": {
@@ -4031,6 +4204,13 @@
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -4050,7 +4230,16 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Check seller storefront custom URL availability"
       }
     },
     "/api/v1/seller/storefront/banner/presign": {
@@ -4063,6 +4252,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4072,7 +4268,16 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Generate presigned URL for seller storefront banner upload"
       }
     },
     "/api/v1/seller/storefront/{sellerUrl}": {
@@ -4093,73 +4298,9 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      }
-    },
-    "/api/v1/catalog/storefronts": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "host",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      },
-      "put": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "host",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        }
-      }
-    },
-    "/api/v1/catalog/storefronts/check-url": {
-      "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "host",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
           },
           {
-            "name": "url",
+            "name": "actingSellerId",
             "in": "query",
             "schema": {
               "type": "string"
@@ -4173,16 +4314,31 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
-    "/api/v1/catalog/storefronts/banner/presign": {
-      "post": {
+    "/api/v1/seller/team": {
+      "get": {
         "description": "",
         "parameters": [
           {
             "name": "host",
             "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -4195,15 +4351,63 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List seller team members"
+      },
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Add sub-user team member (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)"
       }
     },
-    "/api/v1/catalog/storefronts/{sellerUrl}": {
+    "/api/v1/seller/team/{id}": {
       "get": {
         "description": "",
         "parameters": [
           {
-            "name": "sellerUrl",
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
@@ -4225,7 +4429,277 @@
           "401": {
             "description": "Unauthorized"
           }
-        }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update seller team member"
+      },
+      "delete": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Remove seller team member"
+      }
+    },
+    "/api/v1/catalog/storefronts": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ]
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ]
+      }
+    },
+    "/api/v1/catalog/storefronts/check-url": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ]
+      }
+    },
+    "/api/v1/catalog/storefronts/banner/presign": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ]
+      }
+    },
+    "/api/v1/catalog/storefronts/{sellerUrl}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "sellerUrl",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actingSellerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Storefront"
+        ],
+        "summary": "Get public seller storefront profile and catalog by seller URL"
       }
     }
   },

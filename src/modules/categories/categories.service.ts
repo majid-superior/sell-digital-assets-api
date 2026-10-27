@@ -96,7 +96,7 @@ export class CategoriesService {
 
   async deleteCategory(
     id: number,
-    cascade = false
+    cascade = true
   ): Promise<{ id: number; softDeleted: boolean }> {
     const existing = await categoriesRepository.findById(id, true);
     if (!existing) {

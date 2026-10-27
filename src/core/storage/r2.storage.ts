@@ -39,7 +39,9 @@ export class CloudflareR2StorageService implements IStorageService {
   public getBucket(storageKey?: string): string {
     if (
       storageKey &&
-      (storageKey.startsWith("public/") || storageKey.startsWith("previews/"))
+      (storageKey.startsWith("public/") ||
+        storageKey.startsWith("previews/") ||
+        storageKey.startsWith("hero/"))
     ) {
       return env.AWS_BUCKET_PREVIEWS || SUPABASE_BUCKETS.PREVIEWS;
     }

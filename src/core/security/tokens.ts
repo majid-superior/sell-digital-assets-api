@@ -11,6 +11,7 @@ export interface AuthUserPayload {
   role: string;
   jti?: string;
   iat?: number;
+  iatMs?: number;
   exp?: number;
   rememberMe?: boolean;
 }
@@ -28,27 +29,54 @@ export interface GeneratedTokens {
 // Local write-through cache backed by PostgreSQL revoked_tokens table
 const revokedRefreshTokens = new Map<string, number>();
 const userRevocationEpochs = new Map<string, number>();
-let initialHydrationStarted = false;
+let lastRevocationSyncAt = 0;
+let revocationSyncPromise: Promise<void> | null = null;
+const REVOCATION_SYNC_TTL_MS = 30_000;
 
-function ensureHydrated(): void {
-  if (initialHydrationStarted) return;
-  initialHydrationStarted = true;
-  void tokenRevocationRepository
-    .loadActiveRevocations()
-    .then((rows) => {
+async function hydrateRevocationCache(): Promise<void> {
+  if (revocationSyncPromise) {
+    return revocationSyncPromise;
+  }
+
+  revocationSyncPromise = (async () => {
+    try {
+      const rows = await tokenRevocationRepository.loadActiveRevocations();
       const now = Date.now();
       for (const row of rows) {
         if (row.expMs > now) {
           if (row.jti.startsWith("user_epoch:")) {
             const userId = row.jti.slice("user_epoch:".length);
-            userRevocationEpochs.set(userId, row.createdMs);
+            const currentEpoch = userRevocationEpochs.get(userId) ?? 0;
+            if (row.createdMs > currentEpoch) {
+              userRevocationEpochs.set(userId, row.createdMs);
+            }
           } else {
             revokedRefreshTokens.set(row.jti, row.expMs);
           }
         }
       }
-    })
-    .catch(() => {});
+      lastRevocationSyncAt = now;
+    } catch {
+      // Retain existing in-memory revocation state if DB is temporarily unreachable
+    } finally {
+      revocationSyncPromise = null;
+    }
+  })();
+
+  return revocationSyncPromise;
+}
+
+function ensureHydrated(): void {
+  if (Date.now() - lastRevocationSyncAt >= REVOCATION_SYNC_TTL_MS && !revocationSyncPromise) {
+    void hydrateRevocationCache();
+  }
+}
+
+async function ensureRevocationCacheFresh(): Promise<void> {
+  if (Date.now() - lastRevocationSyncAt < REVOCATION_SYNC_TTL_MS) {
+    return;
+  }
+  await hydrateRevocationCache();
 }
 
 function pruneExpiredRevocations(): void {
@@ -72,42 +100,38 @@ export function isRefreshTokenRevoked(jti: string): boolean {
   return true;
 }
 
-export async function isTokenRevokedAsync(
+export function isTokenRevoked(
   jti?: string,
   userId?: string,
   iatSeconds?: number,
-): Promise<boolean> {
+  iatMs?: number,
+): boolean {
   ensureHydrated();
   pruneExpiredRevocations();
 
-  if (jti) {
-    if (isRefreshTokenRevoked(jti)) {
-      return true;
-    }
-    const dbRevoked = await tokenRevocationRepository.isJtiRevoked(jti);
-    if (dbRevoked) {
-      const defaultExpiry = Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-      revokedRefreshTokens.set(jti, defaultExpiry);
-      return true;
-    }
+  if (jti && isRefreshTokenRevoked(jti)) {
+    return true;
   }
 
-  if (userId && iatSeconds) {
-    const tokenIssuedMs = iatSeconds * 1000;
+  if (userId && (iatMs !== undefined || iatSeconds !== undefined)) {
+    const tokenIssuedMs = iatMs !== undefined ? iatMs : (iatSeconds as number) * 1000;
     const cachedEpochMs = userRevocationEpochs.get(userId);
-    if (cachedEpochMs && tokenIssuedMs + 1000 < cachedEpochMs) {
+    if (cachedEpochMs && tokenIssuedMs <= cachedEpochMs) {
       return true;
-    }
-    const dbEpochMs = await tokenRevocationRepository.getUserRevocationEpochMs(userId);
-    if (dbEpochMs) {
-      userRevocationEpochs.set(userId, dbEpochMs);
-      if (tokenIssuedMs + 1000 < dbEpochMs) {
-        return true;
-      }
     }
   }
 
   return false;
+}
+
+export async function isTokenRevokedAsync(
+  jti?: string,
+  userId?: string,
+  iatSeconds?: number,
+  iatMs?: number,
+): Promise<boolean> {
+  await ensureRevocationCacheFresh();
+  return isTokenRevoked(jti, userId, iatSeconds, iatMs);
 }
 
 export function revokeRefreshToken(
@@ -138,8 +162,22 @@ export function revokeRefreshToken(
       }
       return decoded.id || userId;
     } catch {
-      // Ignore already invalid or expired tokens during revocation
-      return userId;
+      // If verification failed (e.g. expired during sign-out), still decode to extract jti and revoke it
+      try {
+        const decoded = jwt.decode(tokenOrJti) as (JwtPayload & AuthUserPayload) | null;
+        if (decoded?.jti) {
+          const expMs = decoded.exp ? decoded.exp * 1000 : expiresAtMs || defaultExpiry;
+          revokedRefreshTokens.set(decoded.jti, expMs);
+          void tokenRevocationRepository.revokeJti(
+            decoded.jti,
+            new Date(expMs),
+            decoded.id || userId,
+          );
+        }
+        return decoded?.id || userId;
+      } catch {
+        return userId;
+      }
     }
   }
 
@@ -176,7 +214,21 @@ export function revokeAccessToken(
       }
       return decoded.id || userId;
     } catch {
-      return userId;
+      try {
+        const decoded = jwt.decode(tokenOrJti) as (JwtPayload & AuthUserPayload) | null;
+        if (decoded?.jti) {
+          const expMs = decoded.exp ? decoded.exp * 1000 : expiresAtMs || defaultExpiry;
+          revokedRefreshTokens.set(decoded.jti, expMs);
+          void tokenRevocationRepository.revokeJti(
+            decoded.jti,
+            new Date(expMs),
+            decoded.id || userId,
+          );
+        }
+        return decoded?.id || userId;
+      } catch {
+        return userId;
+      }
     }
   }
 
@@ -203,12 +255,16 @@ export function generateTokens(
     ? { ...currentSettings, ...customSettings }
     : currentSettings;
 
+  const minIatMs = (userRevocationEpochs.get(user.id) ?? 0) + 1;
+  const iatMs = Math.max(Date.now(), minIatMs);
+
   const accessJti = crypto.randomUUID();
   const accessPayload = {
     id: user.id,
     email: user.email,
     role: user.role || "user",
     jti: accessJti,
+    iatMs,
   };
 
   const jti = crypto.randomUUID();
@@ -217,6 +273,7 @@ export function generateTokens(
     email: user.email,
     role: user.role || "user",
     jti,
+    iatMs,
     rememberMe: Boolean(customSettings?.rememberMe ?? user.rememberMe),
   };
 
@@ -262,6 +319,7 @@ export function verifyAccessToken(token: string): AuthUserPayload {
     role: decoded.role,
     ...(decoded.jti ? { jti: decoded.jti } : {}),
     ...(decoded.iat ? { iat: decoded.iat } : {}),
+    ...(decoded.iatMs !== undefined ? { iatMs: Number(decoded.iatMs) } : {}),
     ...(decoded.exp ? { exp: decoded.exp } : {}),
   };
 }
@@ -281,6 +339,7 @@ export function verifyRefreshToken(token: string): AuthUserPayload {
     role: decoded.role,
     ...(decoded.jti ? { jti: decoded.jti } : {}),
     ...(decoded.iat ? { iat: decoded.iat } : {}),
+    ...(decoded.iatMs !== undefined ? { iatMs: Number(decoded.iatMs) } : {}),
     ...(decoded.exp ? { exp: decoded.exp } : {}),
     ...(decoded.rememberMe !== undefined ? { rememberMe: Boolean(decoded.rememberMe) } : {}),
   };

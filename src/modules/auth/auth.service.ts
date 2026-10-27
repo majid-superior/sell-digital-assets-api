@@ -5,6 +5,7 @@ import {
   verifyRefreshToken,
   revokeRefreshToken,
   revokeAccessToken,
+  revokeAllUserTokens,
   isTokenRevokedAsync,
   type AuthUserPayload,
 } from "../../core/security/tokens.js";
@@ -50,12 +51,21 @@ export class AuthService {
       throw new AppError("An account with this email address already exists.", 409);
     }
 
+    const rawRole = (input.role || "BUYER").trim().toUpperCase();
+    if (rawRole !== "BUYER" && rawRole !== "SELLER") {
+      throw new AppError(
+        "Public registration is strictly restricted to BUYER or SELLER accounts. Insufficient permissions to register with this role.",
+        403,
+      );
+    }
+
     const name = input.name.trim();
-    const role = input.role === "seller" ? "seller" : "buyer";
+    const role = rawRole;
 
     const passwordHash = await hashPassword(input.password);
     const user = await userRepository.create({
       name,
+      displayName: name,
       email: input.email,
       passwordHash,
       role,
@@ -158,7 +168,7 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const decoded: AuthUserPayload = verifyRefreshToken(refreshToken);
 
-    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat)) {
+    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat, decoded.iatMs)) {
       throw new AppError("Refresh token has been revoked. Please sign in again.", 401);
     }
 
@@ -175,6 +185,13 @@ export class AuthService {
     const settings = getSystemSettings();
     if (settings.maintenanceMode && user.role !== "admin") {
       throw new AppError("Platform is currently under maintenance. Please try again later.", 503);
+    }
+
+    if (settings.requireEmailVerification && !user.email_verified_at && user.role !== "admin") {
+      throw new AppError(
+        "Email verification is required before signing in. Please verify your email address or contact support.",
+        403,
+      );
     }
 
     // Rotate refresh token: revoke the consumed token's jti so it cannot be replayed
@@ -261,6 +278,11 @@ export class AuthService {
       throw new AppError("Failed to update user profile", 500);
     }
 
+    if (data.password) {
+      await revokeAllUserTokens(userId);
+    }
+    invalidateAuthUserCache(userId);
+
     const { password_hash, ...safeUser } = updated;
     return safeUser;
   }
@@ -278,13 +300,16 @@ export class AuthService {
       );
     }
 
-    const updated =
-      user.role === "seller"
-        ? user
-        : await userRepository.update(userId, {
-            role: "seller",
-          });
+    const isRoleUpgrade = user.role !== "seller";
+    const updated = !isRoleUpgrade
+      ? user
+      : await userRepository.update(userId, {
+          role: "seller",
+        });
 
+    if (isRoleUpgrade) {
+      await revokeAllUserTokens(userId);
+    }
     invalidateAuthUserCache(userId);
 
     const targetUser = updated || user;

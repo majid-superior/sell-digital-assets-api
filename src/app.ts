@@ -16,7 +16,7 @@ import { errorMiddleware } from "./core/middleware/error.middleware.js";
 import { corsMiddleware } from "./core/middleware/cors.middleware.js";
 import { ipGuardMiddleware } from "./core/middleware/ip-guard.middleware.js";
 import { requestIdMiddleware } from "./core/middleware/request-id.middleware.js";
-import { generalLimiter } from "./core/middleware/rate-limit.middleware.js";
+import { generalLimiter, authLimiter } from "./core/middleware/rate-limit.middleware.js";
 import { httpLogger } from "./core/logger/index.js";
 
 // Browser Pages (1: Index / Status, 2: Error Page)
@@ -33,7 +33,7 @@ import {
 } from "./core/security/doc-auth.service.js";
 
 import authRoutes from "./modules/auth/auth.routes.js";
-import usersRoutes from "./modules/users/users.routes.js";
+import usersRoutes, { sellerTeamRouter } from "./modules/users/users.routes.js";
 import organizationsRoutes from "./modules/organizations/organizations.routes.js";
 import categoriesRoutes from "./modules/categories/categories.routes.js";
 import themeRoutes from "./modules/theme/theme.routes.js";
@@ -146,7 +146,7 @@ const swaggerFilePath = fs.existsSync(swaggerDistPath)
   : swaggerSrcPath;
 
 // Documentation Authentication Handlers (Unlock & Lock / Sign Out)
-app.post("/doc/auth", async (req: Request, res: Response) => {
+app.post("/doc/auth", authLimiter, async (req: Request, res: Response) => {
   const rawPassword = req.body?.password;
   const acceptsJson = Boolean(
     req.headers.accept?.includes("application/json") || req.is("application/json"),
@@ -336,39 +336,86 @@ app.use("/api", (_req: Request, res: Response, next: NextFunction) => {
   );
   next();
 });
+app.use("/v1", (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'",
+  );
+  next();
+});
 app.use("/api", generalLimiter);
+app.use("/v1", generalLimiter);
 
 // ----------------------------------------------------------------------------
-// Strict API v1 Routes (/api/v1/*)
+// Strict API v1 Routes (/api/v1/* and /v1/*)
 // ----------------------------------------------------------------------------
 app.use("/api/v1/auth", authRoutes);
+app.use("/v1/auth", authRoutes);
+
 app.use("/api/v1/users", usersRoutes);
+app.use("/v1/users", usersRoutes);
+
 app.use("/api/v1/organizations", organizationsRoutes);
+app.use("/v1/organizations", organizationsRoutes);
+
 app.use("/api/v1/categories", categoriesRoutes);
+app.use("/v1/categories", categoriesRoutes);
+
 app.use("/api/v1/theme", themeRoutes);
+app.use("/v1/theme", themeRoutes);
+
 app.use("/api/v1/assets", assetsRoutes);
 app.use("/api/assets", assetsRoutes);
+app.use("/v1/assets", assetsRoutes);
+
 app.use("/api/v1/seller/assets", sellerAssetsRouter);
 app.use("/api/seller/assets", sellerAssetsRouter);
+app.use("/v1/seller/assets", sellerAssetsRouter);
+
 app.use("/api/v1/admin/assets", adminAssetsRoutes);
+app.use("/v1/admin/assets", adminAssetsRoutes);
+
 app.use("/api/v1/downloads", downloadsRoutes);
+app.use("/v1/downloads", downloadsRoutes);
+
 app.use("/api/v1/licenses", licensesRoutes);
+app.use("/v1/licenses", licensesRoutes);
+
 app.use("/api/v1/storage", storageRoutes);
+app.use("/v1/storage", storageRoutes);
+
 app.use("/api/v1/notifications", notificationsRoutes);
+app.use("/v1/notifications", notificationsRoutes);
+
 app.use("/api/v1/banners", bannersRoutes);
 app.use("/api/banners", bannersRoutes);
+app.use("/v1/banners", bannersRoutes);
+
 app.use("/api/v1/hero", heroRoutes);
 app.use("/api/hero", heroRoutes);
+app.use("/v1/hero", heroRoutes);
+
 app.use("/api/v1/seller/storefront", sellerStorefrontRouter);
 app.use("/api/seller/storefront", sellerStorefrontRouter);
+app.use("/v1/seller/storefront", sellerStorefrontRouter);
+
+app.use("/api/v1/seller/team", sellerTeamRouter);
+app.use("/api/seller/team", sellerTeamRouter);
+app.use("/v1/seller/team", sellerTeamRouter);
+
 app.use("/api/v1/catalog/storefronts", publicStorefrontRouter);
 app.use("/api/catalog/storefronts", publicStorefrontRouter);
+app.use("/v1/catalog/storefronts", publicStorefrontRouter);
 
 // ============================================================================
 // 404 Catch-All Handler
 // ============================================================================
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const isApiRoute = req.path.startsWith("/api/") || req.path === "/api";
+  const isApiRoute =
+    req.path.startsWith("/api/") ||
+    req.path === "/api" ||
+    req.path.startsWith("/v1/") ||
+    req.path === "/v1";
   const isDocRoute = req.path.startsWith("/doc");
   const acceptsHtml = req.accepts(["json", "html"]) === "html";
 

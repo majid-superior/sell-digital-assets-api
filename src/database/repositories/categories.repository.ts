@@ -235,9 +235,9 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
 
     if (filter.search?.trim()) {
       conditions.push(
-        `(c.name ILIKE $${idx} OR c.path ILIKE $${idx} OR c.slug ILIKE $${idx})`,
+        `(c.name ILIKE $${idx} ESCAPE '\\' OR c.path ILIKE $${idx} ESCAPE '\\' OR c.slug ILIKE $${idx} ESCAPE '\\')`,
       );
-      values.push(`%${filter.search.trim()}%`);
+      values.push(`%${this.escapeLike(filter.search.trim())}%`);
       idx++;
     }
 
@@ -303,9 +303,9 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
 
     if (options.search?.trim()) {
       conditions.push(
-        `(c.name ILIKE $${idx} OR c.path ILIKE $${idx} OR c.slug ILIKE $${idx})`,
+        `(c.name ILIKE $${idx} ESCAPE '\\' OR c.path ILIKE $${idx} ESCAPE '\\' OR c.slug ILIKE $${idx} ESCAPE '\\')`,
       );
-      values.push(`%${options.search.trim()}%`);
+      values.push(`%${this.escapeLike(options.search.trim())}%`);
       idx++;
     }
 
@@ -543,6 +543,20 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
       values.push(newPath);
     }
 
+    let nextPathSlugs: string[] = [effectiveSlug];
+    if (slugChanged || parentChanged) {
+      if (newParentId !== null && resolvedParent) {
+        const parentPathSlugs = (resolvedParent.metadata as any)?.pathSlugs;
+        if (Array.isArray(parentPathSlugs)) {
+          nextPathSlugs = [...parentPathSlugs, effectiveSlug];
+        } else if (resolvedParent.slug) {
+          nextPathSlugs = [resolvedParent.slug, effectiveSlug];
+        }
+      }
+    } else if (Array.isArray((existing.metadata as any)?.pathSlugs)) {
+      nextPathSlugs = [...(existing.metadata as any).pathSlugs];
+    }
+
     if (data.metadata !== undefined || slugChanged || parentChanged) {
       const baseMetadata: Record<string, unknown> =
         data.metadata !== undefined
@@ -550,16 +564,7 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
           : { ...(((existing.metadata as Record<string, unknown>) ?? {})) };
 
       if (slugChanged || parentChanged) {
-        const pathSlugs: string[] = [effectiveSlug];
-        if (newParentId !== null && resolvedParent) {
-          const parentPathSlugs = (resolvedParent.metadata as any)?.pathSlugs;
-          if (Array.isArray(parentPathSlugs)) {
-            pathSlugs.unshift(...parentPathSlugs);
-          } else if (resolvedParent.slug) {
-            pathSlugs.unshift(resolvedParent.slug);
-          }
-        }
-        baseMetadata.pathSlugs = pathSlugs;
+        baseMetadata.pathSlugs = nextPathSlugs;
       }
 
       updates.push(`metadata = $${idx++}::jsonb`);
@@ -592,7 +597,7 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
         await client.query(
           `UPDATE categories
            SET path = $1 || SUBSTRING(path, $2::int),
-               depth = depth + $3,
+               depth = GREATEST(0, depth + $3),
                updated_at = CURRENT_TIMESTAMP
            WHERE path LIKE $4 ESCAPE '\\';`,
           [
@@ -602,6 +607,49 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
             `${escapeLikePattern(oldPrefix)}%`,
           ],
         );
+      }
+
+      // Cascade metadata.pathSlugs updates to all descendants if slug or parent changed
+      if (slugChanged || parentChanged) {
+        const descPrefix = `${escapeLikePattern(`${newPath} > `)}%`;
+        const descendantsRes = await client.query<{
+          id: number;
+          parent_id: number | null;
+          slug: string;
+          metadata: Record<string, unknown> | null;
+        }>(
+          `SELECT id, parent_id, slug, metadata
+           FROM categories
+           WHERE path LIKE $1 ESCAPE '\\'
+           ORDER BY depth ASC;`,
+          [descPrefix],
+        );
+
+        if (descendantsRes.rows.length > 0) {
+          const slugHierarchyMap = new Map<number, string[]>();
+          slugHierarchyMap.set(id, nextPathSlugs);
+
+          for (const desc of descendantsRes.rows) {
+            const parentSlugs =
+              (desc.parent_id !== null && slugHierarchyMap.get(desc.parent_id)) ||
+              nextPathSlugs;
+            const descPathSlugs = [...parentSlugs, desc.slug];
+            slugHierarchyMap.set(desc.id, descPathSlugs);
+
+            const nextDescMetadata: Record<string, unknown> = {
+              ...(desc.metadata && typeof desc.metadata === "object" ? desc.metadata : {}),
+              pathSlugs: descPathSlugs,
+            };
+
+            await client.query(
+              `UPDATE categories
+               SET metadata = $1::jsonb,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2;`,
+              [JSON.stringify(nextDescMetadata), desc.id],
+            );
+          }
+        }
       }
 
       const refreshedRes = await client.query<CategoryEntity>(
@@ -623,7 +671,7 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
    * SOFT-DELETE RULE: Toggles category is_active to FALSE.
    * Physical SQL DELETE is strictly prohibited on categories.
    */
-  async softDelete(id: number, cascadeToChildren = false): Promise<boolean> {
+  async softDelete(id: number, cascadeToChildren = true): Promise<boolean> {
     const existing = await this.findById(id, true);
     if (!existing) return false;
 
@@ -650,7 +698,7 @@ export class CategoriesRepository extends BaseRepository<CategoryEntity> {
   /**
    * Alias for softDelete. Never executes physical SQL DELETE.
    */
-  async delete(id: number, cascadeToChildren = false): Promise<boolean> {
+  async delete(id: number, cascadeToChildren = true): Promise<boolean> {
     return this.softDelete(id, cascadeToChildren);
   }
 

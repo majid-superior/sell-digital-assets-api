@@ -8,6 +8,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUserPayload;
+      actingSellerId?: string;
     }
   }
 }
@@ -17,6 +18,7 @@ interface CachedAuthUser {
   email: string;
   role: string;
   status: string;
+  emailVerifiedAt: Date | string | null;
   expiresAt: number;
 }
 
@@ -59,6 +61,7 @@ async function resolveAuthenticatedUser(userId: string): Promise<CachedAuthUser 
     email: user.email,
     role: user.role,
     status: user.status,
+    emailVerifiedAt: user.email_verified_at ?? null,
     expiresAt: now + AUTH_CACHE_TTL_MS,
   };
   authUserCache.set(userId, entry);
@@ -98,7 +101,7 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
   try {
     const decoded = verifyAccessToken(token);
 
-    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat)) {
+    if (await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat, decoded.iatMs)) {
       return next(new AppError("Authentication session has ended or been revoked. Please sign in again.", 401));
     }
 
@@ -108,11 +111,20 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
       return next(new AppError("Account is inactive, suspended, or deleted.", 403));
     }
 
-    // Enforce maintenance mode for non-admin users
+    // Enforce maintenance mode and email verification for non-admin users
     const settings = getSystemSettings();
     if (settings.maintenanceMode && user.role !== "admin") {
       return next(
         new AppError("Platform is currently undergoing scheduled maintenance. Please try again later.", 503),
+      );
+    }
+
+    if (settings.requireEmailVerification && !user.emailVerifiedAt && user.role !== "admin") {
+      return next(
+        new AppError(
+          "Your email address has not been verified yet. Please verify your email before accessing this resource.",
+          403,
+        ),
       );
     }
 
@@ -147,7 +159,7 @@ export const optionalAuthenticate = async (
 
   try {
     const decoded = verifyAccessToken(token);
-    const isRevoked = await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat);
+    const isRevoked = await isTokenRevokedAsync(decoded.jti, decoded.id, decoded.iat, decoded.iatMs);
     if (!isRevoked) {
       const user = await resolveAuthenticatedUser(decoded.id);
       if (user && user.status === "active") {
@@ -171,8 +183,12 @@ export const authorize = (...allowedRoles: string[]) => {
       throw new AppError("Authentication required.", 401);
     }
 
-    if (allowedRoles.length > 0 && !allowedRoles.includes(req.user.role)) {
-      throw new AppError("Access denied. Insufficient permissions for this resource.", 403);
+    if (allowedRoles.length > 0) {
+      const currentRole = (req.user.role || "").toLowerCase();
+      const isAllowed = allowedRoles.some((role) => role.toLowerCase() === currentRole);
+      if (!isAllowed) {
+        throw new AppError("Access denied. Insufficient permissions for this resource.", 403);
+      }
     }
 
     next();
@@ -180,6 +196,70 @@ export const authorize = (...allowedRoles: string[]) => {
   (middleware as any)._allowedRoles = allowedRoles;
   return middleware;
 };
+
+/**
+ * Tenant Isolation Middleware (requireSellerAccess)
+ * Resolves req.actingSellerId (equal to user ID for primary SELLER, and parent_seller_id for sub-users).
+ * Ensures all seller queries filter by seller_id = req.actingSellerId.
+ */
+export const requireSellerAccess = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user) {
+    return next(new AppError("Authentication required. Please sign in to access seller resources.", 401));
+  }
+
+  const user = await userRepository.findById(req.user.id);
+  if (!user || user.status !== "active") {
+    return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+  }
+
+  const roleNormalized = (user.role || "").toUpperCase();
+
+  // Primary Seller
+  if (roleNormalized === "SELLER" || user.role_id === 2) {
+    req.actingSellerId = user.id;
+    return next();
+  }
+
+  // Seller Store Sub-User (e.g. STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
+  if (user.parent_seller_id) {
+    req.actingSellerId = user.parent_seller_id;
+    return next();
+  }
+
+  // Organization Admin override (platform admin acting on seller behalf)
+  if (roleNormalized === "ADMIN" || user.role_id === 1) {
+    req.actingSellerId =
+      (req.query.actingSellerId as string) ||
+      (req.headers["x-acting-seller-id"] as string) ||
+      user.id;
+    return next();
+  }
+
+  return next(
+    new AppError("Access denied. A valid Seller or Seller Team account is required to access seller resources.", 403),
+  );
+};
+(requireSellerAccess as any)._authRequired = true;
+
+/**
+ * Admin Guard (requireOrgAdmin)
+ * Restrict /v1/admin/* strictly to the seeded ADMIN role.
+ */
+export const requireOrgAdmin = (req: Request, _res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    throw new AppError("Authentication required. Please sign in to access administrator resources.", 401);
+  }
+  const roleNormalized = (req.user.role || "").toUpperCase();
+  if (roleNormalized !== "ADMIN") {
+    throw new AppError("Access denied. Organization Administrator privileges are strictly required.", 403);
+  }
+  next();
+};
+(requireOrgAdmin as any)._authRequired = true;
 
 
 

@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { env } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
-import { storageService, localStorageService } from "../../core/storage/index.js";
+import { storageService, resolvePublicStorageUrl } from "../../core/storage/index.js";
 import {
   heroRepository,
   type HeroImageEntity,
@@ -63,24 +62,7 @@ export class HeroService {
    * Resolves a public accessible URL for a stored hero image key.
    */
   public resolvePublicUrl(storageKey: string): string {
-    if (
-      (env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") &&
-      env.AWS_ENDPOINT
-    ) {
-      return `${env.AWS_ENDPOINT}/${storageKey}`;
-    }
-
-    // Local storage driver token generation
-    const expiresAt = Date.now() + 31536000000; // 1 year
-    const token = localStorageService.signToken(
-      storageKey,
-      expiresAt,
-      "download",
-    );
-    const baseUrl = env.SERVER_URL ? env.SERVER_URL.replace(/\/+$/, "") : "";
-    return `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
-      storageKey,
-    )}&token=${token}&expires=${expiresAt}`;
+    return resolvePublicStorageUrl(storageKey);
   }
 
   /**
@@ -121,16 +103,28 @@ export class HeroService {
       isActive?: boolean;
     },
   ): Promise<HeroImageDto> {
-    if (!mimeType.startsWith("image/")) {
-      throw new AppError("Invalid file type: Hero images must be an image format (JPEG, PNG, WebP)", 400);
+    const ALLOWED_HERO_MIMES: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "image/gif": "gif",
+      "image/avif": "avif",
+    };
+
+    const normalizedMime = mimeType.toLowerCase().trim();
+    const ext = ALLOWED_HERO_MIMES[normalizedMime];
+    if (!ext) {
+      throw new AppError(
+        "Invalid file type: Hero images must be a supported raster image format (JPEG, PNG, WebP, GIF, or AVIF).",
+        400,
+      );
     }
 
-    const ext = path.extname(fileName).replace(/^\./, "").toLowerCase() || "webp";
     const timestamp = Date.now();
     const randomHex = Math.random().toString(36).substring(2, 8);
     const storageKey = `hero/hero-${timestamp}-${randomHex}.${ext}`;
 
-    await storageService.uploadBuffer(storageKey, fileBuffer, mimeType);
+    await storageService.uploadBuffer(storageKey, fileBuffer, normalizedMime);
     const imageUrl = this.resolvePublicUrl(storageKey);
 
     const sortOrderVal = data.sort_order ?? data.sortOrder ?? 0;

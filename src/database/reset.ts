@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import child_process from "node:child_process";
 import readline from "node:readline/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
 import dotenv from "dotenv";
 import { defaultOrganizationEntity } from "../data/organizations.js";
@@ -146,35 +146,45 @@ EXECUTE FUNCTION update_timestamp_column();
 
 -- Step 5: Roles Table
 CREATE TABLE IF NOT EXISTS roles (
-    id SMALLSERIAL PRIMARY KEY,
-    slug VARCHAR(50) NOT NULL UNIQUE,
-    name VARCHAR(100) NOT NULL,
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,           -- 'ADMIN', 'SELLER', 'BUYER', 'STORE_MANAGER', 'CONTENT_UPLOADER', 'ANALYST'
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    scope VARCHAR(20) NOT NULL DEFAULT 'PLATFORM', -- 'PLATFORM' or 'SELLER_STORE'
+    allow_public_signup BOOLEAN NOT NULL DEFAULT FALSE,
     description VARCHAR(255),
     is_system BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed System Roles
-INSERT INTO roles (id, slug, name, description, is_system) VALUES
-    (1, 'admin', 'Administrator', 'Super administrator with unrestricted platform & system management access', TRUE),
-    (2, 'seller', 'Seller', 'Merchant account capable of listing, selling, and managing digital products', TRUE),
-    (3, 'buyer', 'Buyer', 'Standard user capable of purchasing and downloading digital assets', TRUE),
-    (4, 'guest', 'Guest', 'Unauthenticated visitor with access to public platform features', TRUE)
-ON CONFLICT (id) DO UPDATE 
-    SET slug = EXCLUDED.slug,
-        name = EXCLUDED.name,
+-- Seed System & Scoped Roles
+INSERT INTO roles (id, name, slug, scope, allow_public_signup, description) VALUES
+    (1, 'ADMIN',            'admin',            'PLATFORM',     FALSE, 'Super administrator with unrestricted platform & system management access'),
+    (2, 'SELLER',           'seller',           'PLATFORM',     TRUE,  'Merchant account capable of listing, selling, and managing digital products'),
+    (3, 'BUYER',            'buyer',            'PLATFORM',     TRUE,  'Standard user capable of purchasing and downloading digital assets'),
+    (4, 'STORE_MANAGER',    'store_manager',    'SELLER_STORE', FALSE, 'Store manager with permissions to manage products, sales, and settings'),
+    (5, 'CONTENT_UPLOADER', 'content_uploader', 'SELLER_STORE', FALSE, 'Team member with permissions to draft and upload assets'),
+    (6, 'ANALYST',          'analyst',          'SELLER_STORE', FALSE, 'Team member with permissions to view sales and analytics')
+ON CONFLICT (name) DO UPDATE
+    SET scope = EXCLUDED.scope,
+        allow_public_signup = EXCLUDED.allow_public_signup,
+        slug = EXCLUDED.slug,
         description = EXCLUDED.description;
 
 -- Synchronize sequence with highest manual ID
 SELECT setval(pg_get_serial_sequence('roles', 'id'), COALESCE((SELECT MAX(id) FROM roles), 1));
 
--- Step 6: Users Table
+-- Step 6: Users Table (Unified table for all roles and sub-users)
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    role_id SMALLINT NOT NULL DEFAULT 3,
-    name VARCHAR(100) NOT NULL,
-    email citext NOT NULL,
-    password_hash VARCHAR(255),
+    email citext UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name VARCHAR(100) NOT NULL DEFAULT '',
+    name VARCHAR(100) NOT NULL DEFAULT '',
+    role_id INTEGER NOT NULL DEFAULT 3 REFERENCES roles(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    url VARCHAR(30) NOT NULL DEFAULT '',        -- Custom storefront slug for Sellers (e.g. "seller01")
+    parent_seller_id UUID NULL REFERENCES users(id) ON DELETE CASCADE, -- Binds sub-users to a parent seller
+    allowed_permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     auth_provider VARCHAR(50) NOT NULL DEFAULT 'local',
     status VARCHAR(20) NOT NULL DEFAULT 'active' 
         CHECK (status IN ('active', 'pending', 'suspended', 'banned')),
@@ -184,18 +194,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMPTZ,
-
-    CONSTRAINT fk_users_role 
-        FOREIGN KEY (role_id) 
-        REFERENCES roles(id) 
-        ON UPDATE CASCADE 
-        ON DELETE RESTRICT,
-
-    CONSTRAINT chk_users_name_not_empty 
-        CHECK (length(trim(name)) > 0),
-    CONSTRAINT chk_users_password_if_local 
-        CHECK (auth_provider != 'local' OR password_hash IS NOT NULL)
+    deleted_at TIMESTAMPTZ
 );
 
 ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
@@ -207,6 +206,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_email
 CREATE INDEX IF NOT EXISTS idx_users_role_id 
     ON users (role_id);
 
+CREATE INDEX IF NOT EXISTS idx_users_parent_seller 
+    ON users (parent_seller_id);
+
+CREATE INDEX IF NOT EXISTS idx_users_url 
+    ON users (url) 
+    WHERE url != '';
+
 CREATE INDEX IF NOT EXISTS idx_users_status 
     ON users (status) 
     WHERE deleted_at IS NULL;
@@ -217,27 +223,42 @@ BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Seed Default Platform Super Administrator
+-- Seed Organization Owner Admin (No public registration allowed)
 INSERT INTO users (
     id,
-    role_id,
-    name,
     email,
     password_hash,
+    display_name,
+    name,
+    role_id,
+    url,
+    parent_seller_id,
+    allowed_permissions,
+    is_active,
     auth_provider,
     status,
     email_verified_at
 ) VALUES (
     '00000000-0000-0000-0000-000000000001'::uuid,
-    1,
-    'Admin',
     'admin@selldigitalassets.com',
     '$2b$12$bCHdjCEbJS1..bm.a6rfWOvb.1dASiIVehHth7fGkFKoQJm4/k8.6',
+    'Organization Owner',
+    'Organization Owner',
+    1,
+    '',
+    NULL,
+    '["*"]'::jsonb,
+    TRUE,
     'local',
     'active',
     CURRENT_TIMESTAMP
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (email) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        name = EXCLUDED.name,
+        role_id = 1,
+        allowed_permissions = '["*"]'::jsonb,
+        is_active = TRUE;
 
 -- Step 6b: Revoked Tokens & Session Invalidation Table
 CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -307,10 +328,17 @@ CREATE OR REPLACE VIEW view_users AS
 SELECT 
     u.id,
     u.role_id,
-    r.slug AS role,
+    COALESCE(r.slug, LOWER(r.name)) AS role,
     r.name AS role_name,
-    u.name,
+    r.scope AS role_scope,
+    r.allow_public_signup AS role_allow_public_signup,
+    COALESCE(NULLIF(u.display_name, ''), u.name) AS display_name,
+    COALESCE(NULLIF(u.name, ''), u.display_name) AS name,
     u.email,
+    u.url,
+    u.parent_seller_id,
+    u.allowed_permissions,
+    u.is_active,
     u.password_hash,
     u.auth_provider,
     u.status,
@@ -474,6 +502,7 @@ EXECUTE FUNCTION update_timestamp_column();
 CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_by_user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
     category_id INT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
     title VARCHAR(200) NOT NULL,
     slug VARCHAR(200) NOT NULL UNIQUE,
@@ -500,6 +529,7 @@ CREATE TABLE IF NOT EXISTS assets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_assets_seller_id ON assets (seller_id);
+CREATE INDEX IF NOT EXISTS idx_assets_created_by ON assets (created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets (category_id);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
 CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
@@ -529,6 +559,7 @@ CREATE TABLE IF NOT EXISTS asset_tiers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_asset_tiers_asset_id ON asset_tiers (asset_id);
+CREATE INDEX IF NOT EXISTS idx_asset_tiers_asset_id_price ON asset_tiers (asset_id, price);
 
 DROP TRIGGER IF EXISTS trg_asset_tiers_updated_at ON asset_tiers;
 CREATE TRIGGER trg_asset_tiers_updated_at
@@ -1441,100 +1472,106 @@ export async function resetDatabase(): Promise<void> {
       await targetClient.query("COMMIT");
       console.log("✅ Schema applied successfully with ZERO mock data!");
 
-      // If Supabase API credentials are configured, ensure and empty buckets via Supabase Storage API
-      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        try {
-          const { createClient } = await import("@supabase/supabase-js");
-          const supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY,
-            { auth: { autoRefreshToken: false, persistSession: false } }
-          );
+      if (isCloudDb) {
+        // If Supabase API credentials are configured, ensure and empty buckets via Supabase Storage API
+        if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          try {
+            const { createClient } = await import("@supabase/supabase-js");
+            const supabase = createClient(
+              process.env.SUPABASE_URL,
+              process.env.SUPABASE_SERVICE_ROLE_KEY,
+              { auth: { autoRefreshToken: false, persistSession: false } }
+            );
 
-          const { error: prevErr } = await supabase.storage.createBucket("sell-digital-assets-storage-previews", {
-            public: true,
-            fileSizeLimit: 10485760,
-            allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
-          });
-          if (prevErr && prevErr.message?.toLowerCase().includes("already exists")) {
-            await supabase.storage.updateBucket("sell-digital-assets-storage-previews", {
+            const { error: prevErr } = await supabase.storage.createBucket("sell-digital-assets-storage-previews", {
               public: true,
               fileSizeLimit: 10485760,
               allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
-            }).catch(() => {});
-          }
+            });
+            if (prevErr && prevErr.message?.toLowerCase().includes("already exists")) {
+              await supabase.storage.updateBucket("sell-digital-assets-storage-previews", {
+                public: true,
+                fileSizeLimit: 10485760,
+                allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
+              }).catch(() => {});
+            }
 
-          const { error: privErr } = await supabase.storage.createBucket("sell-digital-assets-storage-private", {
-            public: false,
-            fileSizeLimit: 524288000,
-          });
-          if (privErr && privErr.message?.toLowerCase().includes("already exists")) {
-            await supabase.storage.updateBucket("sell-digital-assets-storage-private", {
+            const { error: privErr } = await supabase.storage.createBucket("sell-digital-assets-storage-private", {
               public: false,
               fileSizeLimit: 524288000,
-            }).catch(() => {});
+            });
+            if (privErr && privErr.message?.toLowerCase().includes("already exists")) {
+              await supabase.storage.updateBucket("sell-digital-assets-storage-private", {
+                public: false,
+                fileSizeLimit: 524288000,
+              }).catch(() => {});
+            }
+
+            // Empty both buckets via Supabase Storage API
+            await supabase.storage.emptyBucket("sell-digital-assets-storage-previews").catch(() => {});
+            await supabase.storage.emptyBucket("sell-digital-assets-storage-private").catch(() => {});
+
+            console.log("🪣  Verified and emptied Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
+          } catch {
+            // If network error or bucket already exists, proceed smoothly
           }
-
-          // Empty both buckets via Supabase Storage API
-          await supabase.storage.emptyBucket("sell-digital-assets-storage-previews").catch(() => {});
-          await supabase.storage.emptyBucket("sell-digital-assets-storage-private").catch(() => {});
-
-          console.log("🪣  Verified and emptied Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
-        } catch {
-          // If network error or bucket already exists, proceed smoothly
         }
-      }
 
-      // If S3 credentials are configured (e.g. Supabase S3 storage), also empty both buckets via S3 API
-      if (
-        process.env.AWS_ENDPOINT &&
-        process.env.AWS_ACCESS_KEY_ID &&
-        process.env.AWS_SECRET_ACCESS_KEY
-      ) {
-        try {
-          const { S3Client, ListObjectsV2Command, DeleteObjectsCommand } = await import("@aws-sdk/client-s3");
-          const s3 = new S3Client({
-            region: process.env.AWS_REGION || "auto",
-            endpoint: process.env.AWS_ENDPOINT,
-            forcePathStyle: true,
-            credentials: {
-              accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-            },
-          });
+        // If S3 credentials are configured (e.g. Supabase S3 storage), also empty both buckets via S3 API
+        if (
+          process.env.AWS_ENDPOINT &&
+          process.env.AWS_ACCESS_KEY_ID &&
+          process.env.AWS_SECRET_ACCESS_KEY
+        ) {
+          try {
+            const { S3Client, ListObjectsV2Command, DeleteObjectsCommand } = await import("@aws-sdk/client-s3");
+            const s3 = new S3Client({
+              region: process.env.AWS_REGION || "auto",
+              endpoint: process.env.AWS_ENDPOINT,
+              forcePathStyle: true,
+              credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+              },
+            });
 
-          const buckets = [
-            process.env.AWS_BUCKET_PREVIEWS || "sell-digital-assets-storage-previews",
-            process.env.AWS_BUCKET_PRIVATE || "sell-digital-assets-storage-private",
-          ];
+            const buckets = [
+              process.env.AWS_BUCKET_PREVIEWS || "sell-digital-assets-storage-previews",
+              process.env.AWS_BUCKET_PRIVATE || "sell-digital-assets-storage-private",
+            ];
 
-          for (const bucket of buckets) {
-            let continuationToken: string | undefined = undefined;
-            do {
-              const listRes: any = await s3.send(
-                new ListObjectsV2Command({
-                  Bucket: bucket,
-                  ContinuationToken: continuationToken,
-                })
-              );
-              if (listRes.Contents && listRes.Contents.length > 0) {
-                await s3.send(
-                  new DeleteObjectsCommand({
+            for (const bucket of buckets) {
+              let continuationToken: string | undefined = undefined;
+              do {
+                const listRes: any = await s3.send(
+                  new ListObjectsV2Command({
                     Bucket: bucket,
-                    Delete: {
-                      Objects: listRes.Contents.map((obj: any) => ({ Key: obj.Key! })),
-                      Quiet: true,
-                    },
+                    ContinuationToken: continuationToken,
                   })
                 );
-              }
-              continuationToken = listRes.NextContinuationToken;
-            } while (continuationToken);
+                if (listRes.Contents && listRes.Contents.length > 0) {
+                  await s3.send(
+                    new DeleteObjectsCommand({
+                      Bucket: bucket,
+                      Delete: {
+                        Objects: listRes.Contents.map((obj: any) => ({ Key: obj.Key! })),
+                        Quiet: true,
+                      },
+                    })
+                  );
+                }
+                continuationToken = listRes.NextContinuationToken;
+              } while (continuationToken);
+            }
+            console.log("🧹  Emptied storage buckets via S3 API: sell-digital-assets-storage-previews and sell-digital-assets-storage-private");
+          } catch {
+            // If S3 bucket empty fails or offline, continue smoothly
           }
-          console.log("🧹  Emptied storage buckets via S3 API: sell-digital-assets-storage-previews and sell-digital-assets-storage-private");
-        } catch {
-          // If S3 bucket empty fails or offline, continue smoothly
         }
+      } else {
+        console.log(
+          "🔒 Local database reset: Skipping remote cloud storage bucket cleanup (Supabase / S3 buckets preserved).",
+        );
       }
 
       // Also empty local storage directory if local driver is used
@@ -1572,5 +1609,13 @@ export async function resetDatabase(): Promise<void> {
   console.log("🎉 Database reset & schema build complete!");
 }
 
-// Automatically invoke if executed directly via node or tsx
-resetDatabase();
+function isDirectExecution(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(path.resolve(entry)).href;
+}
+
+// Automatically invoke only if executed directly via node or tsx
+if (isDirectExecution()) {
+  void resetDatabase();
+}

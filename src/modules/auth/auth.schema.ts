@@ -4,7 +4,7 @@ export const RegisterUserSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().trim().email("Invalid email address").max(255),
   password: z.string().min(4, "Password must be at least 4 characters").max(128),
-  role: z.enum(["buyer", "seller", "customer", "guest"]).optional().default("buyer"),
+  role: z.string().optional().default("BUYER"),
 });
 
 

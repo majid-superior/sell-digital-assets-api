@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storefrontController } from "./storefront.controller.js";
-import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
+import { authenticate, requireSellerAccess } from "../../core/middleware/auth.middleware.js";
 import {
   validateBody,
   validateParams,
@@ -14,7 +14,7 @@ import {
 } from "./storefront.schema.js";
 
 export const sellerStorefrontRouter = Router();
-sellerStorefrontRouter.use(authenticate, authorize("seller", "admin"));
+sellerStorefrontRouter.use(authenticate, requireSellerAccess);
 
 // GET /api/v1/seller/storefront
 sellerStorefrontRouter.get(

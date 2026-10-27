@@ -7,7 +7,14 @@ import { authenticate } from "../../core/middleware/auth.middleware.js";
 
 const router = Router();
 
-// Signup
+// Signup / Register
+router.post(
+  "/register",
+  authLimiter,
+  validateBody(RegisterUserSchema),
+  authController.register.bind(authController),
+);
+
 router.post(
   "/signup",
   authLimiter,
@@ -26,6 +33,7 @@ router.post(
 // Refresh token
 router.post(
   "/refresh",
+  authLimiter,
   validateBody(RefreshTokenSchema),
   authController.refresh.bind(authController),
 );

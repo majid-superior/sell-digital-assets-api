@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { assetsController } from "./assets.controller.js";
-import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
+import { authenticate, authorize, requireSellerAccess } from "../../core/middleware/auth.middleware.js";
 import { downloadLimiter } from "../../core/middleware/rate-limit.middleware.js";
 import {
   validateBody,
@@ -227,7 +227,7 @@ router.get(
 // Dedicated Seller Router for /api/v1/seller/assets
 // ============================================================================
 export const sellerAssetsRouter = Router();
-sellerAssetsRouter.use(authenticate, authorize("seller", "admin"));
+sellerAssetsRouter.use(authenticate, requireSellerAccess);
 
 sellerAssetsRouter.post(
   "/",

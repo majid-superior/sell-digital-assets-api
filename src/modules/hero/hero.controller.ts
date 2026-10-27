@@ -1,6 +1,4 @@
 import type { Request, Response, NextFunction } from "express";
-import fs from "node:fs";
-import path from "node:path";
 import { AppError } from "../../core/errors/app-error.js";
 import { heroService } from "./hero.service.js";
 
@@ -143,35 +141,6 @@ export class HeroController {
       res.status(200).json({
         success: true,
         message: "Hero image deleted successfully",
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  /**
-   * POST /api/v1/hero/update-frontend-json (or internal sync)
-   */
-  async updateFrontendJson(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const data = req.body;
-      const targetPath = path.resolve(
-        process.cwd(),
-        "../sell-digital-assets-website/src/features/website/data/heroImages.json",
-      );
-
-      try {
-        await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-        await fs.promises.writeFile(targetPath, JSON.stringify(data, null, 2), "utf-8");
-      } catch {
-        // ignore if directory is unreachable
-      }
-
-      res.status(200).json({
-        success: true,
-        message: "Hero images JSON updated successfully",
-        syncHash: data?.syncHash,
-        count: data?.count,
       });
     } catch (err) {
       next(err);

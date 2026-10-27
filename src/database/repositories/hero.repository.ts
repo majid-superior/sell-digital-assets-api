@@ -42,42 +42,10 @@ export interface UpdateHeroImageDbInput {
 }
 
 export class HeroRepository extends BaseRepository<HeroImageEntity> {
-  private tableEnsured = false;
-
-  /**
-   * Lazily ensures the hero_images table and all required columns exist in PostgreSQL.
-   */
-  private async ensureTable(): Promise<void> {
-    if (this.tableEnsured) return;
-    await this.query(`
-      CREATE TABLE IF NOT EXISTS hero_images (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        title VARCHAR(200) NOT NULL DEFAULT 'Hero Slide',
-        subtitle VARCHAR(200),
-        detail TEXT,
-        category_name VARCHAR(150),
-        category_slug VARCHAR(150),
-        image_url TEXT NOT NULL,
-        storage_key VARCHAR(500),
-        sort_order INT NOT NULL DEFAULT 0,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS detail TEXT;
-      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS category_name VARCHAR(150);
-      ALTER TABLE hero_images ADD COLUMN IF NOT EXISTS category_slug VARCHAR(150);
-      CREATE INDEX IF NOT EXISTS idx_hero_images_active_order 
-        ON hero_images (is_active, sort_order ASC, created_at DESC);
-    `);
-    this.tableEnsured = true;
-  }
-
   /**
    * Returns active hero images for public landing page showcase, up to limit.
    */
   async findActive(limit = 20): Promise<HeroImageEntity[]> {
-    await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `SELECT
          id,
@@ -105,7 +73,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Returns all hero images for admin management.
    */
   async findAll(): Promise<HeroImageEntity[]> {
-    await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `SELECT
          id,
@@ -130,7 +97,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Finds a single hero image by ID.
    */
   async findById(id: string): Promise<HeroImageEntity | null> {
-    await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `SELECT
          id,
@@ -156,7 +122,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Creates a new hero image record.
    */
   async create(input: CreateHeroImageDbInput): Promise<HeroImageEntity> {
-    await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `INSERT INTO hero_images (
          id,
@@ -197,7 +162,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Toggles the active status of a hero image.
    */
   async toggleStatus(id: string, isActive: boolean): Promise<HeroImageEntity | null> {
-    await this.ensureTable();
     const res = await this.query<HeroImageEntity>(
       `UPDATE hero_images
        SET is_active = $1, updated_at = CURRENT_TIMESTAMP
@@ -212,7 +176,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Updates hero image metadata.
    */
   async update(id: string, input: UpdateHeroImageDbInput): Promise<HeroImageEntity | null> {
-    await this.ensureTable();
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -275,7 +238,6 @@ export class HeroRepository extends BaseRepository<HeroImageEntity> {
    * Deletes a hero image record.
    */
   async delete(id: string): Promise<boolean> {
-    await this.ensureTable();
     const res = await this.query(
       `DELETE FROM hero_images WHERE id = $1`,
       [id],

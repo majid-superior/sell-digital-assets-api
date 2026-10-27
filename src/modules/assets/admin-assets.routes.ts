@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { assetsController } from "./assets.controller.js";
-import { authenticate, authorize } from "../../core/middleware/auth.middleware.js";
+import { authenticate, requireOrgAdmin } from "../../core/middleware/auth.middleware.js";
 import {
   validateBody,
   validateQuery,
@@ -17,7 +17,7 @@ const router = Router();
 
 // Strict Admin RBAC defense
 router.use(authenticate);
-router.use(authorize("admin"));
+router.use(requireOrgAdmin);
 
 // GET /api/v1/admin/assets — List all assets for review (filters: status, sellerId, search, etc.)
 router.get(

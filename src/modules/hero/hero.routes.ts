@@ -29,8 +29,6 @@ const upload = multer({
 // ============================================================================
 router.get("/active", heroController.getActiveImages.bind(heroController));
 router.get("/public", heroController.getActiveImages.bind(heroController));
-router.post("/update-frontend-json", heroController.updateFrontendJson.bind(heroController));
-router.post("/internal/update-hero-json", heroController.updateFrontendJson.bind(heroController));
 
 // ============================================================================
 // Admin Endpoints

@@ -73,53 +73,28 @@ export interface UpdateBannerDbInput {
   timezone?: string;
 }
 
+export interface BannerSummaryMetrics {
+  total: number;
+  activeCount: number;
+  scheduledCount: number;
+  expiredCount: number;
+  inactiveCount: number;
+}
+
+export interface FindAdminBannersOptions {
+  search?: string | undefined;
+  status?: "active" | "scheduled" | "expired" | "inactive" | undefined;
+  page: number;
+  limit: number;
+  referenceNow?: Date | undefined;
+}
+
 export class BannersRepository extends BaseRepository<BannerEntity> {
-  private tableEnsured = false;
-
-  /**
-   * Lazily ensures the banners table exists in PostgreSQL so existing deployments
-   * work immediately without requiring a destructive database reset.
-   */
-  private async ensureTable(): Promise<void> {
-    if (this.tableEnsured) return;
-    await this.query(`
-      CREATE TABLE IF NOT EXISTS banners (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        title VARCHAR(200) NOT NULL,
-        description VARCHAR(500),
-        supporting_text VARCHAR(200),
-        badge_type VARCHAR(30) NOT NULL DEFAULT 'special_offer'
-          CHECK (badge_type IN ('special_offer', 'hot_deal', 'new_release', 'limited_time', 'announcement', 'flash_sale', 'none')),
-        cta_label VARCHAR(80),
-        cta_url VARCHAR(500),
-        show_cta BOOLEAN NOT NULL DEFAULT TRUE,
-        is_dismissible BOOLEAN NOT NULL DEFAULT TRUE,
-        appearance VARCHAR(30) NOT NULL DEFAULT 'primary'
-          CHECK (appearance IN ('primary', 'secondary', 'tertiary', 'inverse', 'surface', 'accent')),
-        priority INT NOT NULL DEFAULT 0,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        starts_at TIMESTAMPTZ,
-        ends_at TIMESTAMPTZ,
-        timezone VARCHAR(80) NOT NULL DEFAULT 'UTC',
-        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT chk_banners_title_not_empty CHECK (length(trim(title)) > 0),
-        CONSTRAINT chk_banners_schedule_window CHECK (starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at)
-      );
-      ALTER TABLE banners DROP COLUMN IF EXISTS badge_text;
-      CREATE INDEX IF NOT EXISTS idx_banners_active_schedule
-        ON banners (is_active, priority DESC, starts_at, ends_at);
-    `);
-    this.tableEnsured = true;
-  }
-
   /**
    * Returns only currently active and schedule-eligible banners for public display,
    * ordered by display priority (descending) and creation date (descending).
    */
   async findActiveEligible(referenceNow?: Date): Promise<BannerEntity[]> {
-    await this.ensureTable();
     const nowIso = (referenceNow ?? new Date()).toISOString();
     const res = await this.query<BannerEntity>(
       `SELECT
@@ -156,19 +131,18 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
    * ordered by priority DESC, created_at DESC.
    */
   async findAll(options?: { search?: string | undefined }): Promise<BannerEntity[]> {
-    await this.ensureTable();
     const params: unknown[] = [];
     let whereClause = "";
 
     if (options?.search && options.search.trim().length > 0) {
-      params.push(`%${options.search.trim()}%`);
+      params.push(`%${this.escapeLike(options.search.trim())}%`);
       whereClause = `
         WHERE (
-          title ILIKE $1
-          OR COALESCE(description, '') ILIKE $1
-          OR COALESCE(supporting_text, '') ILIKE $1
-          OR COALESCE(badge_type, '') ILIKE $1
-          OR COALESCE(cta_label, '') ILIKE $1
+          title ILIKE $1 ESCAPE '\\'
+          OR COALESCE(description, '') ILIKE $1 ESCAPE '\\'
+          OR COALESCE(supporting_text, '') ILIKE $1 ESCAPE '\\'
+          OR COALESCE(badge_type, '') ILIKE $1 ESCAPE '\\'
+          OR COALESCE(cta_label, '') ILIKE $1 ESCAPE '\\'
         )
       `;
     }
@@ -202,10 +176,175 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
   }
 
   /**
+   * Executes SQL-level summary metrics aggregation, status filtering, and pagination
+   * for Admin banner management without loading the entire table into Node.js memory.
+   */
+  async findAdminPaginated(options: FindAdminBannersOptions): Promise<{
+    rows: BannerEntity[];
+    metrics: BannerSummaryMetrics;
+    filteredTotal: number;
+  }> {
+    const nowIso = (options.referenceNow ?? new Date()).toISOString();
+    const searchTerm = options.search?.trim();
+
+    const metricsParams: unknown[] = [nowIso];
+    let searchWhereClause = "";
+
+    if (searchTerm) {
+      const escapedSearch = `%${this.escapeLike(searchTerm)}%`;
+      metricsParams.push(escapedSearch);
+      searchWhereClause = `
+        WHERE (
+          title ILIKE $2 ESCAPE '\\'
+          OR COALESCE(description, '') ILIKE $2 ESCAPE '\\'
+          OR COALESCE(supporting_text, '') ILIKE $2 ESCAPE '\\'
+          OR COALESCE(badge_type, '') ILIKE $2 ESCAPE '\\'
+          OR COALESCE(cta_label, '') ILIKE $2 ESCAPE '\\'
+        )
+      `;
+    }
+
+    const rowConditions: string[] = [];
+    const rowParams: unknown[] = [];
+
+    if (searchTerm) {
+      rowParams.push(`%${this.escapeLike(searchTerm)}%`);
+      const sIdx = rowParams.length;
+      rowConditions.push(`(
+        title ILIKE $${sIdx} ESCAPE '\\'
+        OR COALESCE(description, '') ILIKE $${sIdx} ESCAPE '\\'
+        OR COALESCE(supporting_text, '') ILIKE $${sIdx} ESCAPE '\\'
+        OR COALESCE(badge_type, '') ILIKE $${sIdx} ESCAPE '\\'
+        OR COALESCE(cta_label, '') ILIKE $${sIdx} ESCAPE '\\'
+      )`);
+    }
+
+    if (options.status === "inactive") {
+      rowConditions.push("is_active = FALSE");
+    } else if (options.status === "scheduled") {
+      rowParams.push(nowIso);
+      const tIdx = rowParams.length;
+      rowConditions.push(
+        `is_active = TRUE AND starts_at IS NOT NULL AND starts_at > $${tIdx}::timestamptz`,
+      );
+    } else if (options.status === "expired") {
+      rowParams.push(nowIso);
+      const tIdx = rowParams.length;
+      rowConditions.push(
+        `is_active = TRUE AND (starts_at IS NULL OR starts_at <= $${tIdx}::timestamptz) AND ends_at IS NOT NULL AND ends_at <= $${tIdx}::timestamptz`,
+      );
+    } else if (options.status === "active") {
+      rowParams.push(nowIso);
+      const tIdx = rowParams.length;
+      rowConditions.push(
+        `is_active = TRUE AND (starts_at IS NULL OR starts_at <= $${tIdx}::timestamptz) AND (ends_at IS NULL OR ends_at > $${tIdx}::timestamptz)`,
+      );
+    }
+
+    const rowWhereClause =
+      rowConditions.length > 0 ? `WHERE ${rowConditions.join(" AND ")}` : "";
+
+    const page = Math.max(1, options.page);
+    const limit = Math.max(1, options.limit);
+    const offset = (page - 1) * limit;
+
+    rowParams.push(limit);
+    const limitIdx = rowParams.length;
+    rowParams.push(offset);
+    const offsetIdx = rowParams.length;
+
+    const [metricsRes, rowsRes] = await Promise.all([
+      this.query<{
+        total: number;
+        active_count: number;
+        scheduled_count: number;
+        expired_count: number;
+        inactive_count: number;
+      }>(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (
+             WHERE is_active = TRUE
+               AND (starts_at IS NULL OR starts_at <= $1::timestamptz)
+               AND (ends_at IS NULL OR ends_at > $1::timestamptz)
+           )::int AS active_count,
+           COUNT(*) FILTER (
+             WHERE is_active = TRUE
+               AND starts_at IS NOT NULL
+               AND starts_at > $1::timestamptz
+           )::int AS scheduled_count,
+           COUNT(*) FILTER (
+             WHERE is_active = TRUE
+               AND (starts_at IS NULL OR starts_at <= $1::timestamptz)
+               AND ends_at IS NOT NULL
+               AND ends_at <= $1::timestamptz
+           )::int AS expired_count,
+           COUNT(*) FILTER (
+             WHERE is_active = FALSE
+           )::int AS inactive_count
+         FROM banners
+         ${searchWhereClause}`,
+        metricsParams,
+      ),
+      this.query<BannerEntity>(
+        `SELECT
+           id,
+           title,
+           description,
+           supporting_text,
+           badge_type,
+           cta_label,
+           cta_url,
+           show_cta,
+           is_dismissible,
+           appearance,
+           priority,
+           is_active,
+           starts_at,
+           ends_at,
+           timezone,
+           created_by,
+           created_at,
+           updated_at
+         FROM banners
+         ${rowWhereClause}
+         ORDER BY priority DESC, created_at DESC
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        rowParams,
+      ),
+    ]);
+
+    const mRow = metricsRes.rows[0];
+    const metrics: BannerSummaryMetrics = {
+      total: Number(mRow?.total ?? 0),
+      activeCount: Number(mRow?.active_count ?? 0),
+      scheduledCount: Number(mRow?.scheduled_count ?? 0),
+      expiredCount: Number(mRow?.expired_count ?? 0),
+      inactiveCount: Number(mRow?.inactive_count ?? 0),
+    };
+
+    const filteredTotal =
+      options.status === "active"
+        ? metrics.activeCount
+        : options.status === "scheduled"
+          ? metrics.scheduledCount
+          : options.status === "expired"
+            ? metrics.expiredCount
+            : options.status === "inactive"
+              ? metrics.inactiveCount
+              : metrics.total;
+
+    return {
+      rows: rowsRes.rows,
+      metrics,
+      filteredTotal,
+    };
+  }
+
+  /**
    * Finds a single banner by UUID.
    */
   async findById(id: string): Promise<BannerEntity | null> {
-    await this.ensureTable();
     const res = await this.query<BannerEntity>(
       `SELECT
          id,
@@ -237,7 +376,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
    * Creates a new promotional banner record in PostgreSQL.
    */
   async create(input: CreateBannerDbInput): Promise<BannerEntity> {
-    await this.ensureTable();
     const res = await this.query<BannerEntity>(
       `INSERT INTO banners (
          title,
@@ -306,8 +444,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
     id: string,
     input: UpdateBannerDbInput,
   ): Promise<BannerEntity | null> {
-    await this.ensureTable();
-
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIdx = 1;
@@ -372,7 +508,6 @@ export class BannersRepository extends BaseRepository<BannerEntity> {
    * Permanently deletes a promotional banner by UUID.
    */
   async deleteById(id: string): Promise<boolean> {
-    await this.ensureTable();
     const res = await this.query(
       "DELETE FROM banners WHERE id = $1 RETURNING id",
       [id],

@@ -10,6 +10,7 @@ import { slugify } from "../../data/categories.js";
 import {
   storageService,
   localStorageService,
+  resolvePublicStorageUrl,
 } from "../../core/storage/index.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
@@ -168,7 +169,11 @@ export class AssetsService {
   // SELLER MANAGEMENT
   // ============================================================================
 
-  async createDraftAsset(sellerId: string, rawInput: CreateAssetInput) {
+  async createDraftAsset(
+    sellerId: string,
+    rawInput: CreateAssetInput,
+    createdByUserId?: string | null,
+  ) {
     const input = CreateAssetSchema.parse(rawInput);
     let baseSlug = input.slug ? slugify(input.slug) : slugify(input.title);
     if (!baseSlug) {
@@ -185,6 +190,7 @@ export class AssetsService {
 
     const asset = await assetsRepository.create({
       sellerId,
+      createdByUserId: createdByUserId ?? null,
       categoryId: input.categoryId,
       title: input.title,
       slug,
@@ -597,36 +603,7 @@ export class AssetsService {
   }
 
   private resolvePublicMediaUrl(storageKey: string): string {
-    if (
-      (env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") &&
-      env.AWS_ENDPOINT
-    ) {
-      if (env.AWS_ENDPOINT.includes("supabase.co")) {
-        const bucket = env.AWS_BUCKET_PREVIEWS || SUPABASE_BUCKETS.PREVIEWS;
-        try {
-          const parsed = new URL(env.AWS_ENDPOINT);
-          const host = parsed.hostname.replace(
-            ".storage.supabase.co",
-            ".supabase.co",
-          );
-          return `https://${host}/storage/v1/object/public/${bucket}/${storageKey}`;
-        } catch {
-          return `${env.AWS_ENDPOINT}/${storageKey}`;
-        }
-      }
-      return `${env.AWS_ENDPOINT}/${storageKey}`;
-    }
-
-    const expiresAt = Date.now() + 31536000000;
-    const token = localStorageService.signToken(
-      storageKey,
-      expiresAt,
-      "download",
-    );
-    const baseUrl = env.SERVER_URL ? env.SERVER_URL.replace(/\/+$/, "") : "";
-    return `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
-      storageKey,
-    )}&token=${token}&expires=${expiresAt}`;
+    return resolvePublicStorageUrl(storageKey);
   }
 
   async presignMediaUpload(
@@ -687,6 +664,10 @@ export class AssetsService {
     }
 
     const url = this.resolvePublicMediaUrl(input.storageKey);
+
+    if (input.mediaType === "thumbnail") {
+      await assetsRepository.deleteThumbnailsByAssetId(assetId).catch(() => {});
+    }
 
     return assetsRepository.createMedia({
       assetId,
@@ -884,7 +865,8 @@ export class AssetsService {
       },
     );
 
-    // 4. Also register preview into asset_media so existing gallery views show the watermarked preview
+    // 4. Replace any existing thumbnail rows in asset_media and register the updated watermarked preview
+    await assetsRepository.deleteThumbnailsByAssetId(validAssetId).catch(() => {});
     await assetsRepository
       .createMedia({
         assetId: validAssetId,
@@ -1387,14 +1369,24 @@ export class AssetsService {
       throw err;
     }
 
-    const downloadName = filename || path.basename(filePath);
-    const ext = path.extname(downloadName).toLowerCase();
-    const mimeType = DOWNLOAD_MIME_TYPES[ext] || "application/octet-stream";
-    const isInline =
-      mimeType.startsWith("image/") ||
+    const actualExt = path.extname(filePath).toLowerCase();
+    const rawRequestedName = filename
+      ? path.basename(filename).replace(/["\r\n\\]/g, "").trim()
+      : "";
+    const downloadName = rawRequestedName
+      ? `${path.basename(rawRequestedName, path.extname(rawRequestedName))}${actualExt}`
+      : path.basename(filePath);
+
+    const mimeType = DOWNLOAD_MIME_TYPES[actualExt] || "application/octet-stream";
+    const isSafeInlineMime =
+      (mimeType.startsWith("image/") && mimeType !== "image/svg+xml") ||
       mimeType.startsWith("video/") ||
-      mimeType.startsWith("audio/") ||
-      key.startsWith("public/media/");
+      mimeType.startsWith("audio/");
+    const isInline =
+      isSafeInlineMime &&
+      (key.startsWith("public/media/") ||
+        key.startsWith("previews/") ||
+        key.startsWith("hero/"));
 
     return {
       filePath,

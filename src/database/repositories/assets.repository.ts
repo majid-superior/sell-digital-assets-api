@@ -27,6 +27,7 @@ export interface AssetSellerFilter {
 
 export interface CreateAssetDto {
   sellerId: string;
+  createdByUserId?: string | null | undefined;
   categoryId: number;
   title: string;
   slug: string;
@@ -65,22 +66,6 @@ export interface UpdateAssetDto {
 }
 
 export class AssetsRepository extends BaseRepository<AssetEntity> {
-  private schemaEnsured = false;
-
-  private async ensureSchema(): Promise<void> {
-    if (this.schemaEnsured) return;
-    await this.query(
-      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS seller_feedback TEXT;",
-    );
-    await this.query(
-      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT FALSE;",
-    );
-    await this.query(
-      "ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_curated BOOLEAN NOT NULL DEFAULT FALSE;",
-    );
-    this.schemaEnsured = true;
-  }
-
   async findPublic(filter: AssetPublicFilter = {}) {
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(50, Math.max(1, filter.limit ?? 12));
@@ -102,9 +87,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     }
 
     if (filter.search) {
-      params.push(`%${filter.search}%`);
+      params.push(`%${this.escapeLike(filter.search.trim())}%`);
       conditions.push(
-        `(a.title ILIKE $${params.length} OR a.short_description ILIKE $${params.length})`,
+        `(a.title ILIKE $${params.length} ESCAPE '\\' OR a.short_description ILIKE $${params.length} ESCAPE '\\')`,
       );
     }
 
@@ -246,7 +231,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findFeatured(limit = 12): Promise<AssetEntity[]> {
-    await this.ensureSchema();
     const safeLimit = Math.min(50, Math.max(1, limit));
 
     const sql = `
@@ -337,7 +321,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findCurated(limit = 24, categorySlug?: string): Promise<AssetEntity[]> {
-    await this.ensureSchema();
     const safeLimit = Math.min(50, Math.max(1, limit));
 
     const conditions: string[] = [
@@ -439,7 +422,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async setCuratedStatus(id: string, isCurated: boolean): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     const sql = `
       UPDATE assets
       SET is_curated = $1, updated_at = NOW()
@@ -558,7 +540,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findById(id: string): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     const sql = `
       SELECT a.*
       FROM assets a
@@ -569,7 +550,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findByIdForSeller(id: string, sellerId: string): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     const sql = `
       SELECT 
         a.id,
@@ -592,7 +572,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.download_count,
         a.is_featured,
         a.is_curated,
-        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -701,7 +680,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findBySeller(sellerId: string, filter: AssetSellerFilter = {}) {
-    await this.ensureSchema();
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(50, Math.max(1, filter.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -715,9 +693,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     }
 
     if (filter.search) {
-      params.push(`%${filter.search}%`);
+      params.push(`%${this.escapeLike(filter.search.trim())}%`);
       conditions.push(
-        `(a.title ILIKE $${params.length} OR a.short_description ILIKE $${params.length})`,
+        `(a.title ILIKE $${params.length} ESCAPE '\\' OR a.short_description ILIKE $${params.length} ESCAPE '\\')`,
       );
     }
 
@@ -850,6 +828,7 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
       const insertAssetSql = `
         INSERT INTO assets (
           seller_id,
+          created_by_user_id,
           category_id,
           title,
           slug,
@@ -859,12 +838,13 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
           tags,
           technical_specs,
           submitted_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::varchar, $8, $9, CASE WHEN $7::varchar = 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::varchar, $9, $10, CASE WHEN $8::varchar = 'pending' THEN CURRENT_TIMESTAMP ELSE NULL END)
         RETURNING *;
       `;
 
       const assetRes = await client.query<AssetEntity>(insertAssetSql, [
         data.sellerId,
+        data.createdByUserId ?? null,
         data.categoryId,
         data.title,
         data.slug,
@@ -1001,7 +981,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     status: string,
     sellerFeedback?: string,
   ): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     const sql = `
       UPDATE assets
       SET 
@@ -1041,7 +1020,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     page?: number | undefined;
     limit?: number | undefined;
   }) {
-    await this.ensureSchema();
     const page = Math.max(1, filter.page ?? 1);
     const limit = Math.min(100, Math.max(1, filter.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -1070,9 +1048,9 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     }
 
     if (filter.search) {
-      params.push(`%${filter.search}%`);
+      params.push(`%${this.escapeLike(filter.search.trim())}%`);
       conditions.push(
-        `(a.title ILIKE $${params.length} OR a.slug ILIKE $${params.length} OR u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`,
+        `(a.title ILIKE $${params.length} ESCAPE '\\' OR a.slug ILIKE $${params.length} ESCAPE '\\' OR u.name ILIKE $${params.length} ESCAPE '\\' OR u.email ILIKE $${params.length} ESCAPE '\\')`,
       );
     }
 
@@ -1107,7 +1085,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.download_count,
         a.is_featured,
         a.is_curated,
-        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -1191,7 +1168,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
   }
 
   async findByIdForAdmin(id: string): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     const sql = `
       SELECT 
         a.id,
@@ -1215,7 +1191,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
         a.download_count,
         a.is_featured,
         a.is_curated,
-        a.is_active,
         a.is_active,
         a.created_at,
         a.updated_at,
@@ -1316,7 +1291,6 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     action: "approve" | "reject" | "needs_update",
     feedback?: string,
   ): Promise<AssetEntity | null> {
-    await this.ensureSchema();
     let newStatus: string;
     let finalFeedback: string | null = null;
 
@@ -1460,6 +1434,13 @@ export class AssetsRepository extends BaseRepository<AssetEntity> {
     `;
     const res = await this.query<AssetMediaEntity>(sql, [assetId]);
     return res.rows[0] || null;
+  }
+
+  async deleteThumbnailsByAssetId(assetId: string): Promise<void> {
+    await this.query(
+      "DELETE FROM asset_media WHERE asset_id = $1 AND media_type = 'thumbnail'",
+      [assetId],
+    );
   }
 
   async deleteMedia(mediaId: string, assetId: string): Promise<boolean> {

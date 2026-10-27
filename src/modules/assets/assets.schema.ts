@@ -161,9 +161,35 @@ export const ConfirmFileUploadSchema = z.object({
 
 export type ConfirmFileUploadInput = z.infer<typeof ConfirmFileUploadSchema>;
 
+const ALLOWED_MEDIA_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+] as const;
+
+const SAFE_MEDIA_FILENAME_REGEX = /\.(jpe?g|png|webp|gif|avif|mp4|webm|mp3|wav|ogg)$/i;
+
 export const PresignMediaUploadSchema = z.object({
-  fileName: z.string().trim().min(1),
-  contentType: z.string().trim().min(1),
+  fileName: z
+    .string()
+    .trim()
+    .min(1, "File name is required")
+    .max(255)
+    .refine(
+      (name) => SAFE_MEDIA_FILENAME_REGEX.test(name),
+      "Showcase media must be a supported image (JPG, PNG, WebP, GIF, AVIF), video (MP4, WebM), or audio (MP3, WAV, OGG) file.",
+    ),
+  contentType: z.enum(ALLOWED_MEDIA_CONTENT_TYPES, {
+    message:
+      "Unsupported media content type. Allowed types: JPEG, PNG, WebP, GIF, AVIF, MP4, WebM, MP3, WAV, OGG.",
+  }),
   mediaType: z.enum(["thumbnail", "screenshot", "preview_audio", "preview_video"]),
   displayOrder: z.number().int().default(0),
 });
@@ -171,7 +197,14 @@ export const PresignMediaUploadSchema = z.object({
 export type PresignMediaUploadInput = z.infer<typeof PresignMediaUploadSchema>;
 
 export const ConfirmMediaUploadSchema = z.object({
-  storageKey: z.string().trim().min(1),
+  storageKey: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (key) => SAFE_MEDIA_FILENAME_REGEX.test(key),
+      "Media storage key must end with a supported media extension.",
+    ),
   mediaType: z.enum(["thumbnail", "screenshot", "preview_audio", "preview_video"]),
   displayOrder: z.number().int().default(0),
 });
@@ -182,13 +215,13 @@ export type ConfirmMediaUploadInput = z.infer<typeof ConfirmMediaUploadSchema>;
 
 export const GenerateDownloadLinkSchema = z.object({
   licenseKey: z.string().trim().min(5).optional(),
-  fileId: z.string().trim().optional(),
+  fileId: z.string().uuid("Invalid file ID format. Expected a valid UUID.").optional(),
 });
 
 export type GenerateDownloadLinkInput = z.infer<typeof GenerateDownloadLinkSchema>;
 
 export const AssetIdParamSchema = z.object({
-  assetId: z.string().uuid("Valid Asset UUID is required"),
+  assetId: z.string().uuid("Invalid asset ID format. Expected a valid UUID."),
 });
 
 // --- Licensing & Verification ---
@@ -208,15 +241,15 @@ export const ActivateLicenseSchema = z.object({
 export type ActivateLicenseInput = z.infer<typeof ActivateLicenseSchema>;
 
 export const IssueLicenseSchema = z.object({
-  assetId: z.string().trim().min(1),
-  buyerId: z.string().trim().min(1),
+  assetId: z.string().uuid("Invalid asset ID format. Expected a valid UUID."),
+  buyerId: z.string().uuid("Invalid buyer ID format. Expected a valid UUID."),
   tier: TierTypeEnum.default("personal"),
 });
 
 export type IssueLicenseInput = z.infer<typeof IssueLicenseSchema>;
 
 export const IdParamSchema = z.object({
-  id: z.string().trim().min(1, "ID is required"),
+  id: z.string().uuid("Invalid asset ID format. Expected a valid UUID."),
 });
 
 export const SlugParamSchema = z.object({
@@ -224,12 +257,12 @@ export const SlugParamSchema = z.object({
 });
 
 export const FileIdParamSchema = z.object({
-  id: z.string().trim().min(1, "Asset ID is required"),
-  fileId: z.string().trim().min(1, "File ID is required"),
+  id: z.string().uuid("Invalid asset ID format. Expected a valid UUID."),
+  fileId: z.string().uuid("Invalid file ID format. Expected a valid UUID."),
 });
 
 export const MediaIdParamSchema = z.object({
-  id: z.string().trim().min(1, "Asset ID is required"),
-  mediaId: z.string().trim().min(1, "Media ID is required"),
+  id: z.string().uuid("Invalid asset ID format. Expected a valid UUID."),
+  mediaId: z.string().uuid("Invalid media ID format. Expected a valid UUID."),
 });
 

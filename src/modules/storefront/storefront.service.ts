@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
-import { storageService, localStorageService } from "../../core/storage/index.js";
-import { storefrontRepository } from "./storefront.repository.js";
+import { storageService, resolvePublicStorageUrl } from "../../core/storage/index.js";
+import { storefrontRepository } from "../../database/repositories/storefront.repository.js";
 import { userRepository } from "../../database/repositories/user.repository.js";
 import { assetsRepository } from "../../database/repositories/assets.repository.js";
 import {
@@ -38,29 +38,24 @@ function extractStorefrontStorageKey(bannerUrl?: string | null): string | null {
   return null;
 }
 
+function sanitizePublicAsset<T extends Record<string, any>>(asset: T): Omit<T, "storage_path" | "rejection_reason" | "admin_feedback" | "seller_feedback"> {
+  const {
+    storage_path: _storagePath,
+    rejection_reason: _rejectionReason,
+    admin_feedback: _adminFeedback,
+    seller_feedback: _sellerFeedback,
+    ...publicAsset
+  } = asset;
+  return publicAsset;
+}
+
 export class StorefrontService {
   /**
    * Resolves a publicly accessible URL for a storefront banner storage key.
    * Uses a relative path in local development so Vite proxy and canvas operations remain same-origin.
    */
   public resolvePublicBannerUrl(storageKey: string): string {
-    if (
-      (env.STORAGE_DRIVER === "r2" || env.STORAGE_DRIVER === "s3") &&
-      env.AWS_ENDPOINT
-    ) {
-      return `${env.AWS_ENDPOINT.replace(/\/+$/, "")}/${storageKey}`;
-    }
-
-    const expiresAt = Date.now() + 31536000000; // 1 year
-    const token = localStorageService.signToken(
-      storageKey,
-      expiresAt,
-      "download"
-    );
-    const baseUrl = env.SERVER_URL ? env.SERVER_URL.replace(/\/+$/, "") : "";
-    return `${baseUrl}/api/v1/storage/download?key=${encodeURIComponent(
-      storageKey
-    )}&token=${token}&expires=${expiresAt}`;
+    return resolvePublicStorageUrl(storageKey);
   }
 
   /**
@@ -174,6 +169,20 @@ export class StorefrontService {
       );
     }
 
+    if (input.featuredAssetId) {
+      const featuredCandidate = await assetsRepository.findById(input.featuredAssetId);
+      if (
+        !featuredCandidate ||
+        featuredCandidate.seller_id !== sellerId ||
+        featuredCandidate.status !== "published"
+      ) {
+        throw new AppError(
+          "The selected featured asset must be a published asset owned by your seller account.",
+          400
+        );
+      }
+    }
+
     const previousEntity = await storefrontRepository.findBySellerId(sellerId);
     const oldStorageKey = extractStorefrontStorageKey(previousEntity?.banner_url);
     const newStorageKey = extractStorefrontStorageKey(input.bannerUrl);
@@ -238,10 +247,28 @@ export class StorefrontService {
     const assetsResult = await assetsRepository.findBySeller(entity.seller_id, {
       status: "published",
     });
+    const publicAssets = (assetsResult.data || []).map((a) =>
+      sanitizePublicAsset(a as Record<string, any>)
+    );
 
     let featuredAsset = null;
     if (entity.featured_asset_id) {
-      featuredAsset = await assetsRepository.findById(entity.featured_asset_id);
+      const matchedFromList = publicAssets.find(
+        (a: any) => a.id === entity.featured_asset_id
+      );
+      if (matchedFromList) {
+        featuredAsset = matchedFromList;
+      } else {
+        const rawFeatured = await assetsRepository.findById(entity.featured_asset_id);
+        if (
+          rawFeatured &&
+          rawFeatured.seller_id === entity.seller_id &&
+          rawFeatured.status === "published" &&
+          rawFeatured.is_active !== false
+        ) {
+          featuredAsset = sanitizePublicAsset(rawFeatured as Record<string, any>);
+        }
+      }
     }
 
     return {
@@ -254,7 +281,7 @@ export class StorefrontService {
       bannerUrl: entity.banner_url,
       isVisible: entity.is_visible,
       featuredAsset,
-      assets: assetsResult.data || [],
+      assets: publicAssets,
       rating: 5.0,
       reviewCount: 0,
       joinedAt: new Date(sellerUser.created_at).toISOString(),

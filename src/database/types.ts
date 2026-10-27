@@ -47,6 +47,8 @@ export interface RoleEntity {
   id?: number;
   slug: string;
   name: string;
+  scope?: "PLATFORM" | "SELLER_STORE" | string;
+  allow_public_signup?: boolean;
   description?: string | null;
   is_system?: boolean;
   created_at?: Date | string;
@@ -56,7 +58,12 @@ export interface UserEntity {
   id?: string;
   role_id?: number;
   name: string;
+  display_name?: string;
   email: string;
+  url?: string;
+  parent_seller_id?: string | null;
+  allowed_permissions?: string[] | Record<string, unknown>;
+  is_active?: boolean;
   password_hash?: string | null;
   auth_provider?: string;
   status?: string;
@@ -156,6 +163,7 @@ export interface AssetMediaEntity {
 export interface AssetEntity {
   id?: string;
   seller_id: string;
+  created_by_user_id?: string | null;
   category_id: number;
   title: string;
   slug: string;

@@ -12,6 +12,13 @@ export abstract class BaseRepository<T extends QueryResultRow> {
   }
 
   /**
+   * Escapes SQL LIKE / ILIKE wildcard metacharacters (\, %, _) in user-supplied search strings.
+   */
+  protected escapeLike(value: string): string {
+    return value.replace(/[\\%_]/g, "\\$&");
+  }
+
+  /**
    * Executes a series of database operations within an atomic transaction.
    * Commits if the callback completes, rolls back on any error, and releases the client.
    */

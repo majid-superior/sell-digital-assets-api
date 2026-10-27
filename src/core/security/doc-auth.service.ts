@@ -1,18 +1,25 @@
 import type { Request } from "express";
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
-import { pool } from "../../config/database.js";
 import { comparePassword } from "./password.js";
+import { verifyAccessToken } from "./tokens.js";
 import { env } from "../../config/env.js";
 import { logger } from "../logger/index.js";
+import { userRepository } from "../../database/repositories/user.repository.js";
 
 export const DOC_COOKIE_NAME = "doc_access_token";
 export const DOC_STATE_COOKIE_NAME = "doc_auth_state";
 export const DOC_COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+const DOC_SIGNING_SECRET = crypto
+  .createHmac("sha256", env.JWT_SECRET)
+  .update("sda_doc_access_signing_key_v1")
+  .digest("hex");
+
 /**
- * Validates the provided password against all active administrator accounts
+ * Validates the provided password against active administrator accounts
  * registered in the PostgreSQL database (role = 'admin', status = 'active').
- * Provides a fallback to ADMIN_PASSWORD / default seed password if the database is in maintenance.
+ * Only falls back to explicit ADMIN_PASSWORD env var if zero admins exist or DB is unreachable.
  */
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   if (!password || typeof password !== "string") {
@@ -24,22 +31,17 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
     return false;
   }
 
-  // 1. Live PostgreSQL verification against all active admins
+  // 1. Live PostgreSQL verification against active admins via UserRepository
   try {
-    const res = await pool.query<{ password_hash: string | null; email: string }>(
-      `SELECT u.email, u.password_hash
-       FROM users u
-       JOIN roles r ON u.role_id = r.id
-       WHERE r.slug = 'admin' AND u.status = 'active' AND u.deleted_at IS NULL`,
-    );
-
-    for (const row of res.rows) {
-      if (row.password_hash) {
-        const isMatch = await comparePassword(trimmed, row.password_hash);
+    const hashes = await userRepository.findActiveAdminPasswordHashes(5);
+    if (hashes.length > 0) {
+      for (const hash of hashes) {
+        const isMatch = await comparePassword(trimmed, hash);
         if (isMatch) {
           return true;
         }
       }
+      return false;
     }
   } catch (err) {
     logger.warn(
@@ -47,21 +49,28 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
         errName: (err as Error).name,
         errMessage: (err as Error).message,
       },
-      "Database query for admin password verification failed, evaluating configuration fallback",
+      "Database query for admin password verification failed, evaluating explicit configuration fallback",
     );
   }
 
-  // 2. Safe fallback for environment configuration or bootstrap state
-  const fallbackPassword = process.env.ADMIN_PASSWORD || "P@ssw0rd";
-  if (trimmed === fallbackPassword) {
-    return true;
+  // 2. Explicit environment fallback ONLY when no database admins exist or DB is unreachable
+  const configuredPassword = process.env.ADMIN_PASSWORD?.trim();
+  if (!configuredPassword) {
+    return false;
   }
 
-  return false;
+  const inputBuf = Buffer.from(trimmed, "utf8");
+  const expectedBuf = Buffer.from(configuredPassword, "utf8");
+  if (inputBuf.length !== expectedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(inputBuf, expectedBuf);
 }
 
 /**
- * Issues a cryptographically signed JWT grant for accessing the API documentation.
+ * Issues a cryptographically signed JWT grant for accessing the API documentation,
+ * using an isolated signing secret and audience.
  */
 export function createDocAccessToken(): string {
   return jwt.sign(
@@ -69,12 +78,28 @@ export function createDocAccessToken(): string {
       scope: "doc_access",
       role: "admin",
     },
-    env.JWT_SECRET,
+    DOC_SIGNING_SECRET,
     {
       expiresIn: "24h",
+      audience: "doc_access",
       issuer: "sell-digital-assets-api",
     },
   );
+}
+
+export function verifyDocAccessToken(token: string): boolean {
+  try {
+    const decoded = jwt.verify(token, DOC_SIGNING_SECRET, {
+      algorithms: ["HS256"],
+      audience: "doc_access",
+      issuer: "sell-digital-assets-api",
+    }) as {
+      scope?: string;
+    };
+    return decoded?.scope === "doc_access";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -85,16 +110,8 @@ export function isDocAuthorized(req: Request): boolean {
   // 1. Direct documentation session cookie
   const docCookie = req.cookies?.[DOC_COOKIE_NAME];
   if (docCookie && typeof docCookie === "string") {
-    try {
-      const decoded = jwt.verify(docCookie, env.JWT_SECRET) as {
-        scope?: string;
-        role?: string;
-      };
-      if (decoded.scope === "doc_access" || decoded.role === "admin") {
-        return true;
-      }
-    } catch {
-      // Expired or invalid token, fall through
+    if (verifyDocAccessToken(docCookie)) {
+      return true;
     }
   }
 
@@ -103,36 +120,21 @@ export function isDocAuthorized(req: Request): boolean {
   let bearerToken: string | undefined;
   if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
     bearerToken = authHeader.slice(7).trim();
-  } else if (req.cookies?.accessToken) {
+  } else if (typeof req.cookies?.accessToken === "string") {
     bearerToken = req.cookies.accessToken;
   }
 
   if (bearerToken) {
+    if (verifyDocAccessToken(bearerToken)) {
+      return true;
+    }
     try {
-      const decoded = jwt.verify(bearerToken, env.JWT_SECRET) as {
-        role?: string;
-      };
+      const decoded = verifyAccessToken(bearerToken);
       if (decoded.role === "admin") {
         return true;
       }
     } catch {
-      // Invalid platform token, fall through
-    }
-  }
-
-  // 3. HTTP Basic Authentication header fallback
-  if (authHeader && authHeader.toLowerCase().startsWith("basic ")) {
-    try {
-      const credentials = Buffer.from(authHeader.slice(6).trim(), "base64").toString("utf-8");
-      const colonIdx = credentials.indexOf(":");
-      if (colonIdx !== -1) {
-        const password = credentials.slice(colonIdx + 1);
-        if (password === (process.env.ADMIN_PASSWORD || "P@ssw0rd")) {
-          return true;
-        }
-      }
-    } catch {
-      // Malformed basic header
+      // Invalid platform token
     }
   }
 

@@ -10,7 +10,7 @@ import type {
 
 export class StorefrontController {
   private getSellerId(req: Request): string {
-    const sellerId = req.user?.id;
+    const sellerId = req.actingSellerId || req.user?.id;
     if (!sellerId) {
       throw new AppError("Authentication required: Seller identity is missing.", 401);
     }

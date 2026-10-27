@@ -308,6 +308,35 @@ export class BannersService {
     referenceNow?: Date,
   ): Promise<PaginatedAdminBannersResult> {
     const now = referenceNow ?? new Date();
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? query.limit : 50;
+    const statusFilter =
+      query.status && query.status !== "all" ? query.status : undefined;
+
+    if (typeof this.repo.findAdminPaginated === "function") {
+      const { rows, metrics, filteredTotal } = await this.repo.findAdminPaginated({
+        search: query.search,
+        status: statusFilter,
+        page,
+        limit,
+        referenceNow: now,
+      });
+
+      const mapped = rows.map((row) => toAdminBannerDto(row, now));
+      const totalPages = Math.max(1, Math.ceil(filteredTotal / limit));
+
+      return {
+        banners: mapped,
+        metrics,
+        pagination: {
+          total: filteredTotal,
+          page,
+          limit,
+          totalPages,
+        },
+      };
+    }
+
     const allRows = await this.repo.findAll({ search: query.search });
     const mapped = allRows.map((row) => toAdminBannerDto(row, now));
 
@@ -319,13 +348,10 @@ export class BannersService {
       inactiveCount: mapped.filter((b) => b.status === "inactive").length,
     };
 
-    const statusFilter = query.status && query.status !== "all" ? query.status : null;
     const filtered = statusFilter
       ? mapped.filter((b) => b.status === statusFilter)
       : mapped;
 
-    const page = query.page && query.page > 0 ? query.page : 1;
-    const limit = query.limit && query.limit > 0 ? query.limit : 50;
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const offset = (page - 1) * limit;
