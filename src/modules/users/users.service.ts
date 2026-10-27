@@ -2,6 +2,8 @@ import {
   userRepository,
   type UserEntity,
   type RoleEntity,
+  type PermissionEntity,
+  type SellerRolePermissionEntity,
   type PaginationQuery,
   type PaginatedResult,
 } from "../../database/repositories/user.repository.js";
@@ -99,6 +101,86 @@ export class UsersService {
 
   async getStoreRoles(): Promise<RoleEntity[]> {
     return userRepository.findStoreRoles();
+  }
+
+  async getPermissionsCatalog(): Promise<PermissionEntity[]> {
+    return userRepository.getPermissionsCatalog();
+  }
+
+  async getStoreRolePermissions(sellerId: string): Promise<
+    Array<{
+      roleId: number;
+      roleName: string;
+      roleSlug: string;
+      description: string;
+      isCustomized: boolean;
+      permissions: string[];
+    }>
+  > {
+    const roles = await userRepository.findStoreRoles();
+    const defaults = await userRepository.getRoleDefaultPermissions();
+    const sellerConfigs = await userRepository.getSellerRolePermissions(sellerId);
+    const sellerConfigMap = new Map<number, string[]>();
+    for (const sc of sellerConfigs) {
+      sellerConfigMap.set(sc.role_id, sc.permissions);
+    }
+
+    return roles.map((role) => {
+      const isCustomized = sellerConfigMap.has(role.id);
+      const permissions = isCustomized
+        ? sellerConfigMap.get(role.id)!
+        : defaults[role.id] || [];
+
+      return {
+        roleId: role.id,
+        roleName: role.name,
+        roleSlug: role.slug,
+        description: role.description,
+        isCustomized,
+        permissions,
+      };
+    });
+  }
+
+  async updateStoreRolePermissions(
+    sellerId: string,
+    roleOrId: string | number,
+    permissions: string[],
+  ): Promise<{
+    roleId: number;
+    roleName: string;
+    roleSlug: string;
+    description: string;
+    isCustomized: boolean;
+    permissions: string[];
+  }> {
+    const targetRole = await this.resolveValidStoreRole(roleOrId);
+
+    // Validate all permission names against the database catalog
+    const catalog = await userRepository.getPermissionsCatalog();
+    const validNames = new Set(catalog.map((p) => p.name));
+    const invalid = permissions.filter((p) => !validNames.has(p));
+    if (invalid.length > 0) {
+      throw new AppError(
+        `Invalid permission(s): ${invalid.join(", ")}. Permitted store permissions are: ${Array.from(validNames).join(", ")}`,
+        400,
+      );
+    }
+
+    const updated = await userRepository.upsertSellerRolePermissions(
+      sellerId,
+      targetRole.id,
+      permissions,
+    );
+
+    return {
+      roleId: updated.role_id,
+      roleName: targetRole.name,
+      roleSlug: targetRole.slug,
+      description: targetRole.description,
+      isCustomized: true,
+      permissions: updated.permissions,
+    };
   }
 
   private async resolveValidStoreRole(roleOrId?: string | number): Promise<RoleEntity> {

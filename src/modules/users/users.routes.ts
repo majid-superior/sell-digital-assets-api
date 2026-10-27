@@ -14,6 +14,8 @@ import {
   UpdateUserSchema,
   CreateTeamMemberSchema,
   UpdateTeamMemberSchema,
+  UpdateRolePermissionsSchema,
+  RoleIdParamSchema,
 } from "./users.schema.js";
 
 const router = Router();
@@ -66,6 +68,29 @@ sellerTeamRouter.get(
   "/roles",
   requireStoreManagementAccess,
   usersController.getStoreRoles.bind(usersController),
+);
+
+// GET /permissions — List available store permissions catalog
+sellerTeamRouter.get(
+  "/permissions",
+  requireStoreManagementAccess,
+  usersController.getPermissionsCatalog.bind(usersController),
+);
+
+// GET /roles/permissions — List configured role permissions for this seller
+sellerTeamRouter.get(
+  "/roles/permissions",
+  requireStoreManagementAccess,
+  usersController.getStoreRolePermissions.bind(usersController),
+);
+
+// PUT /roles/:roleId/permissions — Update permissions for a store role in this seller's store
+sellerTeamRouter.put(
+  "/roles/:roleId/permissions",
+  requireStoreOwnerAccess,
+  validateParams(RoleIdParamSchema),
+  validateBody(UpdateRolePermissionsSchema),
+  usersController.updateStoreRolePermissions.bind(usersController),
 );
 
 // GET / — List team members for the authenticated seller's store

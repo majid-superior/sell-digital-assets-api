@@ -6,6 +6,7 @@ import {
   authorize,
   requireSellerAccess,
   requireAssetMutationAccess,
+  requirePermission,
 } from "../../core/middleware/auth.middleware.js";
 import { downloadLimiter } from "../../core/middleware/rate-limit.middleware.js";
 import {
@@ -33,7 +34,7 @@ import {
 } from "./assets.schema.js";
 
 const router = Router();
-const sellerAuth = [authenticate, authorize("seller", "admin")] as const;
+const sellerAuth = [authenticate, requireSellerAccess] as const;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -87,6 +88,7 @@ router.get(
 router.post(
   "/seller",
   ...sellerAuth,
+  requirePermission("products:create"),
   validateBody(CreateAssetSchema),
   assetsController.createDraftAsset.bind(assetsController),
 );
@@ -95,6 +97,7 @@ router.post(
 router.get(
   "/seller",
   ...sellerAuth,
+  requirePermission("products:view"),
   validateQuery(SellerAssetQuerySchema),
   assetsController.getSellerAssets.bind(assetsController),
 );
@@ -103,6 +106,7 @@ router.get(
 router.get(
   "/seller/:id",
   ...sellerAuth,
+  requirePermission("products:view"),
   validateParams(IdParamSchema),
   assetsController.getSellerAssetById.bind(assetsController),
 );
@@ -111,6 +115,7 @@ router.get(
 router.patch(
   "/seller/:id",
   ...sellerAuth,
+  requirePermission("products:edit"),
   validateParams(IdParamSchema),
   validateBody(UpdateAssetSchema),
   assetsController.updateAsset.bind(assetsController),
@@ -120,6 +125,7 @@ router.patch(
 router.post(
   "/seller/:id/status",
   ...sellerAuth,
+  requirePermission("products:publish"),
   validateParams(IdParamSchema),
   validateBody(UpdateAssetStatusSchema),
   assetsController.updateAssetStatus.bind(assetsController),
@@ -129,6 +135,7 @@ router.post(
 router.delete(
   "/seller/:id",
   ...sellerAuth,
+  requirePermission("products:delete"),
   validateParams(IdParamSchema),
   assetsController.deleteAsset.bind(assetsController),
 );
@@ -236,22 +243,26 @@ sellerAssetsRouter.use(authenticate, requireSellerAccess);
 
 sellerAssetsRouter.post(
   "/",
+  requirePermission("products:create"),
   requireAssetMutationAccess,
   validateBody(CreateAssetSchema),
   assetsController.createDraftAsset.bind(assetsController),
 );
 sellerAssetsRouter.get(
   "/",
+  requirePermission("products:view"),
   validateQuery(SellerAssetQuerySchema),
   assetsController.getSellerAssets.bind(assetsController),
 );
 sellerAssetsRouter.get(
   "/:id",
+  requirePermission("products:view"),
   validateParams(IdParamSchema),
   assetsController.getSellerAssetById.bind(assetsController),
 );
 sellerAssetsRouter.patch(
   "/:id",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetSchema),
@@ -259,6 +270,7 @@ sellerAssetsRouter.patch(
 );
 sellerAssetsRouter.post(
   "/:id/status",
+  requirePermission("products:publish"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetStatusSchema),
@@ -266,12 +278,14 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.delete(
   "/:id",
+  requirePermission("products:delete"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   assetsController.deleteAsset.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/files/presign-upload",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(PresignFileUploadSchema),
@@ -279,6 +293,7 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.post(
   "/:id/files/confirm",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(ConfirmFileUploadSchema),
@@ -286,6 +301,7 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.post(
   "/:id/media/presign-upload",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(PresignMediaUploadSchema),
@@ -293,6 +309,7 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.post(
   "/:id/media/confirm",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(ConfirmMediaUploadSchema),
@@ -300,6 +317,7 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.post(
   "/:id/upload",
+  requirePermission("products:edit"),
   requireAssetMutationAccess,
   upload.single("file"),
   validateParams(IdParamSchema),
@@ -307,12 +325,14 @@ sellerAssetsRouter.post(
 );
 sellerAssetsRouter.delete(
   "/:id/media/:mediaId",
+  requirePermission("products:delete"),
   requireAssetMutationAccess,
   validateParams(MediaIdParamSchema),
   assetsController.deleteMedia.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id/files/:fileId",
+  requirePermission("products:delete"),
   requireAssetMutationAccess,
   validateParams(FileIdParamSchema),
   assetsController.decommissionFile.bind(assetsController),

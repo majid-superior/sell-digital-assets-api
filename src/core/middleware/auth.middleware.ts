@@ -13,12 +13,15 @@ declare global {
   }
 }
 
-interface CachedAuthUser {
+export interface CachedAuthUser {
   id: string;
   email: string;
   role: string;
+  role_id?: number | undefined;
+  parent_seller_id?: string | null | undefined;
   status: string;
   emailVerifiedAt: Date | string | null;
+  permissions: string[];
   expiresAt: number;
 }
 
@@ -34,7 +37,7 @@ export function clearAuthUserCache(): void {
   authUserCache.clear();
 }
 
-async function resolveAuthenticatedUser(userId: string): Promise<CachedAuthUser | null> {
+export async function resolveAuthenticatedUser(userId: string): Promise<CachedAuthUser | null> {
   const now = Date.now();
   const cached = authUserCache.get(userId);
   if (cached) {
@@ -60,8 +63,11 @@ async function resolveAuthenticatedUser(userId: string): Promise<CachedAuthUser 
     id: user.id,
     email: user.email,
     role: user.role,
+    role_id: user.role_id,
+    parent_seller_id: user.parent_seller_id,
     status: user.status,
     emailVerifiedAt: user.email_verified_at ?? null,
+    permissions: user.permissions || [],
     expiresAt: now + AUTH_CACHE_TTL_MS,
   };
   authUserCache.set(userId, entry);
@@ -132,6 +138,9 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
       id: user.id,
       email: user.email,
       role: user.role,
+      roleId: user.role_id,
+      parentSellerId: user.parent_seller_id,
+      permissions: user.permissions,
     };
     next();
   } catch (err: unknown) {
@@ -167,6 +176,9 @@ export const optionalAuthenticate = async (
           id: user.id,
           email: user.email,
           role: user.role,
+          roleId: user.role_id,
+          parentSellerId: user.parent_seller_id,
+          permissions: user.permissions,
         };
       }
     }
@@ -201,6 +213,7 @@ export const authorize = (...allowedRoles: string[]) => {
  * Tenant Isolation Middleware (requireSellerAccess)
  * Resolves req.actingSellerId (equal to user ID for primary SELLER, and parent_seller_id for sub-users).
  * Ensures all seller queries filter by seller_id = req.actingSellerId.
+ * Validates that sub-users have an active, non-suspended parent seller store.
  */
 export const requireSellerAccess = async (
   req: Request,
@@ -211,7 +224,7 @@ export const requireSellerAccess = async (
     return next(new AppError("Authentication required. Please sign in to access seller resources.", 401));
   }
 
-  const user = await userRepository.findById(req.user.id);
+  const user = await resolveAuthenticatedUser(req.user.id);
   if (!user || user.status !== "active") {
     return next(new AppError("Account is inactive, suspended, or deleted.", 403));
   }
@@ -219,13 +232,17 @@ export const requireSellerAccess = async (
   const roleNormalized = (user.role || "").toUpperCase();
 
   // Primary Seller
-  if (roleNormalized === "SELLER" || user.role_id === 2) {
+  if ((roleNormalized === "SELLER" || user.role_id === 2) && !user.parent_seller_id) {
     req.actingSellerId = user.id;
     return next();
   }
 
   // Seller Store Sub-User (e.g. STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
   if (user.parent_seller_id) {
+    const parentSeller = await resolveAuthenticatedUser(user.parent_seller_id);
+    if (!parentSeller || parentSeller.status !== "active") {
+      return next(new AppError("The associated seller store is inactive, suspended, or unavailable.", 403));
+    }
     req.actingSellerId = user.parent_seller_id;
     return next();
   }
@@ -244,6 +261,55 @@ export const requireSellerAccess = async (
   );
 };
 (requireSellerAccess as any)._authRequired = true;
+
+/**
+ * Dynamic Permission Guard (requirePermission)
+ * Enforces database-backed seller-managed permissions.
+ * Primary sellers and platform admins have full store authority ('*').
+ * Team members must possess either '*' or all required permissions.
+ */
+export const requirePermission = (requiredPermission: string | string[]) => {
+  const middleware = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      return next(new AppError("Authentication required.", 401));
+    }
+
+    if (!req.actingSellerId) {
+      return next(new AppError("Seller context is required for permission evaluation.", 403));
+    }
+
+    // Platform admin and primary store owner have full authority within this store
+    if (req.user.id === req.actingSellerId || req.user.role?.toLowerCase() === "admin") {
+      return next();
+    }
+
+    const user = await resolveAuthenticatedUser(req.user.id);
+    if (!user || user.status !== "active") {
+      return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+    }
+
+    const userPerms = new Set(user.permissions || []);
+    if (userPerms.has("*")) {
+      return next();
+    }
+
+    const required = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
+    const missing = required.filter((p) => !userPerms.has(p));
+
+    if (missing.length > 0) {
+      return next(
+        new AppError(
+          `Access denied. You do not have permission to perform this action (${missing.join(", ")}).`,
+          403,
+        ),
+      );
+    }
+
+    next();
+  };
+  (middleware as any)._requiredPermission = requiredPermission;
+  return middleware;
+};
 
 /**
  * Admin Guard (requireOrgAdmin)
@@ -266,8 +332,7 @@ export const requireOrgAdmin = (req: Request, _res: Response, next: NextFunction
  * Restricts viewing store team members to:
  * - Primary SELLER
  * - Platform ADMIN
- * - STORE_MANAGER
- * Forbids CONTENT_UPLOADER, ANALYST, and non-store accounts.
+ * - Store team members with 'team:view' or 'team:manage' permission
  */
 export const requireStoreManagementAccess = async (
   req: Request,
@@ -278,20 +343,18 @@ export const requireStoreManagementAccess = async (
     return next(new AppError("Authentication required.", 401));
   }
 
-  const user = await userRepository.findById(req.user.id);
+  // Primary store owner or platform admin
+  if (req.user.id === req.actingSellerId || req.user.role?.toLowerCase() === "admin") {
+    return next();
+  }
+
+  const user = await resolveAuthenticatedUser(req.user.id);
   if (!user || user.status !== "active") {
     return next(new AppError("Account is inactive, suspended, or deleted.", 403));
   }
 
-  const roleNormalized = (user.role || "").toUpperCase();
-  if (
-    roleNormalized === "ADMIN" ||
-    roleNormalized === "SELLER" ||
-    roleNormalized === "STORE_MANAGER" ||
-    user.role_id === 1 ||
-    user.role_id === 2 ||
-    user.role_id === 4
-  ) {
+  const userPerms = new Set(user.permissions || []);
+  if (userPerms.has("*") || userPerms.has("team:view") || userPerms.has("team:manage")) {
     return next();
   }
 
@@ -306,6 +369,7 @@ export const requireStoreManagementAccess = async (
  * Restricts modifying store team members (add, update, remove) to:
  * - Primary SELLER (store owner)
  * - Platform ADMIN
+ * - Authorized team members with 'team:manage' permission
  */
 export const requireStoreOwnerAccess = async (
   req: Request,
@@ -316,24 +380,24 @@ export const requireStoreOwnerAccess = async (
     return next(new AppError("Authentication required.", 401));
   }
 
-  const user = await userRepository.findById(req.user.id);
+  // Primary store owner or platform admin
+  if (req.user.id === req.actingSellerId || req.user.role?.toLowerCase() === "admin") {
+    return next();
+  }
+
+  const user = await resolveAuthenticatedUser(req.user.id);
   if (!user || user.status !== "active") {
     return next(new AppError("Account is inactive, suspended, or deleted.", 403));
   }
 
-  const roleNormalized = (user.role || "").toUpperCase();
-  if (
-    roleNormalized === "ADMIN" ||
-    roleNormalized === "SELLER" ||
-    user.role_id === 1 ||
-    user.role_id === 2
-  ) {
+  const userPerms = new Set(user.permissions || []);
+  if (userPerms.has("*") || userPerms.has("team:manage")) {
     return next();
   }
 
   return next(
     new AppError(
-      "Access denied. Only the store owner or an administrator can manage store team members.",
+      "Access denied. Only the store owner or an authorized team manager can manage store team members.",
       403,
     ),
   );
@@ -342,8 +406,9 @@ export const requireStoreOwnerAccess = async (
 
 /**
  * Asset Mutation Guard (requireAssetMutationAccess)
- * Restricts modifying assets (create, update, delete, upload) by forbidding:
- * - ANALYST (read-only analytics and sales)
+ * Restricts modifying assets (create, update, delete, upload) to:
+ * - Primary store owner or admin
+ * - Team members with products:create, products:edit, products:publish, or products:delete permission
  */
 export const requireAssetMutationAccess = async (
   req: Request,
@@ -354,16 +419,30 @@ export const requireAssetMutationAccess = async (
     return next(new AppError("Authentication required.", 401));
   }
 
-  const user = await userRepository.findById(req.user.id);
+  if (req.user.id === req.actingSellerId || req.user.role?.toLowerCase() === "admin") {
+    return next();
+  }
+
+  const user = await resolveAuthenticatedUser(req.user.id);
   if (!user || user.status !== "active") {
     return next(new AppError("Account is inactive, suspended, or deleted.", 403));
   }
 
-  const roleNormalized = (user.role || "").toUpperCase();
-  if (roleNormalized === "ANALYST" || user.role_id === 6) {
+  const userPerms = new Set(user.permissions || []);
+  if (userPerms.has("*")) {
+    return next();
+  }
+
+  const hasMutationPerm =
+    userPerms.has("products:create") ||
+    userPerms.has("products:edit") ||
+    userPerms.has("products:publish") ||
+    userPerms.has("products:delete");
+
+  if (!hasMutationPerm) {
     return next(
       new AppError(
-        "Access denied. Analysts have read-only access and cannot create, modify, or delete assets.",
+        "Access denied. You have read-only access and cannot create, modify, or delete assets.",
         403,
       ),
     );
@@ -371,6 +450,7 @@ export const requireAssetMutationAccess = async (
 
   return next();
 };
+(requireAssetMutationAccess as any)._authRequired = true;
 (requireAssetMutationAccess as any)._authRequired = true;
 
 

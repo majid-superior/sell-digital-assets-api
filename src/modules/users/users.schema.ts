@@ -62,3 +62,16 @@ export const UpdateTeamMemberSchema = z.object({
 
 export type UpdateTeamMemberInput = z.infer<typeof UpdateTeamMemberSchema>;
 
+export const UpdateRolePermissionsSchema = z.object({
+  permissions: z.array(z.string().trim().min(1, "Permission name cannot be empty")),
+});
+
+export type UpdateRolePermissionsInput = z.infer<typeof UpdateRolePermissionsSchema>;
+
+export const RoleIdParamSchema = z.object({
+  roleId: z.coerce.number().int().positive("Invalid role ID"),
+});
+
+export type RoleIdParamInput = z.infer<typeof RoleIdParamSchema>;
+
+

@@ -9,11 +9,14 @@ export interface AuthUserPayload {
   id: string;
   email: string;
   role: string;
-  jti?: string;
-  iat?: number;
-  iatMs?: number;
-  exp?: number;
-  rememberMe?: boolean;
+  roleId?: number | undefined;
+  parentSellerId?: string | null | undefined;
+  permissions?: string[] | undefined;
+  jti?: string | undefined;
+  iat?: number | undefined;
+  iatMs?: number | undefined;
+  exp?: number | undefined;
+  rememberMe?: boolean | undefined;
 }
 
 export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
@@ -263,6 +266,9 @@ export function generateTokens(
     id: user.id,
     email: user.email,
     role: user.role || "user",
+    roleId: user.roleId,
+    parentSellerId: user.parentSellerId ?? null,
+    permissions: user.permissions || [],
     jti: accessJti,
     iatMs,
   };
@@ -272,6 +278,9 @@ export function generateTokens(
     id: user.id,
     email: user.email,
     role: user.role || "user",
+    roleId: user.roleId,
+    parentSellerId: user.parentSellerId ?? null,
+    permissions: user.permissions || [],
     jti,
     iatMs,
     rememberMe: Boolean(customSettings?.rememberMe ?? user.rememberMe),

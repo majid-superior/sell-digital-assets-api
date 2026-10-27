@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { storefrontController } from "./storefront.controller.js";
-import { authenticate, requireSellerAccess } from "../../core/middleware/auth.middleware.js";
+import {
+  authenticate,
+  requireSellerAccess,
+  requirePermission,
+} from "../../core/middleware/auth.middleware.js";
 import {
   validateBody,
   validateParams,
@@ -19,12 +23,14 @@ sellerStorefrontRouter.use(authenticate, requireSellerAccess);
 // GET /api/v1/seller/storefront
 sellerStorefrontRouter.get(
   "/",
+  requirePermission("storefront:view"),
   storefrontController.getSellerStorefront.bind(storefrontController)
 );
 
 // GET /api/v1/seller/storefront/check-url?url=seller01
 sellerStorefrontRouter.get(
   "/check-url",
+  requirePermission("storefront:view"),
   validateQuery(CheckStorefrontUrlQuerySchema),
   storefrontController.checkUrlAvailability.bind(storefrontController)
 );
@@ -32,6 +38,7 @@ sellerStorefrontRouter.get(
 // PUT /api/v1/seller/storefront
 sellerStorefrontRouter.put(
   "/",
+  requirePermission("storefront:edit"),
   validateBody(UpdateStorefrontSchema),
   storefrontController.updateSellerStorefront.bind(storefrontController)
 );
@@ -39,6 +46,7 @@ sellerStorefrontRouter.put(
 // POST /api/v1/seller/storefront/banner/presign
 sellerStorefrontRouter.post(
   "/banner/presign",
+  requirePermission("storefront:edit"),
   validateBody(PresignStorefrontBannerSchema),
   storefrontController.presignBannerUpload.bind(storefrontController)
 );

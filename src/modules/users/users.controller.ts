@@ -109,6 +109,59 @@ export class UsersController {
     }
   }
 
+  async getPermissionsCatalog(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const permissions = await usersService.getPermissionsCatalog();
+      res.status(200).json({
+        success: true,
+        data: permissions,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getStoreRolePermissions(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sellerId = req.actingSellerId || req.user?.id;
+      if (!sellerId) {
+        throw new AppError("Seller context is required", 401);
+      }
+      const rolePermissions = await usersService.getStoreRolePermissions(sellerId);
+      res.status(200).json({
+        success: true,
+        data: rolePermissions,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateStoreRolePermissions(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sellerId = req.actingSellerId || req.user?.id;
+      if (!sellerId) {
+        throw new AppError("Seller context is required", 401);
+      }
+      const { roleId } = req.params as { roleId: string };
+      const { permissions } = req.body as { permissions: string[] };
+
+      const result = await usersService.updateStoreRolePermissions(
+        sellerId,
+        Number(roleId),
+        permissions,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Store role permissions updated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getSellerTeam(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const sellerId = req.actingSellerId || req.user?.id;

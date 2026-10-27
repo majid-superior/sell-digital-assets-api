@@ -275,6 +275,88 @@ CREATE TABLE IF NOT EXISTS revoked_tokens (
 CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens (expires_at);
 CREATE INDEX IF NOT EXISTS idx_revoked_tokens_user_id ON revoked_tokens (user_id);
 
+-- Step 6c: Permissions Catalog & Seller-Managed Role Permissions
+CREATE TABLE IF NOT EXISTS permissions (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    module VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    scope VARCHAR(20) NOT NULL DEFAULT 'SELLER_STORE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS role_default_permissions (
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission_name VARCHAR(100) NOT NULL REFERENCES permissions(name) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (role_id, permission_name)
+);
+
+CREATE TABLE IF NOT EXISTS seller_role_permissions (
+    id SERIAL PRIMARY KEY,
+    seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_seller_role_permissions UNIQUE (seller_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_seller_role_permissions_seller_id 
+    ON seller_role_permissions (seller_id);
+
+DROP TRIGGER IF EXISTS trg_seller_role_permissions_updated_at ON seller_role_permissions;
+CREATE TRIGGER trg_seller_role_permissions_updated_at
+BEFORE UPDATE ON seller_role_permissions
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Seed Permissions Catalog
+INSERT INTO permissions (name, module, action, description, scope) VALUES
+    ('analytics:view', 'analytics', 'view', 'View store performance analytics, telemetry, and KPI charts', 'SELLER_STORE'),
+    ('products:view', 'products', 'view', 'Browse and view digital products, assets, and details', 'SELLER_STORE'),
+    ('products:create', 'products', 'create', 'Create draft assets and upload product files and media', 'SELLER_STORE'),
+    ('products:edit', 'products', 'edit', 'Update product details, pricing tiers, and metadata', 'SELLER_STORE'),
+    ('products:delete', 'products', 'delete', 'Archive, soft-delete, or decommission digital assets', 'SELLER_STORE'),
+    ('products:publish', 'products', 'publish', 'Publish assets to the marketplace or change listing status', 'SELLER_STORE'),
+    ('coupons:view', 'coupons', 'view', 'View store discount coupons and promotional campaigns', 'SELLER_STORE'),
+    ('coupons:manage', 'coupons', 'manage', 'Create, edit, toggle status, and delete store discount coupons', 'SELLER_STORE'),
+    ('orders:view', 'orders', 'view', 'View store customer orders, sales history, and transaction records', 'SELLER_STORE'),
+    ('financial:view', 'financial', 'view', 'View store earnings, revenue metrics, and payout history', 'SELLER_STORE'),
+    ('storefront:view', 'storefront', 'view', 'View seller storefront customization and vanity URL', 'SELLER_STORE'),
+    ('storefront:edit', 'storefront', 'edit', 'Edit storefront banner, avatar, branding, and biography', 'SELLER_STORE'),
+    ('team:view', 'team', 'view', 'View store team members and their assigned store roles', 'SELLER_STORE'),
+    ('team:manage', 'team', 'manage', 'Add, update roles, manage permissions, and remove team members', 'SELLER_STORE'),
+    ('settings:view', 'settings', 'view', 'View store preferences and alert settings', 'SELLER_STORE'),
+    ('settings:edit', 'settings', 'edit', 'Update store preferences, notifications, and alert settings', 'SELLER_STORE')
+ON CONFLICT (name) DO UPDATE
+    SET module = EXCLUDED.module,
+        action = EXCLUDED.action,
+        description = EXCLUDED.description,
+        scope = EXCLUDED.scope;
+
+-- Seed Default Role Permissions
+-- STORE_MANAGER (4)
+INSERT INTO role_default_permissions (role_id, permission_name) VALUES
+    (4, 'analytics:view'), (4, 'products:view'), (4, 'products:create'), (4, 'products:edit'),
+    (4, 'products:delete'), (4, 'products:publish'), (4, 'coupons:view'), (4, 'coupons:manage'),
+    (4, 'orders:view'), (4, 'financial:view'), (4, 'storefront:view'), (4, 'storefront:edit'),
+    (4, 'team:view'), (4, 'team:manage'), (4, 'settings:view'), (4, 'settings:edit')
+ON CONFLICT DO NOTHING;
+
+-- CONTENT_UPLOADER (5)
+INSERT INTO role_default_permissions (role_id, permission_name) VALUES
+    (5, 'analytics:view'), (5, 'products:view'), (5, 'products:create'), (5, 'products:edit'),
+    (5, 'products:publish')
+ON CONFLICT DO NOTHING;
+
+-- ANALYST (6)
+INSERT INTO role_default_permissions (role_id, permission_name) VALUES
+    (6, 'analytics:view'), (6, 'products:view'), (6, 'orders:view')
+ON CONFLICT DO NOTHING;
+
+
 -- Step 7: Categories Table (Taxonomy tree for digital assets)
 CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,

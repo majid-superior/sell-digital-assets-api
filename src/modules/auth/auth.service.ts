@@ -76,14 +76,21 @@ export class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
+      roleId: user.role_id,
+      parentSellerId: user.parent_seller_id,
+      permissions: user.permissions || [],
     });
 
     return {
       user: {
         id: user.id,
         name: user.name,
+        displayName: user.display_name || user.name,
         email: user.email,
         role: user.role,
+        role_id: user.role_id,
+        parent_seller_id: user.parent_seller_id,
+        permissions: user.permissions || [],
         status: user.status,
       },
       tokens,
@@ -149,6 +156,9 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        roleId: user.role_id,
+        parentSellerId: user.parent_seller_id,
+        permissions: user.permissions || [],
       },
       customSettings,
     );
@@ -157,8 +167,12 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
+        displayName: user.display_name || user.name,
         email: user.email,
         role: user.role,
+        role_id: user.role_id,
+        parent_seller_id: user.parent_seller_id,
+        permissions: user.permissions || [],
         status: user.status,
       },
       tokens,
@@ -210,6 +224,9 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        roleId: user.role_id,
+        parentSellerId: user.parent_seller_id,
+        permissions: user.permissions || [],
       },
       customSettings,
     );
@@ -218,8 +235,12 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
+        displayName: user.display_name || user.name,
         email: user.email,
         role: user.role,
+        role_id: user.role_id,
+        parent_seller_id: user.parent_seller_id,
+        permissions: user.permissions || [],
         status: user.status,
       },
       tokens,

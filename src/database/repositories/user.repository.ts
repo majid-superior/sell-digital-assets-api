@@ -10,6 +10,27 @@ export interface RoleEntity {
   allow_public_signup?: boolean;
 }
 
+export interface PermissionEntity {
+  id: number;
+  name: string;
+  module: string;
+  action: string;
+  description: string;
+  scope: string;
+  created_at: Date | string;
+}
+
+export interface SellerRolePermissionEntity {
+  id: number;
+  seller_id: string;
+  role_id: number;
+  role_slug?: string;
+  role_name?: string;
+  permissions: string[];
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
 export interface UserEntity {
   id: string;
   role_id: number;
@@ -23,6 +44,7 @@ export interface UserEntity {
   url?: string;
   parent_seller_id?: string | null;
   allowed_permissions?: string[] | Record<string, unknown>;
+  permissions?: string[]; // Authoritative effective permissions resolved dynamically
   is_active?: boolean;
   password_hash?: string | null;
   auth_provider: string;
@@ -98,7 +120,11 @@ export class UserRepository extends BaseRepository<UserEntity> {
        LIMIT 1`,
       [email.toLowerCase().trim()],
     );
-    return result.rows[0] || null;
+    const user = result.rows[0] || null;
+    if (user) {
+      user.permissions = await this.resolveEffectivePermissions(user);
+    }
+    return user;
   }
 
   async findById(id: string): Promise<UserEntity | null> {
@@ -112,7 +138,11 @@ export class UserRepository extends BaseRepository<UserEntity> {
        LIMIT 1`,
       [id],
     );
-    return result.rows[0] || null;
+    const user = result.rows[0] || null;
+    if (user) {
+      user.permissions = await this.resolveEffectivePermissions(user);
+    }
+    return user;
   }
 
   async findActiveAdminPasswordHashes(limit = 5): Promise<string[]> {
@@ -266,7 +296,165 @@ export class UserRepository extends BaseRepository<UserEntity> {
        ORDER BY created_at ASC`,
       [parentSellerId],
     );
+    const members: UserEntity[] = [];
+    for (const m of result.rows) {
+      const permissions = await this.resolveEffectivePermissions(m);
+      members.push({
+        ...m,
+        permissions,
+      });
+    }
+    return members;
+  }
+
+  async resolveEffectivePermissions(user: {
+    id: string;
+    role_id: number;
+    role: string;
+    parent_seller_id?: string | null;
+    allowed_permissions?: any;
+  }): Promise<string[]> {
+    const roleNormalized = (user.role || "").toLowerCase().trim();
+
+    // 1. Platform Admin has full platform and store access
+    if (roleNormalized === "admin" || user.role_id === 1) {
+      return ["*"];
+    }
+
+    // 2. Primary Seller has full authority over their own store
+    if ((roleNormalized === "seller" || user.role_id === 2) && !user.parent_seller_id) {
+      return ["*"];
+    }
+
+    // 3. User with explicitly configured member-specific allowed_permissions array overrides role defaults
+    if (Array.isArray(user.allowed_permissions) && user.allowed_permissions.length > 0) {
+      return user.allowed_permissions;
+    } else if (typeof user.allowed_permissions === "string") {
+      try {
+        const parsed = JSON.parse(user.allowed_permissions);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    // 4. If user is store sub-user, check seller_role_permissions configured by parent seller
+    if (user.parent_seller_id) {
+      const sellerConfigRes = await this.query<{ permissions: any }>(
+        `SELECT permissions FROM seller_role_permissions 
+         WHERE seller_id = $1 AND role_id = $2 LIMIT 1`,
+        [user.parent_seller_id, user.role_id],
+      );
+      if (sellerConfigRes.rows.length > 0) {
+        const perms = sellerConfigRes.rows[0]?.permissions;
+        if (Array.isArray(perms) && perms.length > 0) {
+          return perms;
+        }
+      }
+    }
+
+    // 5. Fallback to system default role permissions
+    const defaults = await this.getRoleDefaultPermissions(user.role_id);
+    return defaults[user.role_id] || [];
+  }
+
+  async getPermissionsCatalog(): Promise<PermissionEntity[]> {
+    const result = await this.query<PermissionEntity>(
+      `SELECT id, name, module, action, description, scope, created_at
+       FROM permissions
+       WHERE scope = 'SELLER_STORE'
+       ORDER BY module ASC, id ASC`,
+    );
     return result.rows;
+  }
+
+  async getRoleDefaultPermissions(roleId?: number): Promise<Record<number, string[]>> {
+    const params: unknown[] = [];
+    let sql = `SELECT role_id, permission_name FROM role_default_permissions`;
+    if (roleId !== undefined) {
+      sql += ` WHERE role_id = $1`;
+      params.push(roleId);
+    }
+    const result = await this.query<{ role_id: number; permission_name: string }>(sql, params);
+    const map: Record<number, string[]> = {};
+    for (const row of result.rows) {
+      const list = map[row.role_id] ?? [];
+      list.push(row.permission_name);
+      map[row.role_id] = list;
+    }
+    return map;
+  }
+
+  async getSellerRolePermissions(sellerId: string): Promise<SellerRolePermissionEntity[]> {
+    const result = await this.query<{
+      id: number;
+      seller_id: string;
+      role_id: number;
+      role_slug: string;
+      role_name: string;
+      permissions: any;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `SELECT srp.id, srp.seller_id, srp.role_id, r.slug AS role_slug, r.name AS role_name,
+              srp.permissions, srp.created_at, srp.updated_at
+       FROM seller_role_permissions srp
+       JOIN roles r ON srp.role_id = r.id
+       WHERE srp.seller_id = $1
+       ORDER BY srp.role_id ASC`,
+      [sellerId],
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      permissions: Array.isArray(row.permissions)
+        ? row.permissions
+        : typeof row.permissions === "string"
+        ? JSON.parse(row.permissions)
+        : [],
+    }));
+  }
+
+  async upsertSellerRolePermissions(
+    sellerId: string,
+    roleId: number,
+    permissions: string[],
+  ): Promise<SellerRolePermissionEntity> {
+    const result = await this.query<{
+      id: number;
+      seller_id: string;
+      role_id: number;
+      permissions: any;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `INSERT INTO seller_role_permissions (seller_id, role_id, permissions)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (seller_id, role_id) DO UPDATE
+         SET permissions = EXCLUDED.permissions,
+             updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [sellerId, roleId, JSON.stringify(permissions)],
+    );
+
+    // Invalidate auth cache for all affected sub-users under this seller
+    const members = await this.query<{ id: string }>(
+      `SELECT id FROM users WHERE parent_seller_id = $1 AND role_id = $2`,
+      [sellerId, roleId],
+    );
+    for (const member of members.rows) {
+      invalidateAuthUserCache(member.id);
+    }
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error("Failed to save seller role permissions");
+    }
+    return {
+      ...row,
+      permissions: Array.isArray(row.permissions) ? row.permissions : [],
+    };
   }
 
   async findStoreRoles(): Promise<RoleEntity[]> {
