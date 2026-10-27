@@ -84,6 +84,10 @@ const doc = {
       name: "Storefront",
       description: "Seller storefront customization and public storefront catalog",
     },
+    {
+      name: "Logs",
+      description: "Platform audit trails, security event logging, and administrator activity records",
+    },
   ],
   components: {
     securitySchemes: {
@@ -332,6 +336,7 @@ const routes = [
   "./src/modules/banners/banners.routes.ts",
   "./src/modules/hero/hero.routes.ts",
   "./src/modules/storefront/storefront.routes.ts",
+  "./src/modules/logs/logs.routes.ts",
 ];
 
 swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
@@ -1172,4 +1177,5 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
   }
 
   console.log("Swagger-autogen: Cleaned and optimized swagger.json");
+  process.exit(0);
 });

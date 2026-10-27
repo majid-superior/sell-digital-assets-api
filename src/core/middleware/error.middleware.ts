@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error.js";
 import { env } from "../../config/env.js";
 import { logger } from "../logger/index.js";
+import { logAuditFromReq } from "../logger/audit-logger.js";
 import { renderErrorPage } from "../../pages/error.page.js";
 
 interface DatabaseError extends Error {
@@ -109,6 +110,22 @@ export const errorMiddleware = (
       },
       `Unhandled error on ${req.method} ${req.originalUrl}`,
     );
+
+    // Asynchronously record critical audit log (shielded from throwing)
+    logAuditFromReq(req, {
+      severity: "error",
+      category: "error",
+      action: "error.unhandled",
+      source: "api",
+      outcome: "error",
+      message: sanitizedErrMessage || "Unhandled application exception",
+      stack_trace: sanitizedStack,
+      metadata: {
+        errName: err.name,
+        method: req.method,
+        path: req.originalUrl,
+      },
+    }).catch(() => {});
   } else if (!isProduction) {
     logger.warn(
       {

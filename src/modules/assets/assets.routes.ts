@@ -1,7 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
 import { assetsController } from "./assets.controller.js";
-import { authenticate, authorize, requireSellerAccess } from "../../core/middleware/auth.middleware.js";
+import {
+  authenticate,
+  authorize,
+  requireSellerAccess,
+  requireAssetMutationAccess,
+} from "../../core/middleware/auth.middleware.js";
 import { downloadLimiter } from "../../core/middleware/rate-limit.middleware.js";
 import {
   validateBody,
@@ -231,6 +236,7 @@ sellerAssetsRouter.use(authenticate, requireSellerAccess);
 
 sellerAssetsRouter.post(
   "/",
+  requireAssetMutationAccess,
   validateBody(CreateAssetSchema),
   assetsController.createDraftAsset.bind(assetsController),
 );
@@ -246,58 +252,68 @@ sellerAssetsRouter.get(
 );
 sellerAssetsRouter.patch(
   "/:id",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetSchema),
   assetsController.updateAsset.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/status",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(UpdateAssetStatusSchema),
   assetsController.updateAssetStatus.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   assetsController.deleteAsset.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/files/presign-upload",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(PresignFileUploadSchema),
   assetsController.presignFileUpload.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/files/confirm",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(ConfirmFileUploadSchema),
   assetsController.confirmFileUpload.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/media/presign-upload",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(PresignMediaUploadSchema),
   assetsController.presignMediaUpload.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/media/confirm",
+  requireAssetMutationAccess,
   validateParams(IdParamSchema),
   validateBody(ConfirmMediaUploadSchema),
   assetsController.confirmMediaUpload.bind(assetsController),
 );
 sellerAssetsRouter.post(
   "/:id/upload",
+  requireAssetMutationAccess,
   upload.single("file"),
   validateParams(IdParamSchema),
   assetsController.uploadImageAsset.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id/media/:mediaId",
+  requireAssetMutationAccess,
   validateParams(MediaIdParamSchema),
   assetsController.deleteMedia.bind(assetsController),
 );
 sellerAssetsRouter.delete(
   "/:id/files/:fileId",
+  requireAssetMutationAccess,
   validateParams(FileIdParamSchema),
   assetsController.decommissionFile.bind(assetsController),
 );

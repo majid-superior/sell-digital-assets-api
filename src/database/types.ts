@@ -269,6 +269,51 @@ export interface NotificationEntity {
   created_at?: Date | string;
 }
 
+export type CouponStatus = "active" | "inactive" | "scheduled" | "expired";
+
+export interface CouponEntity {
+  id?: string | undefined;
+  seller_id: string;
+  code: string;
+  description?: string | null | undefined;
+  discount_percent: number;
+  starts_at: Date | string;
+  ends_at: Date | string;
+  usage_limit?: number | null | undefined;
+  usage_count: number;
+  is_active: boolean;
+  created_at?: Date | string | undefined;
+  updated_at?: Date | string | undefined;
+  // Computed fields / relations
+  status?: CouponStatus | undefined;
+  seller?: {
+    id: string;
+    name: string;
+    email?: string | null | undefined;
+  } | undefined;
+}
+
+export interface CouponRedemptionEntity {
+  id?: string | undefined;
+  coupon_id: string;
+  buyer_id: string;
+  order_id?: string | null | undefined;
+  discount_amount: number;
+  currency: string;
+  original_subtotal: number;
+  discounted_subtotal: number;
+  status: "pending" | "completed" | "cancelled" | "refunded";
+  created_at?: Date | string | undefined;
+  updated_at?: Date | string | undefined;
+  // Relations
+  coupon?: CouponEntity | undefined;
+  buyer?: {
+    id: string;
+    name: string;
+    email: string;
+  } | undefined;
+}
+
 export interface DatabaseSchema {
   currencies: CurrencyEntity;
   organizations: OrganizationEntity;
@@ -285,4 +330,6 @@ export interface DatabaseSchema {
   license_activations: LicenseActivationEntity;
   download_audits: DownloadAuditEntity;
   notifications: NotificationEntity;
+  coupons: CouponEntity;
+  coupon_redemptions: CouponRedemptionEntity;
 }

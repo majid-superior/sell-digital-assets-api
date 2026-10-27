@@ -45,6 +45,8 @@ import storageRoutes from "./modules/assets/storage.routes.js";
 import notificationsRoutes from "./modules/notifications/notifications.routes.js";
 import bannersRoutes from "./modules/banners/banners.routes.js";
 import heroRoutes from "./modules/hero/hero.routes.js";
+import logsRoutes from "./modules/logs/logs.routes.js";
+import { couponsRouter } from "./modules/coupons/coupons.routes.js";
 import { sellerStorefrontRouter, publicStorefrontRouter } from "./modules/storefront/storefront.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
@@ -248,6 +250,8 @@ if (fs.existsSync(swaggerFilePath)) {
     "Downloads",
     "Licenses",
     "Storage",
+    "Storefront",
+    "Logs",
   ];
   // 2. Sort the top-level tags array
   if (Array.isArray(swaggerFile.tags)) {
@@ -403,9 +407,25 @@ app.use("/api/v1/seller/team", sellerTeamRouter);
 app.use("/api/seller/team", sellerTeamRouter);
 app.use("/v1/seller/team", sellerTeamRouter);
 
+app.use("/api/v1/seller/users", sellerTeamRouter);
+app.use("/api/seller/users", sellerTeamRouter);
+app.use("/v1/seller/users", sellerTeamRouter);
+
 app.use("/api/v1/catalog/storefronts", publicStorefrontRouter);
 app.use("/api/catalog/storefronts", publicStorefrontRouter);
 app.use("/v1/catalog/storefronts", publicStorefrontRouter);
+
+app.use("/api/v1/logs", logsRoutes);
+app.use("/api/logs", logsRoutes);
+app.use("/v1/logs", logsRoutes);
+
+app.use("/api/v1/coupons", couponsRouter);
+app.use("/api/coupons", couponsRouter);
+app.use("/v1/coupons", couponsRouter);
+
+app.use("/api/v1/seller/coupons", couponsRouter);
+app.use("/api/seller/coupons", couponsRouter);
+app.use("/v1/seller/coupons", couponsRouter);
 
 // ============================================================================
 // 404 Catch-All Handler

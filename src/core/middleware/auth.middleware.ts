@@ -261,5 +261,117 @@ export const requireOrgAdmin = (req: Request, _res: Response, next: NextFunction
 };
 (requireOrgAdmin as any)._authRequired = true;
 
+/**
+ * Store Team View Guard (requireStoreManagementAccess)
+ * Restricts viewing store team members to:
+ * - Primary SELLER
+ * - Platform ADMIN
+ * - STORE_MANAGER
+ * Forbids CONTENT_UPLOADER, ANALYST, and non-store accounts.
+ */
+export const requireStoreManagementAccess = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user) {
+    return next(new AppError("Authentication required.", 401));
+  }
+
+  const user = await userRepository.findById(req.user.id);
+  if (!user || user.status !== "active") {
+    return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+  }
+
+  const roleNormalized = (user.role || "").toUpperCase();
+  if (
+    roleNormalized === "ADMIN" ||
+    roleNormalized === "SELLER" ||
+    roleNormalized === "STORE_MANAGER" ||
+    user.role_id === 1 ||
+    user.role_id === 2 ||
+    user.role_id === 4
+  ) {
+    return next();
+  }
+
+  return next(
+    new AppError("Access denied. Insufficient permissions to access store team management.", 403),
+  );
+};
+(requireStoreManagementAccess as any)._authRequired = true;
+
+/**
+ * Store Owner Guard (requireStoreOwnerAccess)
+ * Restricts modifying store team members (add, update, remove) to:
+ * - Primary SELLER (store owner)
+ * - Platform ADMIN
+ */
+export const requireStoreOwnerAccess = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user) {
+    return next(new AppError("Authentication required.", 401));
+  }
+
+  const user = await userRepository.findById(req.user.id);
+  if (!user || user.status !== "active") {
+    return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+  }
+
+  const roleNormalized = (user.role || "").toUpperCase();
+  if (
+    roleNormalized === "ADMIN" ||
+    roleNormalized === "SELLER" ||
+    user.role_id === 1 ||
+    user.role_id === 2
+  ) {
+    return next();
+  }
+
+  return next(
+    new AppError(
+      "Access denied. Only the store owner or an administrator can manage store team members.",
+      403,
+    ),
+  );
+};
+(requireStoreOwnerAccess as any)._authRequired = true;
+
+/**
+ * Asset Mutation Guard (requireAssetMutationAccess)
+ * Restricts modifying assets (create, update, delete, upload) by forbidding:
+ * - ANALYST (read-only analytics and sales)
+ */
+export const requireAssetMutationAccess = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user) {
+    return next(new AppError("Authentication required.", 401));
+  }
+
+  const user = await userRepository.findById(req.user.id);
+  if (!user || user.status !== "active") {
+    return next(new AppError("Account is inactive, suspended, or deleted.", 403));
+  }
+
+  const roleNormalized = (user.role || "").toUpperCase();
+  if (roleNormalized === "ANALYST" || user.role_id === 6) {
+    return next(
+      new AppError(
+        "Access denied. Analysts have read-only access and cannot create, modify, or delete assets.",
+        403,
+      ),
+    );
+  }
+
+  return next();
+};
+(requireAssetMutationAccess as any)._authRequired = true;
+
 
 

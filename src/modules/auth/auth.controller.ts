@@ -2,11 +2,24 @@ import type { Request, Response, NextFunction } from "express";
 import { authService } from "./auth.service.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { extractAuthToken } from "../../core/middleware/auth.middleware.js";
+import { logAuditFromReq } from "../../core/logger/audit-logger.js";
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const result = await authService.register(req.body);
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "auth",
+        action: "auth.register",
+        source: "auth",
+        actor_id: result.user.id,
+        actor_email: result.user.email,
+        actor_role: result.user.role,
+        outcome: "success",
+        message: `New user registered with role ${result.user.role}: ${result.user.email}`,
+      }).catch(() => {});
+
       res.status(201).json({
         success: true,
         message: "User registered successfully",
@@ -23,6 +36,19 @@ export class AuthController {
   async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const result = await authService.signIn(req.body);
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "auth",
+        action: "auth.login",
+        source: "auth",
+        actor_id: result.user.id,
+        actor_email: result.user.email,
+        actor_role: result.user.role,
+        outcome: "success",
+        message: `User ${result.user.email} signed in successfully`,
+        metadata: { role: result.user.role, status: result.user.status },
+      }).catch(() => {});
+
       res.status(200).json({
         success: true,
         message: "Authentication successful",
@@ -32,6 +58,17 @@ export class AuthController {
         ...result,
       });
     } catch (error) {
+      logAuditFromReq(req, {
+        severity: "warn",
+        category: "auth",
+        action: "auth.failed_login",
+        source: "auth",
+        actor_email: typeof req.body?.email === "string" ? req.body.email : null,
+        actor_role: "anonymous",
+        outcome: "failure",
+        message: `Failed sign-in attempt for email: ${typeof req.body?.email === "string" ? req.body.email : "unknown"}`,
+        metadata: { reason: (error as Error)?.message || "invalid_credentials" },
+      }).catch(() => {});
       next(error);
     }
   }
@@ -63,6 +100,15 @@ export class AuthController {
       const accessToken = extractAuthToken(req);
 
       await authService.signOut(refreshToken, accessToken);
+
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "auth",
+        action: "auth.logout",
+        source: "auth",
+        outcome: "success",
+        message: "User signed out and revoked active tokens",
+      }).catch(() => {});
 
       res.clearCookie("accessToken", { httpOnly: true, secure: true, sameSite: "strict" });
       res.clearCookie("refreshToken", { httpOnly: true, secure: true, sameSite: "strict" });

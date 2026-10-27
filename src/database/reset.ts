@@ -12,12 +12,15 @@ import { defaultCurrencies } from "../data/currencies.js";
 import { defaultTheme } from "../data/themes.js";
 import { defaultLicenseTiers } from "../data/license-tiers.js";
 import { defaultHeroImages } from "../data/hero-images.js";
+import { defaultBanners } from "../data/banners.js";
 import {
   resilientDnsLookup,
   isSslRequired,
   createResilientSocket,
   installResilientDns,
+  maskDatabaseUrl,
 } from "../config/database.js";
+import { isLocalDatabaseHost } from "../config/env.js";
 
 // Prioritize IPv4 DNS lookups and activate resilient public DNS fallback
 installResilientDns();
@@ -36,12 +39,12 @@ function loadEnv(): void {
   while (dir && dir !== path.dirname(dir)) {
     const envPath = path.join(dir, ".env");
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath });
+      dotenv.config({ path: envPath, quiet: true });
       return;
     }
     dir = path.dirname(dir);
   }
-  dotenv.config();
+  dotenv.config({ quiet: true });
 }
 
 loadEnv();
@@ -54,6 +57,7 @@ export const SCHEMA_SQL = `
 -- Step 1: Extensions
 CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Step 2: Shared Auto-Update Timestamp Function
 CREATE OR REPLACE FUNCTION update_timestamp_column()
@@ -759,52 +763,240 @@ BEFORE UPDATE ON seller_storefronts
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Step 20: Supabase Storage Buckets (Safe Initialization)
+-- Step 19e: Audit & System Logs System
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    severity VARCHAR(20) NOT NULL DEFAULT 'info' 
+        CHECK (severity IN ('debug', 'info', 'warn', 'error', 'critical')),
+    category VARCHAR(50) NOT NULL DEFAULT 'system' 
+        CHECK (category IN ('auth', 'admin', 'security', 'system', 'error')),
+    action VARCHAR(100) NOT NULL,
+    source VARCHAR(50) NOT NULL DEFAULT 'api',
+    actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    actor_email citext,
+    actor_role VARCHAR(50),
+    target_id VARCHAR(100),
+    target_type VARCHAR(50),
+    outcome VARCHAR(20) NOT NULL DEFAULT 'success' 
+        CHECK (outcome IN ('success', 'failure', 'denied', 'error')),
+    message TEXT NOT NULL,
+    request_id VARCHAR(64),
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    stack_trace TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_severity ON audit_logs (severity);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_category ON audit_logs (category);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_source ON audit_logs (source);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs (actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_email ON audit_logs (actor_email);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs (action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_outcome ON audit_logs (outcome);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs (request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_filter ON audit_logs (category, severity, created_at DESC);
+
+-- Step 19f: Coupons System
+CREATE TABLE IF NOT EXISTS coupons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code VARCHAR(50) NOT NULL,
+    description TEXT,
+    discount_percent INT NOT NULL CHECK (discount_percent >= 1 AND discount_percent <= 90),
+    starts_at TIMESTAMPTZ NOT NULL,
+    ends_at TIMESTAMPTZ NOT NULL,
+    usage_limit INT CHECK (usage_limit IS NULL OR usage_limit > 0),
+    usage_count INT NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_coupons_dates CHECK (ends_at > starts_at)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coupons_code ON coupons (UPPER(code));
+CREATE INDEX IF NOT EXISTS idx_coupons_seller_id ON coupons (seller_id);
+CREATE INDEX IF NOT EXISTS idx_coupons_active_dates ON coupons (is_active, starts_at, ends_at);
+
+DROP TRIGGER IF EXISTS trg_coupons_updated_at ON coupons;
+CREATE TRIGGER trg_coupons_updated_at
+BEFORE UPDATE ON coupons
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Coupon Redemptions Table
+CREATE TABLE IF NOT EXISTS coupon_redemptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+    buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id UUID,
+    discount_amount NUMERIC(10, 2) NOT NULL CHECK (discount_amount >= 0),
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    original_subtotal NUMERIC(10, 2) NOT NULL CHECK (original_subtotal >= 0),
+    discounted_subtotal NUMERIC(10, 2) NOT NULL CHECK (discounted_subtotal >= 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'cancelled', 'refunded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_coupon_id ON coupon_redemptions (coupon_id);
+CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_buyer_id ON coupon_redemptions (buyer_id);
+CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_order_id ON coupon_redemptions (order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coupon_redemptions_order_unique ON coupon_redemptions (order_id) WHERE order_id IS NOT NULL;
+
+DROP TRIGGER IF EXISTS trg_coupon_redemptions_updated_at ON coupon_redemptions;
+CREATE TRIGGER trg_coupon_redemptions_updated_at
+BEFORE UPDATE ON coupon_redemptions
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 20: Public Schema Permissions & Role-Adaptive Default Privileges
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'storage') THEN
-        -- Best-effort SQL bucket initialization and object cleanup (Supabase JS/S3 API also ensures them post-commit)
-        BEGIN
-            -- Step 20a: Empty both buckets at the database storage level
-            DELETE FROM storage.objects
-            WHERE bucket_id IN ('sell-digital-assets-storage-previews', 'sell-digital-assets-storage-private');
+    EXECUTE 'GRANT ALL ON SCHEMA public TO ' || quote_ident(CURRENT_USER);
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ' || quote_ident(CURRENT_USER);
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ' || quote_ident(CURRENT_USER);
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO ' || quote_ident(CURRENT_USER);
 
-            INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-            VALUES (
-                'sell-digital-assets-storage-previews',
-                'sell-digital-assets-storage-previews',
-                true,
-                10485760, -- 10MB limit for webp preview images
-                ARRAY['image/webp', 'image/png', 'image/jpeg']::text[]
-            )
-            ON CONFLICT (id) DO UPDATE SET
-                public = true,
-                file_size_limit = EXCLUDED.file_size_limit,
-                allowed_mime_types = EXCLUDED.allowed_mime_types;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'GRANT USAGE ON SCHEMA public TO anon';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO anon';
+    END IF;
 
-            INSERT INTO storage.buckets (id, name, public, file_size_limit)
-            VALUES (
-                'sell-digital-assets-storage-private',
-                'sell-digital-assets-storage-private',
-                false,
-                524288000 -- 500MB limit for original asset files
-            )
-            ON CONFLICT (id) DO UPDATE SET
-                public = false,
-                file_size_limit = EXCLUDED.file_size_limit;
-        EXCEPTION WHEN OTHERS THEN
-            -- In managed cloud databases where direct SQL access to storage.buckets/objects is restricted,
-            -- this block safely passes, and buckets are provisioned and emptied by the Supabase/S3 Storage API.
-            NULL;
-        END;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'GRANT ALL ON SCHEMA public TO authenticated';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        EXECUTE 'GRANT ALL ON SCHEMA public TO service_role';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role';
+        EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role';
     END IF;
 END $$;
 `;
 
 /**
+ * Resolves the backup directory from BACKUP_DIR env variable or defaults to project backups/.
+ */
+export function getBackupsDir(): string {
+  if (process.env.BACKUP_DIR && process.env.BACKUP_DIR.trim().length > 0) {
+    return path.resolve(process.env.BACKUP_DIR.trim());
+  }
+  return path.resolve(__dirname, "../../backups");
+}
+
+/**
+ * Verifies that a backup file was generated, is non-empty (>= 1KB),
+ * and contains CREATE TABLE statements.
+ */
+export function verifyBackupFile(filePath: string): {
+  verified: boolean;
+  sizeBytes: number;
+  tableCount: number;
+  error?: string;
+} {
+  if (!fs.existsSync(filePath)) {
+    return {
+      verified: false,
+      sizeBytes: 0,
+      tableCount: 0,
+      error: `Backup file does not exist at '${filePath}'`,
+    };
+  }
+
+  const stats = fs.statSync(filePath);
+  if (stats.size < 1024) {
+    return {
+      verified: false,
+      sizeBytes: stats.size,
+      tableCount: 0,
+      error: `Backup file size (${stats.size} bytes) is below minimum threshold (1024 bytes)`,
+    };
+  }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf8");
+  } catch (err: any) {
+    return {
+      verified: false,
+      sizeBytes: stats.size,
+      tableCount: 0,
+      error: `Failed to read backup file: ${err.message}`,
+    };
+  }
+
+  const matches = content.match(/CREATE\s+(?:OR\s+REPLACE\s+)?TABLE/gi) || [];
+  if (matches.length === 0) {
+    return {
+      verified: false,
+      sizeBytes: stats.size,
+      tableCount: 0,
+      error:
+        "Backup file contains 0 CREATE TABLE statements. Aborting reset to prevent data loss.",
+    };
+  }
+
+  return { verified: true, sizeBytes: stats.size, tableCount: matches.length };
+}
+
+/**
+ * Enforces backup retention policy: keeps the newest `maxToKeep` backups
+ * matching `<dbname>_backup_*.sql`. Never removes index 0 (the newest).
+ */
+export function applyBackupRetention(
+  backupsDir: string,
+  targetDbName: string,
+  maxToKeep: number = 10,
+): string[] {
+  if (!fs.existsSync(backupsDir)) return [];
+
+  const escapedName = targetDbName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${escapedName}_backup_.*\\.sql$`);
+
+  try {
+    const files = fs
+      .readdirSync(backupsDir)
+      .filter((file) => pattern.test(file))
+      .map((file) => {
+        const fullPath = path.join(backupsDir, file);
+        const stats = fs.statSync(fullPath);
+        return { file, fullPath, mtimeMs: stats.mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    const removedFiles: string[] = [];
+    if (files.length > maxToKeep) {
+      for (let i = maxToKeep; i < files.length; i++) {
+        const item = files[i]!;
+        try {
+          fs.unlinkSync(item.fullPath);
+          removedFiles.push(item.file);
+          console.log(
+            `🧹 Removed old backup due to retention limit (keeping newest ${maxToKeep}): ${item.file}`,
+          );
+        } catch (unlinkErr: any) {
+          console.warn(
+            `⚠️  Failed to remove old backup ${item.file}: ${unlinkErr.message}`,
+          );
+        }
+      }
+    }
+    return removedFiles;
+  } catch (err: any) {
+    console.warn(`⚠️  Retention policy scan failed: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Resolves the location of pg_dump on the host system.
- * Checks PG_DUMP_PATH environment variable, system PATH, and
- * standard PostgreSQL installation directories on Windows.
  */
 function findPgDumpBinary(): string | null {
   if (process.env.PG_DUMP_PATH && fs.existsSync(process.env.PG_DUMP_PATH)) {
@@ -813,9 +1005,13 @@ function findPgDumpBinary(): string | null {
 
   // Check system PATH
   try {
-    const testCmd = process.platform === "win32" ? "where pg_dump" : "which pg_dump";
+    const testCmd =
+      process.platform === "win32" ? "where pg_dump" : "which pg_dump";
     const out = child_process
-      .execSync(testCmd, { stdio: ["pipe", "pipe", "ignore"], encoding: "utf8" })
+      .execSync(testCmd, {
+        stdio: ["pipe", "pipe", "ignore"],
+        encoding: "utf8",
+      })
       .trim();
     if (out) {
       const firstLine = out.split(/\r?\n/)[0]?.trim();
@@ -826,7 +1022,7 @@ function findPgDumpBinary(): string | null {
     // pg_dump not found in PATH
   }
 
-  // Windows standard installation directories (e.g. C:\Program Files\PostgreSQL\<version>\bin\pg_dump.exe)
+  // Windows standard installation directories
   if (process.platform === "win32") {
     const programFilesDirs = [
       process.env.ProgramFiles,
@@ -861,7 +1057,8 @@ function findPgDumpBinary(): string | null {
 }
 
 /**
- * Resilient Node.js SQL dumper fallback if pg_dump binary is absent in the host environment.
+ * Resilient Node.js SQL dumper fallback if pg_dump binary is absent.
+ * Generates both CREATE TABLE and INSERT statements to ensure verifiable backups.
  */
 async function fallbackDatabaseBackup(
   databaseUrl: string,
@@ -890,7 +1087,28 @@ async function fallbackDatabaseBackup(
 
     for (const row of tablesRes.rows) {
       const tableName = row.table_name;
-      const dataRes = await dumpClient.query(`SELECT * FROM "${tableName}"`);
+      const colsRes = await dumpClient.query(
+        `SELECT column_name, data_type, is_nullable, column_default
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1
+         ORDER BY ordinal_position;`,
+        [tableName],
+      );
+
+      if (colsRes.rows.length > 0) {
+        const colDefs = colsRes.rows.map((c: any) => {
+          let def = `"${c.column_name}" ${c.data_type}`;
+          if (c.column_default) def += ` DEFAULT ${c.column_default}`;
+          if (c.is_nullable === "NO") def += " NOT NULL";
+          return def;
+        });
+        lines.push(`\n-- Structure for table: ${tableName}`);
+        lines.push(
+          `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${colDefs.join(",\n  ")}\n);`,
+        );
+      }
+
+      const dataRes = await dumpClient.query(`SELECT * FROM "${tableName}";`);
       if (dataRes.rows.length > 0) {
         lines.push(`\n-- Data for table: ${tableName}`);
         for (const dataRow of dataRes.rows) {
@@ -898,8 +1116,10 @@ async function fallbackDatabaseBackup(
           const vals = cols.map((col) => {
             const val = dataRow[col];
             if (val === null || val === undefined) return "NULL";
-            if (typeof val === "number" || typeof val === "boolean") return String(val);
-            if (typeof val === "object") return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+            if (typeof val === "number" || typeof val === "boolean")
+              return String(val);
+            if (typeof val === "object")
+              return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
             return `'${String(val).replace(/'/g, "''")}'`;
           });
           lines.push(
@@ -917,16 +1137,158 @@ async function fallbackDatabaseBackup(
 }
 
 /**
- * Takes an automated backup of the target database before dropping or resetting schemas.
- * Dumps are placed in the backups/ directory.
+ * Validates database connection port.
+ * Refuses live DDL/reset on port 6543 (transaction-pooler mode).
+ */
+export function validateConnectionPort(
+  port: string,
+  isLiveTarget: boolean,
+): void {
+  if (isLiveTarget && port === "6543") {
+    throw new Error(
+      "🛑 SAFEGUARD BLOCKED: Connection port is 6543 (transaction-pooler mode). Schema reset and DDL operations cannot run through a transaction pooler. Port 5432 session-pooler or a direct connection is required.",
+    );
+  }
+}
+
+/**
+ * Extracts Supabase project reference from hostname or username.
+ */
+export function extractProjectRef(
+  host: string,
+  username?: string,
+): string | null {
+  const subMatch = host.match(/^([a-z0-9_-]+)\.supabase\.co$/i);
+  if (subMatch && subMatch[1]) {
+    return subMatch[1];
+  }
+  if (username) {
+    const userMatch = username.match(/^postgres\.([a-z0-9_-]+)$/i);
+    if (userMatch && userMatch[1]) {
+      return userMatch[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * Production authorization safeguard:
+ * Requires confirmation code 0000, ALLOW_PRODUCTION_RESET=true, or --allow-production.
+ * In interactive mode, prompts the user to enter code '0000'.
+ */
+export async function verifyProductionAuthorization(options: {
+  host: string;
+  projectRef?: string | null;
+  isInteractive: boolean;
+  isDryRun?: boolean;
+}): Promise<{ confirmed: boolean; confirmedByCode: boolean }> {
+  const confirmCodeFlag = process.argv.find((arg) =>
+    arg.startsWith("--confirm-code="),
+  );
+  const confirmCode = confirmCodeFlag
+    ? confirmCodeFlag.split("=")[1]?.trim()
+    : process.env.CONFIRM_CODE?.trim();
+
+  const isAuthorized =
+    confirmCode === "0000" ||
+    process.env.ALLOW_PRODUCTION_RESET === "true" ||
+    process.env.ALLOW_LIVE_DB_RESET === "true" ||
+    process.argv.includes("--allow-production");
+
+  if (options.isDryRun) {
+    if (!isAuthorized) {
+      throw new Error(
+        "🛑 SAFEGUARD BLOCKED: Resetting the live database requires confirmation code 0000 (--confirm-code=0000) or environment variable ALLOW_PRODUCTION_RESET=true / --allow-production.",
+      );
+    }
+    console.log(
+      "🛡️  Live production authorization verified (code 0000 / ALLOW_PRODUCTION_RESET present).",
+    );
+    return { confirmed: true, confirmedByCode: confirmCode === "0000" };
+  }
+
+  // Interactive challenge: prompt user for confirmation code 0000
+  if (options.isInteractive) {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    try {
+      console.log("\n=======================================================");
+      console.log(
+        "⚠️  WARNING: You are modifying or resetting the LIVE PRODUCTION database!",
+      );
+      console.log(`📍 Target Host: ${options.host}`);
+      if (options.projectRef) {
+        console.log(`🆔 Project Ref: ${options.projectRef}`);
+      }
+      console.log("=======================================================");
+
+      const promptMsg =
+        "To confirm live database reset and emptying all cloud buckets, enter confirmation code: ";
+      const answer = (await rl.question(promptMsg)).trim();
+
+      const matches =
+        answer === "0000" ||
+        answer === options.host ||
+        Boolean(options.projectRef && answer === options.projectRef);
+
+      if (!matches) {
+        console.log(
+          "🛡️  Reset of live database cancelled (confirmation code did not match 0000). No changes were made.",
+        );
+        process.exit(0);
+      }
+      return { confirmed: true, confirmedByCode: answer === "0000" };
+    } finally {
+      rl.close();
+    }
+  } else {
+    // Non-interactive / CI execution: fail closed if confirmation flag is missing or invalid
+    const confirmFlag = process.argv.find((arg) =>
+      arg.startsWith("--confirm-production="),
+    );
+    const confirmVal = confirmFlag
+      ? confirmFlag.split("=")[1]?.trim()
+      : process.env.CONFIRM_PRODUCTION?.trim();
+
+    const matches =
+      confirmCode === "0000" ||
+      confirmVal === "0000" ||
+      confirmVal === options.host ||
+      Boolean(options.projectRef && confirmVal === options.projectRef);
+
+    if (!isAuthorized && !matches) {
+      throw new Error(
+        "🛑 SAFEGUARD BLOCKED: Resetting the live database requires confirmation code 0000 (--confirm-code=0000) or environment variable ALLOW_PRODUCTION_RESET=true.",
+      );
+    }
+
+    if (!matches) {
+      throw new Error(
+        `🛑 SAFEGUARD BLOCKED: Non-interactive live database reset requires --confirm-code=0000 or --confirm-production=${options.host}. Fail-closed protection activated.`,
+      );
+    }
+
+    return {
+      confirmed: true,
+      confirmedByCode: confirmCode === "0000" || confirmVal === "0000",
+    };
+  }
+}
+
+/**
+ * Takes an automated pre-drop backup of the target database.
+ * Verifies the backup before destructive operations and applies retention.
  */
 async function backupDatabase(
   databaseUrl: string,
   targetDbName: string,
   isCloudDb: boolean,
   requiresSsl: boolean,
-): Promise<string | null> {
-  const backupsDir = path.resolve(__dirname, "../../backups");
+): Promise<{ backupFilePath: string; tableCount: number; sizeBytes: number }> {
+  const backupsDir = getBackupsDir();
   if (!fs.existsSync(backupsDir)) {
     fs.mkdirSync(backupsDir, { recursive: true });
   }
@@ -937,55 +1299,8 @@ async function backupDatabase(
   const backupFileName = `${targetDbName}_backup_${timestamp}.sql`;
   const backupFilePath = path.join(backupsDir, backupFileName);
 
-  // Check if database exists before attempting backup
-  if (!isCloudDb) {
-    const maintenanceUrl = new URL(databaseUrl);
-    maintenanceUrl.pathname = "/postgres";
-    const checkClient = new Client({
-      connectionString: maintenanceUrl.toString(),
-      stream: () => createResilientSocket(),
-      lookup: resilientDnsLookup,
-    } as any);
-    try {
-      await checkClient.connect();
-      const res = await checkClient.query(
-        "SELECT 1 FROM pg_database WHERE datname = $1",
-        [targetDbName],
-      );
-      if (res.rows.length === 0) {
-        console.log(`ℹ️  Target database "${targetDbName}" does not exist yet; skipping pre-drop backup.`);
-        return null;
-      }
-    } catch {
-      // If maintenance client connection fails, proceed and attempt backup directly
-    } finally {
-      await checkClient.end().catch(() => {});
-    }
-  } else {
-    const testClient = new Client({
-      connectionString: databaseUrl,
-      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-      stream: () => createResilientSocket(),
-      lookup: resilientDnsLookup,
-    } as any);
-    try {
-      await testClient.connect();
-      const res = await testClient.query(
-        "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' LIMIT 1",
-      );
-      if (res.rows.length === 0) {
-        console.log(`ℹ️  Target database "${targetDbName}" has no existing tables; skipping pre-drop backup.`);
-        return null;
-      }
-    } catch (err: any) {
-      console.log(`ℹ️  Could not connect to target database (${err.message}); skipping pre-drop backup.`);
-      return null;
-    } finally {
-      await testClient.end().catch(() => {});
-    }
-  }
-
-  console.log(`💾 Taking pre-drop backup of database "${targetDbName}"...`);
+  console.log(`💾 Starting pre-drop backup of database "${targetDbName}"...`);
+  console.log(`📁 Backup Destination: ${backupFilePath}`);
 
   const pgDumpPath = findPgDumpBinary();
   const parsed = new URL(databaseUrl);
@@ -994,14 +1309,20 @@ async function backupDatabase(
   const username = parsed.username || "postgres";
   const password = decodeURIComponent(parsed.password || "");
 
+  let dumpSucceeded = false;
   if (pgDumpPath) {
     try {
       const args = [
-        "-h", host,
-        "-p", port,
-        "-U", username,
-        "-d", targetDbName,
-        "-f", backupFilePath,
+        "-h",
+        host,
+        "-p",
+        port,
+        "-U",
+        username,
+        "-d",
+        targetDbName,
+        "-f",
+        backupFilePath,
         "--clean",
         "--if-exists",
         "--no-owner",
@@ -1019,7 +1340,11 @@ async function backupDatabase(
               child.kill();
             } catch {}
           }
-          reject(new Error(`pg_dump process timed out after ${dumpTimeoutMs / 1000}s`));
+          reject(
+            new Error(
+              `pg_dump process timed out after ${dumpTimeoutMs / 1000}s`,
+            ),
+          );
         }, dumpTimeoutMs);
 
         child = child_process.spawn(pgDumpPath, args, {
@@ -1041,7 +1366,9 @@ async function backupDatabase(
           if (code === 0) {
             resolve();
           } else {
-            reject(new Error(`pg_dump exited with code ${code}: ${stderr.trim()}`));
+            reject(
+              new Error(`pg_dump exited with code ${code}: ${stderr.trim()}`),
+            );
           }
         });
 
@@ -1051,33 +1378,648 @@ async function backupDatabase(
         });
       });
 
-      const stats = fs.statSync(backupFilePath);
-      const sizeKb = (stats.size / 1024).toFixed(1);
-      console.log(`✅ Pre-drop backup saved: backups/${backupFileName} (${sizeKb} KB)`);
-      return backupFilePath;
+      dumpSucceeded = true;
     } catch (dumpErr: any) {
-      console.warn(`⚠️  pg_dump encountered an error (${dumpErr.message}). Falling back to Node.js table exporter...`);
+      console.warn(
+        `⚠️  pg_dump encountered an issue (${dumpErr.message}). Falling back to Node.js table exporter...`,
+      );
     }
   }
 
-  try {
+  if (!dumpSucceeded) {
     await fallbackDatabaseBackup(databaseUrl, backupFilePath, requiresSsl);
-    const stats = fs.statSync(backupFilePath);
-    const sizeKb = (stats.size / 1024).toFixed(1);
-    console.log(`✅ Pre-drop backup saved via fallback: backups/${backupFileName} (${sizeKb} KB)`);
-    return backupFilePath;
-  } catch (fallbackErr: any) {
-    console.warn(`⚠️  Pre-drop backup fallback failed: ${fallbackErr.message}`);
-    return null;
   }
+
+  // Verification step: verify backup file existence, size, and table statements
+  const verification = verifyBackupFile(backupFilePath);
+  if (!verification.verified) {
+    throw new Error(`Backup verification failed: ${verification.error}`);
+  }
+
+  const sizeKb = (verification.sizeBytes / 1024).toFixed(1);
+  console.log(
+    `✅ Pre-drop backup saved and verified: ${backupFilePath} (${sizeKb} KB, ${verification.tableCount} tables found)`,
+  );
+
+  // Apply retention policy only after successful verification
+  applyBackupRetention(backupsDir, targetDbName, 10);
+
+  return {
+    backupFilePath,
+    tableCount: verification.tableCount,
+    sizeBytes: verification.sizeBytes,
+  };
+}
+
+/**
+ * Local storage cleanup: empties ONLY the local directory.
+ * Never touches cloud buckets.
+ */
+export async function cleanLocalStorage(
+  dryRun: boolean,
+  skipStorage: boolean = false,
+): Promise<"cleaned" | "skipped" | "not applicable"> {
+  if (skipStorage) {
+    console.log("🔒 Local storage cleanup skipped via --skip-storage flag.");
+    return "skipped";
+  }
+
+  const localPath =
+    process.env.LOCAL_STORAGE_PATH ||
+    (process.platform === "win32"
+      ? "C:\\GH\\sell-digital-assets-storage"
+      : "./storage");
+
+  if (dryRun) {
+    console.log(
+      `[DRY-RUN] Local Storage: Would empty directory '${localPath}' [NOT EXECUTED]`,
+    );
+    return "skipped";
+  }
+
+  if (fs.existsSync(localPath)) {
+    try {
+      const files = fs.readdirSync(localPath);
+      for (const file of files) {
+        fs.rmSync(path.join(localPath, file), { recursive: true, force: true });
+      }
+      console.log(
+        `🧹 Emptied local storage directory: ${localPath} (${files.length} items removed)`,
+      );
+      return "cleaned";
+    } catch (err: any) {
+      console.warn(
+        `⚠️  Local storage directory cleanup encountered an error: ${err.message}`,
+      );
+      return "not applicable";
+    }
+  }
+  return "not applicable";
+}
+
+/**
+ * Live cloud storage cleanup: empties ONLY cloud buckets after opt-in confirmation.
+ * Never touches the local developer storage directory.
+ */
+export async function cleanCloudStorage(options: {
+  dryRun: boolean;
+  skipStorage: boolean;
+  isInteractive: boolean;
+  autoConfirm?: boolean;
+}): Promise<"cleaned" | "skipped" | "declined" | "not applicable"> {
+  if (options.skipStorage) {
+    console.log(
+      "🔒 Cloud storage cleanup skipped via --skip-storage flag. Buckets preserved.",
+    );
+    return "skipped";
+  }
+
+  const previewsBucket =
+    process.env.AWS_BUCKET_PREVIEWS || "sell-digital-assets-storage-previews";
+  const privateBucket =
+    process.env.AWS_BUCKET_PRIVATE || "sell-digital-assets-storage-private";
+  const buckets = [previewsBucket, privateBucket];
+
+  if (options.dryRun) {
+    console.log(
+      `[DRY-RUN] Cloud Storage: Would inspect buckets (${buckets.join(", ")}) and request opt-in confirmation [NOT EXECUTED]`,
+    );
+    return "skipped";
+  }
+
+  let s3Client: any = null;
+  if (
+    process.env.AWS_ENDPOINT &&
+    process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY
+  ) {
+    try {
+      const { S3Client } = await import("@aws-sdk/client-s3");
+      s3Client = new S3Client({
+        region: process.env.AWS_REGION || "auto",
+        endpoint: process.env.AWS_ENDPOINT,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        },
+      });
+    } catch {
+      // S3 client unavailable
+    }
+  }
+
+  let supabaseClient: any = null;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      supabaseClient = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } },
+      );
+    } catch {
+      // Supabase client unavailable
+    }
+  }
+
+  if (!s3Client && !supabaseClient) {
+    console.log(
+      "ℹ️  No cloud storage credentials configured (Supabase/S3); skipping cloud storage cleanup.",
+    );
+    return "not applicable";
+  }
+
+  // Count objects in buckets
+  const bucketCounts = new Map<string, number>();
+  for (const bucket of buckets) {
+    let count = 0;
+    if (s3Client) {
+      try {
+        const { ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+        let token: string | undefined = undefined;
+        do {
+          const res: any = await s3Client.send(
+            new ListObjectsV2Command({
+              Bucket: bucket,
+              ContinuationToken: token,
+            }),
+          );
+          if (res.Contents) {
+            count += res.Contents.length;
+          }
+          token = res.NextContinuationToken;
+        } while (token);
+      } catch {
+        // Fall back to supabase if S3 list fails
+      }
+    }
+    if (count === 0 && supabaseClient) {
+      try {
+        const { data } = await supabaseClient.storage
+          .from(bucket)
+          .list("", { limit: 1000 });
+        if (data) {
+          count = data.length;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    bucketCounts.set(bucket, count);
+  }
+
+  console.log("\n📦 Cloud Storage Buckets Detected:");
+  for (const bucket of buckets) {
+    console.log(`   - ${bucket}: ${bucketCounts.get(bucket) ?? 0} object(s)`);
+  }
+
+  const expectedConfirmPhrase = `${previewsBucket}, ${privateBucket}`;
+
+  if (options.autoConfirm) {
+    console.log(
+      "🧹 Confirmation code 0000 matched: Emptying cloud storage buckets...",
+    );
+  } else if (options.isInteractive) {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    try {
+      console.log(
+        "\n⚠️  OPT-IN CONFIRMATION: Emptying cloud storage buckets is destructive.",
+      );
+      const answer = (
+        await rl.question(
+          `To confirm emptying buckets, type exact bucket names '${expectedConfirmPhrase}' (or press Enter to skip): `,
+        )
+      ).trim();
+
+      if (
+        answer !== expectedConfirmPhrase &&
+        answer !== `${previewsBucket} ${privateBucket}`
+      ) {
+        console.log(
+          "🛡️  Cloud storage cleanup declined by user. Buckets left untouched.",
+        );
+        return "declined";
+      }
+    } finally {
+      rl.close();
+    }
+  } else {
+    const confirmStorageFlag = process.argv.find((arg) =>
+      arg.startsWith("--confirm-storage="),
+    );
+    const confirmVal = confirmStorageFlag
+      ? confirmStorageFlag.split("=")[1]?.trim()
+      : process.env.CONFIRM_STORAGE?.trim();
+
+    if (
+      confirmVal !== expectedConfirmPhrase &&
+      confirmVal !== `${previewsBucket} ${privateBucket}`
+    ) {
+      console.log(
+        "🛡️  Cloud storage cleanup skipped in non-interactive mode (no explicit --confirm-storage). Buckets left untouched.",
+      );
+      return "declined";
+    }
+  }
+
+  // Execute deletion
+  console.log("🧹  Emptying cloud storage buckets...");
+  if (s3Client) {
+    const { ListObjectsV2Command, DeleteObjectsCommand } =
+      await import("@aws-sdk/client-s3");
+    for (const bucket of buckets) {
+      let token: string | undefined = undefined;
+      do {
+        const listRes: any = await s3Client.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            ContinuationToken: token,
+          }),
+        );
+        if (listRes.Contents && listRes.Contents.length > 0) {
+          await s3Client.send(
+            new DeleteObjectsCommand({
+              Bucket: bucket,
+              Delete: {
+                Objects: listRes.Contents.map((obj: any) => ({
+                  Key: obj.Key!,
+                })),
+                Quiet: true,
+              },
+            }),
+          );
+        }
+        token = listRes.NextContinuationToken;
+      } while (token);
+    }
+  }
+
+  if (supabaseClient) {
+    for (const bucket of buckets) {
+      await supabaseClient.storage.emptyBucket(bucket).catch(() => {});
+    }
+  }
+
+  console.log(`✅ Emptied cloud storage buckets: ${buckets.join(", ")}.`);
+  return "cleaned";
+}
+
+export interface SeedSummary {
+  organizations: number;
+  categories: number;
+  heroImages: number;
+  banners: number;
+}
+
+export async function seedOrganization(client: pg.Client): Promise<number> {
+  console.log("🌱 Seeding organization configuration from organizations.ts...");
+  await client.query(
+    `INSERT INTO organizations (
+       id,
+       organization_name,
+       legal_name,
+       tagline,
+       description,
+       logo_url,
+       logo_dark_url,
+       favicon_url,
+       cover_banner_url,
+       support_email,
+       contact_email,
+       support_phone,
+       support_url,
+       address_line1,
+       city,
+       state,
+       postal_code,
+       country,
+       default_currency,
+       platform_fee_percent,
+       payout_minimum,
+       social_links,
+       metadata
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+       $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+       $21, $22, $23
+     )
+     ON CONFLICT (id) DO UPDATE SET
+       organization_name = EXCLUDED.organization_name,
+       legal_name = EXCLUDED.legal_name,
+       tagline = EXCLUDED.tagline,
+       description = EXCLUDED.description,
+       support_email = EXCLUDED.support_email,
+       default_currency = EXCLUDED.default_currency,
+       updated_at = CURRENT_TIMESTAMP;`,
+    [
+      defaultOrganizationEntity.id ?? 1,
+      defaultOrganizationEntity.organization_name,
+      defaultOrganizationEntity.legal_name,
+      defaultOrganizationEntity.tagline || null,
+      defaultOrganizationEntity.description || null,
+      defaultOrganizationEntity.logo_url || null,
+      defaultOrganizationEntity.logo_dark_url || null,
+      defaultOrganizationEntity.favicon_url || null,
+      defaultOrganizationEntity.cover_banner_url || null,
+      defaultOrganizationEntity.support_email,
+      defaultOrganizationEntity.contact_email || null,
+      defaultOrganizationEntity.support_phone || null,
+      defaultOrganizationEntity.support_url || null,
+      defaultOrganizationEntity.address_line1 || null,
+      defaultOrganizationEntity.city || null,
+      defaultOrganizationEntity.state || null,
+      defaultOrganizationEntity.postal_code || null,
+      defaultOrganizationEntity.country || null,
+      defaultOrganizationEntity.default_currency || "PKR",
+      defaultOrganizationEntity.platform_fee_percent ?? 5.0,
+      defaultOrganizationEntity.payout_minimum ?? 50.0,
+      JSON.stringify(defaultOrganizationEntity.social_links ?? {}),
+      JSON.stringify(defaultOrganizationEntity.metadata ?? {}),
+    ],
+  );
+  console.log("✅ Seeded 1 organization successfully!");
+  return 1;
+}
+
+export async function seedCategories(client: pg.Client): Promise<number> {
+  console.log("🌱 Seeding digital asset categories from categories.ts...");
+  const flatCats = flattenCategories(defaultCategories);
+  const slugToIdMap = new Map<string, number>();
+
+  const maxDepth = Math.max(...flatCats.map((c) => c.depth));
+  for (let d = 0; d <= maxDepth; d++) {
+    const itemsAtDepth = flatCats.filter((c) => c.depth === d);
+    if (itemsAtDepth.length === 0) continue;
+
+    const chunkSize = 50;
+    for (let i = 0; i < itemsAtDepth.length; i += chunkSize) {
+      const chunk = itemsAtDepth.slice(i, i + chunkSize);
+      const valuePlaceholders: string[] = [];
+      const values: any[] = [];
+
+      chunk.forEach((cat, idx) => {
+        const parentId = cat.parentSlug
+          ? (slugToIdMap.get(cat.parentSlug) ?? null)
+          : null;
+        const offset = idx * 8;
+        valuePlaceholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}::jsonb)`,
+        );
+        values.push(
+          parentId,
+          cat.name,
+          cat.slug,
+          cat.depth,
+          cat.fullPath,
+          i + idx + 1,
+          true,
+          JSON.stringify({ pathSlugs: cat.pathSlugs }),
+        );
+      });
+
+      const insertCategoriesQuery = `
+        INSERT INTO categories (
+          parent_id,
+          name,
+          slug,
+          depth,
+          path,
+          display_order,
+          is_active,
+          metadata
+        ) VALUES ${valuePlaceholders.join(", ")}
+        ON CONFLICT (slug) DO UPDATE SET
+          parent_id = EXCLUDED.parent_id,
+          name = EXCLUDED.name,
+          depth = EXCLUDED.depth,
+          path = EXCLUDED.path,
+          display_order = EXCLUDED.display_order,
+          is_active = EXCLUDED.is_active,
+          metadata = EXCLUDED.metadata,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING id, slug;
+      `;
+
+      const result = await client.query(insertCategoriesQuery, values);
+      for (const row of result.rows) {
+        slugToIdMap.set(row.slug, row.id);
+      }
+    }
+  }
+  console.log(
+    `✅ Seeded ${slugToIdMap.size} digital asset categories successfully!`,
+  );
+  return slugToIdMap.size;
+}
+
+export async function seedHeroImages(client: pg.Client): Promise<number> {
+  console.log("🌱 Seeding hero showcase images from hero-images.ts...");
+  let count = 0;
+  for (const img of defaultHeroImages) {
+    await client.query(
+      `INSERT INTO hero_images (
+          id,
+          title,
+          subtitle,
+          detail,
+          category_name,
+          category_slug,
+          image_url,
+          storage_key,
+          sort_order,
+          is_active,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (id) DO UPDATE SET
+          title = EXCLUDED.title,
+          subtitle = EXCLUDED.subtitle,
+          detail = EXCLUDED.detail,
+          category_name = EXCLUDED.category_name,
+          category_slug = EXCLUDED.category_slug,
+          image_url = EXCLUDED.image_url,
+          storage_key = EXCLUDED.storage_key,
+          sort_order = EXCLUDED.sort_order,
+          is_active = EXCLUDED.is_active,
+          updated_at = CURRENT_TIMESTAMP;`,
+      [
+        img.id,
+        img.title,
+        img.subtitle ?? null,
+        img.detail ?? null,
+        img.categoryName ?? null,
+        img.categorySlug ?? null,
+        img.imageUrl,
+        img.storageKey ?? null,
+        img.sortOrder,
+        img.isActive,
+        img.createdAt,
+        img.updatedAt,
+      ],
+    );
+    count++;
+  }
+  console.log(`✅ Seeded ${count} hero showcase images successfully!`);
+  return count;
+}
+
+export async function seedBanners(client: pg.Client): Promise<number> {
+  console.log("🌱 Seeding promotional banners from banners.ts...");
+  let count = 0;
+  for (const banner of defaultBanners) {
+    await client.query(
+      `INSERT INTO banners (
+          id,
+          title,
+          description,
+          supporting_text,
+          badge_type,
+          cta_label,
+          cta_url,
+          show_cta,
+          is_dismissible,
+          appearance,
+          priority,
+          is_active,
+          starts_at,
+          ends_at,
+          timezone,
+          created_by,
+          created_at,
+          updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17, $18
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          title = EXCLUDED.title,
+          description = EXCLUDED.description,
+          supporting_text = EXCLUDED.supporting_text,
+          badge_type = EXCLUDED.badge_type,
+          cta_label = EXCLUDED.cta_label,
+          cta_url = EXCLUDED.cta_url,
+          show_cta = EXCLUDED.show_cta,
+          is_dismissible = EXCLUDED.is_dismissible,
+          appearance = EXCLUDED.appearance,
+          priority = EXCLUDED.priority,
+          is_active = EXCLUDED.is_active,
+          starts_at = EXCLUDED.starts_at,
+          ends_at = EXCLUDED.ends_at,
+          timezone = EXCLUDED.timezone,
+          created_by = EXCLUDED.created_by,
+          updated_at = CURRENT_TIMESTAMP;`,
+      [
+        banner.id,
+        banner.title,
+        banner.description ?? null,
+        banner.supporting_text ?? banner.supportingText ?? null,
+        banner.badge_type ?? banner.badgeType ?? "special_offer",
+        banner.cta_label ?? banner.ctaLabel ?? null,
+        banner.cta_url ?? banner.ctaUrl ?? null,
+        banner.show_cta ?? banner.showCta ?? true,
+        banner.is_dismissible ?? banner.isDismissible ?? true,
+        banner.appearance ?? "primary",
+        banner.priority ?? 0,
+        banner.is_active ?? banner.isActive ?? false,
+        banner.starts_at ?? banner.startsAt ?? null,
+        banner.ends_at ?? banner.endsAt ?? null,
+        banner.timezone ?? "UTC",
+        banner.created_by ?? banner.createdBy ?? null,
+        banner.created_at ?? banner.createdAt ?? new Date().toISOString(),
+        banner.updated_at ?? banner.updatedAt ?? new Date().toISOString(),
+      ],
+    );
+    count++;
+  }
+  console.log(`✅ Seeded ${count} promotional banners successfully!`);
+  return count;
+}
+
+export async function seedAll(client: pg.Client): Promise<SeedSummary> {
+  const orgCount = await seedOrganization(client);
+  const catCount = await seedCategories(client);
+  const heroCount = await seedHeroImages(client);
+  const bannerCount = await seedBanners(client);
+  return {
+    organizations: orgCount,
+    categories: catCount,
+    heroImages: heroCount,
+    banners: bannerCount,
+  };
+}
+
+export function printSummaryBox(summary: {
+  targetDbName: string;
+  host: string;
+  port: string;
+  isCloudDb: boolean;
+  mode: "LIVE" | "DRY-RUN";
+  backupPath: string | null;
+  backupVerified: boolean;
+  backupTableCount?: number;
+  backupSizeBytes?: number;
+  tablesVerified: number;
+  seeds: SeedSummary;
+  storageStatus: "cleaned" | "skipped" | "declined" | "not applicable";
+  result: "SUCCESS" | "DRY-RUN" | "DECLINED" | "FAILED";
+}): void {
+  console.log("\n=======================================================");
+  console.log("                   RESET SUMMARY                       ");
+  console.log("=======================================================");
+  console.log(
+    `  Target Database: ${summary.targetDbName} (${summary.isCloudDb ? "🔴 LIVE / CLOUD DATABASE" : "🟢 LOCAL DATABASE"})`,
+  );
+  console.log(`  Host:            ${summary.host}:${summary.port}`);
+  console.log(
+    `  Execution Mode:  ${summary.mode === "DRY-RUN" ? "DRY-RUN (Simulated - No changes made)" : "LIVE EXECUTION"}`,
+  );
+
+  if (summary.mode === "DRY-RUN") {
+    console.log(
+      `  Backup Action:   PLANNED (${summary.backupPath || "skipped"})`,
+    );
+    console.log(
+      `  Schema DDL:      PLANNED (22 tables, functions, triggers, rules)`,
+    );
+    console.log(`  Tables Verified: SKIPPED (Dry-Run)`);
+    console.log(
+      `  Rows Seeded:     PLANNED (Organizations: 1, Categories: 296, Hero Images: 15, Banners: 3)`,
+    );
+  } else {
+    const backupDesc = summary.backupPath
+      ? `${path.basename(summary.backupPath)} (Verified: ${(Number(summary.backupSizeBytes || 0) / 1024).toFixed(1)} KB, ${summary.backupTableCount || 0} tables)`
+      : "None / Skipped";
+    console.log(`  Backup:          ${backupDesc}`);
+    console.log(`  Schema DDL:      Applied successfully`);
+    console.log(
+      `  Tables Created:  ${summary.tablesVerified} tables verified in 'public' schema`,
+    );
+    console.log(
+      `  Rows Seeded:     Organizations (${summary.seeds.organizations}), Categories (${summary.seeds.categories}), Hero Images (${summary.seeds.heroImages}), Banners (${summary.seeds.banners})`,
+    );
+  }
+  console.log(`  Storage Status:  ${summary.storageStatus.toUpperCase()}`);
+  console.log(`  Result:          ${summary.result}`);
+  console.log("=======================================================\n");
 }
 
 async function promptTargetDatabase(): Promise<string> {
   const localUrl =
     process.env.LOCAL_DATABASE_URL ||
-    (process.env.DATABASE_URL && !isSslRequired(process.env.DATABASE_URL) ? process.env.DATABASE_URL : undefined) ||
+    (process.env.DATABASE_URL && !isSslRequired(process.env.DATABASE_URL)
+      ? process.env.DATABASE_URL
+      : undefined) ||
     "postgresql://postgres:P%40ssw0rd@localhost:5432/sell_digital_assets";
-  const liveUrl = process.env.PROD_DATABASE_URL || (isSslRequired(process.env.DATABASE_URL || "") ? process.env.DATABASE_URL : undefined);
+  const liveUrl =
+    process.env.PROD_DATABASE_URL ||
+    (isSslRequired(process.env.DATABASE_URL || "")
+      ? process.env.DATABASE_URL
+      : undefined);
 
   // Command-line flag shortcuts (for scripting or automated environments)
   if (process.argv.includes("--local") || process.argv.includes("-1")) {
@@ -1091,12 +2033,6 @@ async function promptTargetDatabase(): Promise<string> {
     if (!liveUrl) {
       console.error(
         "❌ Error: PROD_DATABASE_URL environment variable is missing for live database.",
-      );
-      process.exit(1);
-    }
-    if (process.env.ALLOW_LIVE_DB_RESET !== "true") {
-      console.error(
-        "🛑 SAFEGUARD BLOCKED: Resetting the live database via CLI flags requires ALLOW_LIVE_DB_RESET=true.",
       );
       process.exit(1);
     }
@@ -1114,8 +2050,12 @@ async function promptTargetDatabase(): Promise<string> {
       console.log("\n=======================================================");
       console.log("             DATABASE RESET UTILITY                   ");
       console.log("=======================================================");
-      console.log("  [1] Local Database (localhost:5432/sell_digital_assets) [SAFE]");
-      console.log("  [2] Live Database  (Supabase / Cloud) [PRODUCTION - DANGEROUS]");
+      console.log(
+        "  [1] Local Database (localhost:5432/sell_digital_assets) [SAFE]",
+      );
+      console.log(
+        "  [2] Live Database  (Supabase / Cloud) [PRODUCTION - DANGEROUS]",
+      );
       console.log("=======================================================");
 
       while (true) {
@@ -1132,19 +2072,11 @@ async function promptTargetDatabase(): Promise<string> {
             );
             process.exit(1);
           }
-
-          console.log("\n⚠️  DANGER: You selected the LIVE / PRODUCTION CLOUD database!");
-          const confirmText = (
-            await rl.question("Type 'CONFIRM RESET PRODUCTION' to proceed or anything else to cancel: ")
-          ).trim();
-
-          if (confirmText !== "CONFIRM RESET PRODUCTION") {
-            console.log("🛡️  Reset of live database cancelled by user.");
-            process.exit(0);
-          }
           return liveUrl;
         }
-        console.log("⚠️  Invalid option. Please enter '1' for Local or '2' for Live.");
+        console.log(
+          "⚠️  Invalid option. Please enter '1' for Local or '2' for Live.",
+        );
       }
     } finally {
       rl.close();
@@ -1156,6 +2088,12 @@ async function promptTargetDatabase(): Promise<string> {
 }
 
 export async function resetDatabase(): Promise<void> {
+  const isDryRun =
+    process.argv.includes("--dry-run") || process.env.DRY_RUN === "true";
+  const skipStorage =
+    process.argv.includes("--skip-storage") ||
+    process.env.SKIP_STORAGE === "true";
+
   const databaseUrl = await promptTargetDatabase();
   if (!databaseUrl) {
     console.error("❌ Error: Target database URL could not be resolved");
@@ -1166,7 +2104,7 @@ export async function resetDatabase(): Promise<void> {
   try {
     parsedUrl = new URL(databaseUrl);
   } catch (err: any) {
-    console.error(`❌ Error: Invalid DATABASE_URL: ${err.message}`);
+    console.error(`❌ Error: Invalid DATABASE_URL format`);
     process.exit(1);
   }
 
@@ -1178,81 +2116,183 @@ export async function resetDatabase(): Promise<void> {
     process.exit(1);
   }
 
+  const host = parsedUrl.hostname || "localhost";
+  const port = parsedUrl.port || "5432";
   const requiresSsl = isSslRequired(databaseUrl);
-  const isCloudDb = requiresSsl;
+  const isCloudDb = requiresSsl || !isLocalDatabaseHost(host);
+  const projectRef = extractProjectRef(host, parsedUrl.username);
 
   console.log("=======================================================");
   console.log(`🎯 Target Database: ${targetDbName}`);
-  console.log(`📍 Host:            ${parsedUrl.hostname} (${isCloudDb ? "🔴 LIVE / CLOUD DATABASE" : "🟢 LOCAL DATABASE"})`);
-  console.log("=======================================================");
-
-  if (isCloudDb) {
-    console.log("⚠️  WARNING: You are resetting the LIVE / PRODUCTION CLOUD database!\n");
-  } else {
-    console.log("🟢 Running database reset on LOCAL PostgreSQL.\n");
-  }
-
-  // Step 0: Take an automated pre-drop backup of the database into the backups/ folder
-  try {
-    await backupDatabase(databaseUrl, targetDbName, isCloudDb, requiresSsl);
-  } catch (backupErr: any) {
-    console.warn(`⚠️  Database pre-drop backup encountered an issue: ${backupErr.message}`);
-  }
-
-  if (!isCloudDb) {
-    // Step 1: For local PostgreSQL, connect to maintenance database to drop and recreate the target database
-    const maintenanceUrl = new URL(databaseUrl);
-    maintenanceUrl.pathname = "/postgres";
-
-    const maintenanceClient = new Client({
-      connectionString: maintenanceUrl.toString(),
-      stream: () => createResilientSocket(),
-      lookup: resilientDnsLookup,
-    } as any);
-
-    try {
-      await maintenanceClient.connect();
-
-      console.log("🗑️  Dropping old database...");
-      const safeDbName = targetDbName.replace(/"/g, '""');
-
-      try {
-        // PostgreSQL 13+ supports WITH (FORCE) to automatically terminate active connections
-        await maintenanceClient.query(
-          `DROP DATABASE IF EXISTS "${safeDbName}" WITH (FORCE);`,
-        );
-      } catch {
-        // Fallback for older PostgreSQL versions
-        await maintenanceClient.query(
-          `SELECT pg_terminate_backend(pid)
-           FROM pg_stat_activity
-           WHERE datname = $1 AND pid <> pg_backend_pid();`,
-          [targetDbName],
-        );
-        await maintenanceClient.query(
-          `DROP DATABASE IF EXISTS "${safeDbName}";`,
-        );
-      }
-
-      console.log("📦 Creating fresh database...");
-      await maintenanceClient.query(`CREATE DATABASE "${safeDbName}";`);
-    } catch (err: any) {
-      console.warn(
-        `⚠️  Maintenance DB drop/create skipped (${err.message}). Falling back to schema reset.`,
-      );
-    } finally {
-      await maintenanceClient.end().catch(() => {});
-    }
-  } else {
+  console.log(
+    `📍 Host:            ${host}:${port} (${isCloudDb ? "🔴 LIVE / CLOUD DATABASE" : "🟢 LOCAL DATABASE"})`,
+  );
+  console.log(
+    `🔌 Mode:            ${port === "5432" ? "Session Pooler / Direct (Port 5432)" : `Port ${port}`}`,
+  );
+  if (isDryRun) {
     console.log(
-      "☁️  Cloud / Managed Database detected: Performing clean schema reset...",
+      "🔎 Execution:       DRY-RUN SIMULATION (No database connections or modifications)",
     );
   }
+  console.log("=======================================================");
 
-  // Step 2: Connect to the target database and execute the schema DDL in a transaction
+  // Protect live connections against transaction-pooler port 6543
+  try {
+    validateConnectionPort(port, isCloudDb);
+  } catch (portErr: any) {
+    console.error(`\n${portErr.message}\n`);
+    process.exit(1);
+  }
+
+  // Strengthened production authorization
+  let confirmedByCode = false;
+  if (isCloudDb) {
+    try {
+      const authResult = await verifyProductionAuthorization({
+        host,
+        projectRef,
+        isInteractive: process.stdin.isTTY,
+        isDryRun,
+      });
+      confirmedByCode = authResult?.confirmedByCode ?? false;
+    } catch (authErr: any) {
+      console.error(`\n${authErr.message}\n`);
+      process.exit(1);
+    }
+  }
+
+  // DRY RUN BRANCH
+  if (isDryRun) {
+    const plannedTimestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const plannedBackup = path.join(
+      getBackupsDir(),
+      `${targetDbName}_backup_${plannedTimestamp}.sql`,
+    );
+
+    console.log("\n[DRY-RUN] Planned Actions (NOT EXECUTED):");
+    console.log(
+      `  1. [BACKUP]  Would dump '${targetDbName}' to '${plannedBackup}' (using ${isCloudDb ? "pg_dump --schema=public" : "pg_dump"}) [NOT EXECUTED]`,
+    );
+    console.log(
+      `  2. [SCHEMA]  Would ${isCloudDb ? "reset 'public' schema via DROP/CREATE SCHEMA public" : `drop and recreate local database '${targetDbName}'`} [NOT EXECUTED]`,
+    );
+    console.log(
+      "  3. [DDL]     Would execute SCHEMA_SQL (22 tables, citext, pgcrypto, uuid-ossp, timestamp triggers, truncate protections, adaptive grants) [NOT EXECUTED]",
+    );
+    console.log(
+      "  4. [SEED]    Would seed Organizations (1), Categories (296), Hero Images (15), Banners (3) [NOT EXECUTED]",
+    );
+    if (isCloudDb) {
+      console.log(
+        "  5. [STORAGE] Would inspect cloud storage buckets and prompt for opt-in confirmation [NOT EXECUTED]",
+      );
+      console.log(
+        "  6. [AUTH]    ⚠️  Notice: Supabase auth.users accounts are not reset and may become orphaned. (--reset-auth-users reserved) [NOT EXECUTED]",
+      );
+    } else {
+      console.log(
+        "  5. [STORAGE] Would empty local storage directory [NOT EXECUTED]",
+      );
+    }
+
+    printSummaryBox({
+      targetDbName,
+      host,
+      port,
+      isCloudDb,
+      mode: "DRY-RUN",
+      backupPath: plannedBackup,
+      backupVerified: false,
+      tablesVerified: 22,
+      seeds: { organizations: 1, categories: 296, heroImages: 15, banners: 3 },
+      storageStatus: "skipped",
+      result: "DRY-RUN",
+    });
+    return;
+  }
+
+  // REAL EXECUTION (Local or Confirmed Live)
+  let currentStep = "Initialization";
+  let activeBackupPath: string | null = null;
+  let backupMeta = { tableCount: 0, sizeBytes: 0 };
   let targetClient: any = null;
 
   try {
+    // Step 0: Take an automated verified pre-drop backup
+    currentStep = "Database Backup";
+    const backupRes = await backupDatabase(
+      databaseUrl,
+      targetDbName,
+      isCloudDb,
+      requiresSsl,
+    );
+    activeBackupPath = backupRes.backupFilePath;
+    backupMeta = {
+      tableCount: backupRes.tableCount,
+      sizeBytes: backupRes.sizeBytes,
+    };
+
+    if (!isCloudDb) {
+      // Local PostgreSQL: connect to maintenance database to terminate connections and drop/create target database
+      currentStep = "Local Database Drop and Recreation";
+      const maintenanceUrl = new URL(databaseUrl);
+      maintenanceUrl.pathname = "/postgres";
+
+      const maintenanceClient = new Client({
+        connectionString: maintenanceUrl.toString(),
+        stream: () => createResilientSocket(),
+        lookup: resilientDnsLookup,
+      } as any);
+
+      try {
+        await maintenanceClient.connect();
+
+        console.log(
+          "🗑️  Terminating active connections and dropping old database...",
+        );
+        const safeDbName = targetDbName.replace(/"/g, '""');
+
+        // Always terminate active connections before drop
+        await maintenanceClient
+          .query(
+            `SELECT pg_terminate_backend(pid)
+           FROM pg_stat_activity
+           WHERE datname = $1 AND pid <> pg_backend_pid();`,
+            [targetDbName],
+          )
+          .catch(() => {});
+
+        try {
+          await maintenanceClient.query(
+            `DROP DATABASE IF EXISTS "${safeDbName}" WITH (FORCE);`,
+          );
+        } catch {
+          await maintenanceClient.query(
+            `DROP DATABASE IF EXISTS "${safeDbName}";`,
+          );
+        }
+
+        console.log("📦 Creating fresh database...");
+        await maintenanceClient.query(`CREATE DATABASE "${safeDbName}";`);
+      } catch (err: any) {
+        console.warn(
+          `⚠️  Maintenance DB drop/create skipped (${err.message}). Falling back to schema reset.`,
+        );
+      } finally {
+        await maintenanceClient.end().catch(() => {});
+      }
+    } else {
+      console.log(
+        "☁️  Cloud / Managed Database detected: Performing clean 'public' schema reset...",
+      );
+    }
+
+    // Connect to the target database and execute the schema DDL in a transaction
+    currentStep = "Target Database Connection";
     for (let attempt = 1; attempt <= 3; attempt++) {
       targetClient = new Client({
         connectionString: databaseUrl,
@@ -1268,7 +2308,9 @@ export async function resetDatabase(): Promise<void> {
         await targetClient.end().catch(() => {});
         targetClient = null;
         if (attempt < 3) {
-          console.warn(`⚠️  Database connection attempt ${attempt} failed (${connErr.message}). Retrying in 2s...`);
+          console.warn(
+            `⚠️  Database connection attempt ${attempt} failed (${connErr.message}). Retrying in 2s...`,
+          );
           await new Promise((r) => setTimeout(r, 2000));
         } else {
           throw connErr;
@@ -1281,332 +2323,97 @@ export async function resetDatabase(): Promise<void> {
     }
 
     if (isCloudDb) {
+      currentStep = "Cloud Schema Reset";
       await targetClient.query(
         "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER;",
       );
     }
 
+    currentStep = "Applying Schema DDL";
     console.log("🔨 Applying schema and tables...");
+    console.log("  ↳ Step 1: Extensions (citext, pgcrypto, uuid-ossp)");
+    console.log(
+      "  ↳ Step 2: Timestamp update & singleton truncate protection functions",
+    );
+    console.log("  ↳ Step 3: Core persistence tables, views, and indexes");
+    console.log(
+      "  ↳ Step 4: Role-adaptive schema grants and default privileges",
+    );
+
     await targetClient.query("BEGIN");
-    try {
-      await targetClient.query(SCHEMA_SQL);
+    await targetClient.query(SCHEMA_SQL);
 
-      // Dynamically insert organization initial seed from organizations.ts with parameterized query
-      await targetClient.query(
-        `INSERT INTO organizations (
-           id,
-           organization_name,
-           legal_name,
-           tagline,
-           description,
-           logo_url,
-           logo_dark_url,
-           favicon_url,
-           cover_banner_url,
-           support_email,
-           contact_email,
-           support_phone,
-           support_url,
-           address_line1,
-           city,
-           state,
-           postal_code,
-           country,
-           default_currency,
-           platform_fee_percent,
-           payout_minimum,
-           social_links,
-           metadata
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-           $21, $22, $23
-         )
-         ON CONFLICT (id) DO NOTHING;`,
-        [
-          defaultOrganizationEntity.id ?? 1,
-          defaultOrganizationEntity.organization_name,
-          defaultOrganizationEntity.legal_name,
-          defaultOrganizationEntity.tagline || null,
-          defaultOrganizationEntity.description || null,
-          defaultOrganizationEntity.logo_url || null,
-          defaultOrganizationEntity.logo_dark_url || null,
-          defaultOrganizationEntity.favicon_url || null,
-          defaultOrganizationEntity.cover_banner_url || null,
-          defaultOrganizationEntity.support_email,
-          defaultOrganizationEntity.contact_email || null,
-          defaultOrganizationEntity.support_phone || null,
-          defaultOrganizationEntity.support_url || null,
-          defaultOrganizationEntity.address_line1 || null,
-          defaultOrganizationEntity.city || null,
-          defaultOrganizationEntity.state || null,
-          defaultOrganizationEntity.postal_code || null,
-          defaultOrganizationEntity.country || null,
-          defaultOrganizationEntity.default_currency || "PKR",
-          defaultOrganizationEntity.platform_fee_percent ?? 5.0,
-          defaultOrganizationEntity.payout_minimum ?? 50.0,
-          JSON.stringify(defaultOrganizationEntity.social_links ?? {}),
-          JSON.stringify(defaultOrganizationEntity.metadata ?? {}),
-        ],
+    currentStep = "Seeding Initial Data";
+    const seedResults = await seedAll(targetClient);
+
+    await targetClient.query("COMMIT");
+    console.log(
+      "✅ Schema applied successfully (seed data only, no mock data).",
+    );
+
+    // Verify resulting table count in 'public' schema
+    const tablesCheck = await targetClient.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;",
+    );
+    const tableNames: string[] = tablesCheck.rows.map((r: any) => r.table_name);
+    console.log(
+      `📊 Verified ${tableNames.length} tables in 'public' schema: ${tableNames.join(", ")}`,
+    );
+
+    // Storage cleanup phase
+    currentStep = "Storage Cleanup";
+    let storageStatus: "cleaned" | "skipped" | "declined" | "not applicable";
+    if (isCloudDb) {
+      console.log(
+        "\n⚠️  Notice: Supabase auth.users accounts are not reset and may become orphaned. (--reset-auth-users flag is reserved; deletion from auth schema requires verified requirements and separate review).",
       );
-
-      // Dynamically seed digital asset categories from categories.ts
-      console.log("🌱 Seeding digital asset categories from categories.ts...");
-      const flatCats = flattenCategories(defaultCategories);
-      const slugToIdMap = new Map<string, number>();
-
-      const maxDepth = Math.max(...flatCats.map((c) => c.depth));
-      for (let d = 0; d <= maxDepth; d++) {
-        const itemsAtDepth = flatCats.filter((c) => c.depth === d);
-        if (itemsAtDepth.length === 0) continue;
-
-        const chunkSize = 50;
-        for (let i = 0; i < itemsAtDepth.length; i += chunkSize) {
-          const chunk = itemsAtDepth.slice(i, i + chunkSize);
-          const valuePlaceholders: string[] = [];
-          const values: any[] = [];
-
-          chunk.forEach((cat, idx) => {
-            const parentId = cat.parentSlug
-              ? (slugToIdMap.get(cat.parentSlug) ?? null)
-              : null;
-            const offset = idx * 8;
-            valuePlaceholders.push(
-              `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}::jsonb)`,
-            );
-            values.push(
-              parentId,
-              cat.name,
-              cat.slug,
-              cat.depth,
-              cat.fullPath,
-              i + idx + 1,
-              true,
-              JSON.stringify({ pathSlugs: cat.pathSlugs }),
-            );
-          });
-
-          const insertCategoriesQuery = `
-            INSERT INTO categories (
-              parent_id,
-              name,
-              slug,
-              depth,
-              path,
-              display_order,
-              is_active,
-              metadata
-            ) VALUES ${valuePlaceholders.join(", ")}
-            ON CONFLICT (slug) DO UPDATE SET
-              parent_id = EXCLUDED.parent_id,
-              name = EXCLUDED.name,
-              depth = EXCLUDED.depth,
-              path = EXCLUDED.path,
-              display_order = EXCLUDED.display_order,
-              is_active = EXCLUDED.is_active,
-              metadata = EXCLUDED.metadata,
-              updated_at = CURRENT_TIMESTAMP
-            RETURNING id, slug;
-          `;
-
-          const result = await targetClient.query(
-            insertCategoriesQuery,
-            values,
-          );
-          for (const row of result.rows) {
-            slugToIdMap.set(row.slug, row.id);
-          }
-        }
-      }
-      console.log(`✅ Seeded ${slugToIdMap.size} digital asset categories successfully!`);
-
-      // Dynamically seed Hero Showcase Images from hero-images.ts
-      console.log("🌱 Seeding Hero Showcase Images from hero-images.ts...");
-      let heroSeededCount = 0;
-      for (const img of defaultHeroImages) {
-        await targetClient.query(
-          `INSERT INTO hero_images (
-              id,
-              title,
-              subtitle,
-              detail,
-              category_name,
-              category_slug,
-              image_url,
-              storage_key,
-              sort_order,
-              is_active,
-              created_at,
-              updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (id) DO UPDATE SET
-              title = EXCLUDED.title,
-              subtitle = EXCLUDED.subtitle,
-              detail = EXCLUDED.detail,
-              category_name = EXCLUDED.category_name,
-              category_slug = EXCLUDED.category_slug,
-              image_url = EXCLUDED.image_url,
-              storage_key = EXCLUDED.storage_key,
-              sort_order = EXCLUDED.sort_order,
-              is_active = EXCLUDED.is_active,
-              updated_at = CURRENT_TIMESTAMP`,
-          [
-            img.id,
-            img.title,
-            img.subtitle ?? null,
-            img.detail ?? null,
-            img.categoryName ?? null,
-            img.categorySlug ?? null,
-            img.imageUrl,
-            img.storageKey ?? null,
-            img.sortOrder,
-            img.isActive,
-            img.createdAt,
-            img.updatedAt,
-          ],
-        );
-        heroSeededCount++;
-      }
-      console.log(`✅ Seeded ${heroSeededCount} hero showcase images successfully!`);
-
-      await targetClient.query("COMMIT");
-      console.log("✅ Schema applied successfully with ZERO mock data!");
-
-      if (isCloudDb) {
-        // If Supabase API credentials are configured, ensure and empty buckets via Supabase Storage API
-        if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          try {
-            const { createClient } = await import("@supabase/supabase-js");
-            const supabase = createClient(
-              process.env.SUPABASE_URL,
-              process.env.SUPABASE_SERVICE_ROLE_KEY,
-              { auth: { autoRefreshToken: false, persistSession: false } }
-            );
-
-            const { error: prevErr } = await supabase.storage.createBucket("sell-digital-assets-storage-previews", {
-              public: true,
-              fileSizeLimit: 10485760,
-              allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
-            });
-            if (prevErr && prevErr.message?.toLowerCase().includes("already exists")) {
-              await supabase.storage.updateBucket("sell-digital-assets-storage-previews", {
-                public: true,
-                fileSizeLimit: 10485760,
-                allowedMimeTypes: ["image/webp", "image/png", "image/jpeg"],
-              }).catch(() => {});
-            }
-
-            const { error: privErr } = await supabase.storage.createBucket("sell-digital-assets-storage-private", {
-              public: false,
-              fileSizeLimit: 524288000,
-            });
-            if (privErr && privErr.message?.toLowerCase().includes("already exists")) {
-              await supabase.storage.updateBucket("sell-digital-assets-storage-private", {
-                public: false,
-                fileSizeLimit: 524288000,
-              }).catch(() => {});
-            }
-
-            // Empty both buckets via Supabase Storage API
-            await supabase.storage.emptyBucket("sell-digital-assets-storage-previews").catch(() => {});
-            await supabase.storage.emptyBucket("sell-digital-assets-storage-private").catch(() => {});
-
-            console.log("🪣  Verified and emptied Supabase Storage buckets: sell-digital-assets-storage-previews (public) and sell-digital-assets-storage-private (private)");
-          } catch {
-            // If network error or bucket already exists, proceed smoothly
-          }
-        }
-
-        // If S3 credentials are configured (e.g. Supabase S3 storage), also empty both buckets via S3 API
-        if (
-          process.env.AWS_ENDPOINT &&
-          process.env.AWS_ACCESS_KEY_ID &&
-          process.env.AWS_SECRET_ACCESS_KEY
-        ) {
-          try {
-            const { S3Client, ListObjectsV2Command, DeleteObjectsCommand } = await import("@aws-sdk/client-s3");
-            const s3 = new S3Client({
-              region: process.env.AWS_REGION || "auto",
-              endpoint: process.env.AWS_ENDPOINT,
-              forcePathStyle: true,
-              credentials: {
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-              },
-            });
-
-            const buckets = [
-              process.env.AWS_BUCKET_PREVIEWS || "sell-digital-assets-storage-previews",
-              process.env.AWS_BUCKET_PRIVATE || "sell-digital-assets-storage-private",
-            ];
-
-            for (const bucket of buckets) {
-              let continuationToken: string | undefined = undefined;
-              do {
-                const listRes: any = await s3.send(
-                  new ListObjectsV2Command({
-                    Bucket: bucket,
-                    ContinuationToken: continuationToken,
-                  })
-                );
-                if (listRes.Contents && listRes.Contents.length > 0) {
-                  await s3.send(
-                    new DeleteObjectsCommand({
-                      Bucket: bucket,
-                      Delete: {
-                        Objects: listRes.Contents.map((obj: any) => ({ Key: obj.Key! })),
-                        Quiet: true,
-                      },
-                    })
-                  );
-                }
-                continuationToken = listRes.NextContinuationToken;
-              } while (continuationToken);
-            }
-            console.log("🧹  Emptied storage buckets via S3 API: sell-digital-assets-storage-previews and sell-digital-assets-storage-private");
-          } catch {
-            // If S3 bucket empty fails or offline, continue smoothly
-          }
-        }
-      } else {
-        console.log(
-          "🔒 Local database reset: Skipping remote cloud storage bucket cleanup (Supabase / S3 buckets preserved).",
-        );
-      }
-
-      // Also empty local storage directory if local driver is used
-      if (process.env.STORAGE_DRIVER === "local" || !process.env.STORAGE_DRIVER) {
-        const localPath =
-          process.env.LOCAL_STORAGE_PATH ||
-          (process.platform === "win32"
-            ? "C:\\GH\\sell-digital-assets-storage"
-            : "./storage");
-        if (fs.existsSync(localPath)) {
-          try {
-            const files = fs.readdirSync(localPath);
-            for (const file of files) {
-              fs.rmSync(path.join(localPath, file), { recursive: true, force: true });
-            }
-            console.log(`🧹  Emptied local storage directory: ${localPath}`);
-          } catch {
-            // ignore
-          }
-        }
-      }
-    } catch (schemaErr: any) {
-      await targetClient.query("ROLLBACK").catch(() => {});
-      throw schemaErr;
+      storageStatus = await cleanCloudStorage({
+        dryRun: false,
+        skipStorage,
+        isInteractive: process.stdin.isTTY,
+        autoConfirm: confirmedByCode,
+      });
+    } else {
+      console.log(
+        "🔒 Local database reset: Cleaning local storage directory...",
+      );
+      storageStatus = await cleanLocalStorage(false, skipStorage);
     }
+
+    printSummaryBox({
+      targetDbName,
+      host,
+      port,
+      isCloudDb,
+      mode: "LIVE",
+      backupPath: activeBackupPath,
+      backupVerified: true,
+      backupTableCount: backupMeta.tableCount,
+      backupSizeBytes: backupMeta.sizeBytes,
+      tablesVerified: tableNames.length,
+      seeds: seedResults,
+      storageStatus,
+      result: "SUCCESS",
+    });
+
+    console.log("🎉 Database reset & schema build complete!");
   } catch (err: any) {
-    console.error(`❌ Error: ${err.message}`);
+    if (targetClient) {
+      await targetClient.query("ROLLBACK").catch(() => {});
+    }
+    console.error(`\n❌ Error during step [${currentStep}]: ${err.message}`);
+    if (activeBackupPath && fs.existsSync(activeBackupPath)) {
+      console.log(`💾 Pre-drop Backup Available: ${activeBackupPath}`);
+      console.log(
+        `🔄 Recovery Hint: psql -h ${host} -p ${port} -U ${parsedUrl.username || "postgres"} -d "${targetDbName}" -f "${activeBackupPath}"`,
+      );
+    }
     process.exit(1);
   } finally {
     if (targetClient) {
       await targetClient.end().catch(() => {});
     }
   }
-
-  console.log("🎉 Database reset & schema build complete!");
 }
 
 function isDirectExecution(): boolean {

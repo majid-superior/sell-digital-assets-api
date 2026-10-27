@@ -1,6 +1,15 @@
 import { BaseRepository } from "./base.repository.js";
 import { invalidateAuthUserCache } from "../../core/middleware/auth.middleware.js";
 
+export interface RoleEntity {
+  id: number;
+  name: string;
+  slug: string;
+  scope: string;
+  description: string;
+  allow_public_signup?: boolean;
+}
+
 export interface UserEntity {
   id: string;
   role_id: number;
@@ -260,6 +269,16 @@ export class UserRepository extends BaseRepository<UserEntity> {
     return result.rows;
   }
 
+  async findStoreRoles(): Promise<RoleEntity[]> {
+    const result = await this.query<RoleEntity>(
+      `SELECT id, name, slug, scope, description, allow_public_signup
+       FROM roles
+       WHERE scope = 'SELLER_STORE'
+       ORDER BY id ASC`,
+    );
+    return result.rows;
+  }
+
   async updateLastSignIn(id: string): Promise<void> {
     await this.query(
       "UPDATE users SET last_login_at = CURRENT_TIMESTAMP, failed_login_attempts = 0, locked_until = NULL WHERE id = $1",
@@ -299,6 +318,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
       status?: string | undefined;
       role?: string | number | undefined;
       roleId?: number | undefined;
+      parentSellerId?: string | null | undefined;
       url?: string | undefined;
       allowedPermissions?: string[] | Record<string, unknown> | undefined;
       isActive?: boolean | undefined;
@@ -331,6 +351,10 @@ export class UserRepository extends BaseRepository<UserEntity> {
     } else if (data.role !== undefined) {
       fields.push(`role_id = $${idx++}`);
       values.push(resolveRoleId(data.role));
+    }
+    if (data.parentSellerId !== undefined) {
+      fields.push(`parent_seller_id = $${idx++}`);
+      values.push(data.parentSellerId);
     }
     if (data.url !== undefined) {
       fields.push(`url = $${idx++}`);

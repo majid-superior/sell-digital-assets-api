@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { bannersService } from "./banners.service.js";
+import { logAuditFromReq } from "../../core/logger/audit-logger.js";
 import type {
   BannerIdParamInput,
   BannerQueryInput,
@@ -90,6 +91,18 @@ export class BannersController {
       const userId = req.user?.id ?? null;
       const banner = await bannersService.createBanner(body, userId);
 
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "admin",
+        action: "banner.create",
+        source: "banners",
+        target_id: banner.id,
+        target_type: "banner",
+        outcome: "success",
+        message: `Promotional banner "${banner.title}" created`,
+        metadata: { badgeType: banner.badge_type, priority: banner.priority },
+      }).catch(() => {});
+
       res.status(201).json({
         success: true,
         message: "Promotional banner created successfully",
@@ -112,6 +125,18 @@ export class BannersController {
       const { id } = req.params as unknown as BannerIdParamInput;
       const body = req.body as UpdateBannerInput;
       const banner = await bannersService.updateBanner(id, body);
+
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "admin",
+        action: "banner.update",
+        source: "banners",
+        target_id: id,
+        target_type: "banner",
+        outcome: "success",
+        message: `Promotional banner "${banner.title}" updated`,
+        metadata: { updatedFields: Object.keys(body) },
+      }).catch(() => {});
 
       res.status(200).json({
         success: true,
@@ -137,6 +162,18 @@ export class BannersController {
       const isActive = Boolean(body.isActive ?? body.is_active);
       const banner = await bannersService.toggleBannerStatus(id, isActive);
 
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "admin",
+        action: "banner.toggle_status",
+        source: "banners",
+        target_id: id,
+        target_type: "banner",
+        outcome: "success",
+        message: `Promotional banner "${banner.title}" set to ${isActive ? "active" : "inactive"}`,
+        metadata: { isActive },
+      }).catch(() => {});
+
       res.status(200).json({
         success: true,
         message: isActive
@@ -160,6 +197,17 @@ export class BannersController {
     try {
       const { id } = req.params as unknown as BannerIdParamInput;
       const deleted = await bannersService.deleteBanner(id);
+
+      logAuditFromReq(req, {
+        severity: "warn",
+        category: "admin",
+        action: "banner.delete",
+        source: "banners",
+        target_id: id,
+        target_type: "banner",
+        outcome: "success",
+        message: `Promotional banner ${id} deleted`,
+      }).catch(() => {});
 
       res.status(200).json({
         success: true,

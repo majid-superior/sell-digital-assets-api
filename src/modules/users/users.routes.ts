@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { usersController } from "./users.controller.js";
-import { authenticate, requireOrgAdmin, requireSellerAccess } from "../../core/middleware/auth.middleware.js";
+import {
+  authenticate,
+  requireOrgAdmin,
+  requireSellerAccess,
+  requireStoreManagementAccess,
+  requireStoreOwnerAccess,
+} from "../../core/middleware/auth.middleware.js";
 import { validateBody, validateQuery, validateParams } from "../../core/validation/validate.middleware.js";
 import {
   PaginationQuerySchema,
@@ -50,32 +56,46 @@ router.delete(
 );
 
 // ============================================================================
-// Seller Team Management Router (/api/v1/seller/team & /v1/seller/team)
+// Seller Team Management Router (/api/v1/seller/team, /api/v1/seller/users)
 // ============================================================================
 export const sellerTeamRouter = Router();
 sellerTeamRouter.use(authenticate, requireSellerAccess);
 
-// GET /api/v1/seller/team — List team members
-sellerTeamRouter.get("/", usersController.getSellerTeam.bind(usersController));
+// GET /roles — List available database store roles (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
+sellerTeamRouter.get(
+  "/roles",
+  requireStoreManagementAccess,
+  usersController.getStoreRoles.bind(usersController),
+);
 
-// POST /api/v1/seller/team — Add team member (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
+// GET / — List team members for the authenticated seller's store
+sellerTeamRouter.get(
+  "/",
+  requireStoreManagementAccess,
+  usersController.getSellerTeam.bind(usersController),
+);
+
+// POST / — Add team member (store owner / admin only)
 sellerTeamRouter.post(
   "/",
+  requireStoreOwnerAccess,
   validateBody(CreateTeamMemberSchema),
   usersController.createTeamMember.bind(usersController),
 );
 
-// PATCH /api/v1/seller/team/:id — Update team member
+// PATCH /:id — Update team member (store owner / admin only)
 sellerTeamRouter.patch(
   "/:id",
+  requireStoreOwnerAccess,
   validateParams(UuidParamSchema),
   validateBody(UpdateTeamMemberSchema),
   usersController.updateTeamMember.bind(usersController),
 );
 
-// DELETE /api/v1/seller/team/:id — Remove team member
+// DELETE /:id — Remove team member from store (store owner / admin only)
 sellerTeamRouter.delete(
   "/:id",
+  requireStoreOwnerAccess,
   validateParams(UuidParamSchema),
   usersController.deleteTeamMember.bind(usersController),
 );

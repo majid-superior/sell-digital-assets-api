@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { usersService } from "./users.service.js";
 import { AppError } from "../../core/errors/app-error.js";
+import { logAuditFromReq } from "../../core/logger/audit-logger.js";
 import type {
   PaginationQueryInput,
   UuidParamInput,
@@ -46,6 +47,21 @@ export class UsersController {
       const body = req.body as UpdateUserInput;
       const user = await usersService.updateUser(id, body, req.user?.id);
 
+      logAuditFromReq(req, {
+        severity: "info",
+        category: "admin",
+        action: "user.update",
+        source: "users",
+        target_id: id,
+        target_type: "user",
+        outcome: "success",
+        message: `User ${user.email} was updated by administrator`,
+        metadata: {
+          updatedFields: Object.keys(body).filter((k) => k !== "password"),
+          newStatus: body.status,
+        },
+      }).catch(() => {});
+
       res.status(200).json({
         success: true,
         message: "User updated successfully",
@@ -61,9 +77,32 @@ export class UsersController {
       const { id } = req.params as unknown as UuidParamInput;
       await usersService.deleteUser(id, req.user?.id);
 
+      logAuditFromReq(req, {
+        severity: "warn",
+        category: "admin",
+        action: "user.deactivate",
+        source: "users",
+        target_id: id,
+        target_type: "user",
+        outcome: "success",
+        message: `User ${id} was deactivated by administrator`,
+      }).catch(() => {});
+
       res.status(200).json({
         success: true,
         message: "User deactivated successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getStoreRoles(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const roles = await usersService.getStoreRoles();
+      res.status(200).json({
+        success: true,
+        data: roles,
       });
     } catch (error) {
       next(error);

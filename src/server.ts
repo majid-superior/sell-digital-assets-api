@@ -3,6 +3,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { checkDatabaseConnection, pool } from "./config/database.js";
 import { logger } from "./core/logger/index.js";
+import { logAudit } from "./core/logger/audit-logger.js";
 import { getOrganizationInfo } from "./data/organizations.js";
 
 const server = app.listen(env.PORT, async () => {
@@ -14,6 +15,17 @@ const server = app.listen(env.PORT, async () => {
 
   // Preload organization settings from database
   await getOrganizationInfo(true);
+
+  // Record system startup event
+  logAudit({
+    severity: "info",
+    category: "system",
+    action: "system.startup",
+    source: "server",
+    outcome: "success",
+    message: `Sell Digital Assets API server listening on port ${env.PORT} (${env.NODE_ENV})`,
+    metadata: { port: env.PORT, nodeEnv: env.NODE_ENV },
+  }).catch(() => {});
 });
 
 // Graceful Shutdown Handlers

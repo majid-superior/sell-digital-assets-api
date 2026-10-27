@@ -35,36 +35,27 @@ export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type UpdateUserStatusInput = UpdateUserInput;
 export const UpdateUserStatusSchema = UpdateUserSchema;
 
-export const CreateTeamMemberSchema = z.object({
-  name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
-  email: z.string().trim().email("Invalid email address"),
-  password: z.string().min(4, "Password must be at least 4 characters").max(128),
-  role: z.enum([
-    "STORE_MANAGER",
-    "CONTENT_UPLOADER",
-    "ANALYST",
-    "store_manager",
-    "content_uploader",
-    "analyst",
-  ]),
-  allowedPermissions: z.array(z.string()).optional().default([]),
-});
+export const CreateTeamMemberSchema = z
+  .object({
+    name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
+    email: z.string().trim().email("Invalid email address"),
+    password: z.string().min(4, "Password must be at least 4 characters").max(128),
+    role: z.string().optional(),
+    roleId: z.coerce.number().int().optional(),
+    allowedPermissions: z.array(z.string()).optional(),
+  })
+  .refine((data) => data.role !== undefined || data.roleId !== undefined, {
+    message: "A valid store role or role ID is required",
+    path: ["role"],
+  });
 
 export type CreateTeamMemberInput = z.infer<typeof CreateTeamMemberSchema>;
 
 export const UpdateTeamMemberSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
-  role: z
-    .enum([
-      "STORE_MANAGER",
-      "CONTENT_UPLOADER",
-      "ANALYST",
-      "store_manager",
-      "content_uploader",
-      "analyst",
-    ])
-    .optional(),
-  status: z.enum(["active", "suspended", "deactive"]).optional(),
+  role: z.string().optional(),
+  roleId: z.coerce.number().int().optional(),
+  status: z.enum(["active", "suspended", "deactive", "pending"]).optional(),
   allowedPermissions: z.array(z.string()).optional(),
   password: z.string().min(4).max(128).optional(),
 });
