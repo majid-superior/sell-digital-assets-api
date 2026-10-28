@@ -74,4 +74,30 @@ export const RoleIdParamSchema = z.object({
 
 export type RoleIdParamInput = z.infer<typeof RoleIdParamSchema>;
 
+export const CreateRoleSchema = z.object({
+  name: z.string().trim().min(2, "Role name must be at least 2 characters").max(50, "Role name must not exceed 50 characters"),
+  description: z.string().trim().max(255).optional(),
+  permissions: z.array(z.string().trim().min(1)).optional(),
+  reactivateIfExists: z.boolean().optional(),
+});
+
+export type CreateRoleInput = z.infer<typeof CreateRoleSchema>;
+
+export const UpdateRoleStatusSchema = z.object({
+  is_active: z.boolean({ message: "is_active boolean flag is required" }),
+});
+
+export type UpdateRoleStatusInput = z.infer<typeof UpdateRoleStatusSchema>;
+
+export const UpdatePermissionMatrixSchema = z.object({
+  matrix: z.array(
+    z.object({
+      roleId: z.coerce.number().int().positive("Invalid role ID"),
+      permissions: z.array(z.string().trim().min(1, "Permission name cannot be empty")),
+    })
+  ).min(1, "Matrix must contain at least one role permission set"),
+});
+
+export type UpdatePermissionMatrixInput = z.infer<typeof UpdatePermissionMatrixSchema>;
+
 

@@ -104,7 +104,7 @@ export const STORE_PERMISSIONS = [
 ];
 
 export const ROLE_DEFAULT_PERMISSIONS: Record<number, string[]> = {
-  // STORE_MANAGER (4)
+  // MANAGER (4)
   4: [
     "analytics:view",
     "products:view",
@@ -123,7 +123,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<number, string[]> = {
     "settings:view",
     "settings:edit",
   ],
-  // CONTENT_UPLOADER (5)
+  // USER (5)
   5: [
     "analytics:view",
     "products:view",
@@ -150,6 +150,13 @@ export async function runMigration(pool?: pg.Pool): Promise<void> {
 
   try {
     await client.query("BEGIN");
+
+    // 0. Ensure roles has is_active and normalized unique indexes
+    await client.query(`
+      ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_normalized_name ON roles (LOWER(TRIM(name)));
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_normalized_slug ON roles (LOWER(TRIM(slug)));
+    `);
 
     // 1. Create permissions table
     await client.query(`

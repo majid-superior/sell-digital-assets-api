@@ -10,8 +10,16 @@ import {
 import { AppError } from "../../core/errors/app-error.js";
 import { hashPassword } from "../../core/security/password.js";
 import { revokeAllUserTokens } from "../../core/security/tokens.js";
+import { invalidateAuthUserCache } from "../../core/middleware/auth.middleware.js";
 import { authService } from "../auth/auth.service.js";
-import type { UpdateUserInput, CreateTeamMemberInput, UpdateTeamMemberInput } from "./users.schema.js";
+import type {
+  UpdateUserInput,
+  CreateTeamMemberInput,
+  UpdateTeamMemberInput,
+  CreateRoleInput,
+  UpdateRoleStatusInput,
+  UpdatePermissionMatrixInput,
+} from "./users.schema.js";
 import { resolveRoleId } from "../../database/repositories/user.repository.js";
 
 export class UsersService {
@@ -99,25 +107,29 @@ export class UsersService {
     await revokeAllUserTokens(id);
   }
 
-  async getStoreRoles(): Promise<RoleEntity[]> {
-    return userRepository.findStoreRoles();
+  async getStoreRoles(includeInactive = false): Promise<RoleEntity[]> {
+    return userRepository.findStoreRoles(includeInactive);
   }
 
   async getPermissionsCatalog(): Promise<PermissionEntity[]> {
     return userRepository.getPermissionsCatalog();
   }
 
-  async getStoreRolePermissions(sellerId: string): Promise<
+  async getStoreRolePermissions(
+    sellerId: string,
+    includeInactive = false,
+  ): Promise<
     Array<{
       roleId: number;
       roleName: string;
       roleSlug: string;
       description: string;
+      is_active: boolean;
       isCustomized: boolean;
       permissions: string[];
     }>
   > {
-    const roles = await userRepository.findStoreRoles();
+    const roles = await userRepository.findStoreRoles(includeInactive);
     const defaults = await userRepository.getRoleDefaultPermissions();
     const sellerConfigs = await userRepository.getSellerRolePermissions(sellerId);
     const sellerConfigMap = new Map<number, string[]>();
@@ -136,10 +148,178 @@ export class UsersService {
         roleName: role.name,
         roleSlug: role.slug,
         description: role.description,
+        is_active: role.is_active !== false,
         isCustomized,
         permissions,
       };
     });
+  }
+
+  async createStoreRole(
+    sellerId: string,
+    payload: CreateRoleInput,
+  ): Promise<RoleEntity & { permissions: string[] }> {
+    const rawName = payload.name.trim();
+    if (!rawName) {
+      throw new AppError("Role name cannot be empty.", 400);
+    }
+
+    // Normalized slug derivation
+    const slug = rawName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    if (!slug) {
+      throw new AppError("Role name must contain at least one alphanumeric character.", 400);
+    }
+
+    // Step 4: Check if role with same normalized name or slug exists (active or inactive)
+    const existing = await userRepository.findRoleByNameOrSlug(rawName, slug);
+    if (existing) {
+      if (existing.is_active !== false) {
+        throw new AppError(
+          `A store role with the name '${existing.name}' already exists.`,
+          409,
+        );
+      }
+
+      // If inactive, check if reactivation was explicitly requested
+      if (payload.reactivateIfExists) {
+        const reactivated = await userRepository.updateRoleStatus(existing.id, true);
+        let perms: string[] = [];
+        if (payload.permissions && Array.isArray(payload.permissions)) {
+          const updated = await this.updateStoreRolePermissions(
+            sellerId,
+            existing.id,
+            payload.permissions,
+          );
+          perms = updated.permissions;
+        } else {
+          // preserve existing permissions
+          const currentConfigs = await userRepository.getSellerRolePermissions(sellerId);
+          const found = currentConfigs.find((c) => c.role_id === existing.id);
+          if (found) {
+            perms = found.permissions;
+          } else {
+            const defaults = await userRepository.getRoleDefaultPermissions(existing.id);
+            perms = defaults[existing.id] || [];
+          }
+        }
+
+        return {
+          ...reactivated,
+          permissions: perms,
+        };
+      }
+
+      // Inactive role exists, prompt client with structured error code
+      const conflictError = new AppError(
+        `An inactive role with the name '${existing.name}' already exists. Would you like to reactivate it and restore its previous permissions, or choose a different name?`,
+        409,
+      );
+      (conflictError as any).code = "INACTIVE_ROLE_EXISTS";
+      (conflictError as any).data = {
+        existingRole: {
+          id: existing.id,
+          name: existing.name,
+          slug: existing.slug,
+          is_active: false,
+        },
+      };
+      throw conflictError;
+    }
+
+    // Create new store role
+    try {
+      const created = await userRepository.createStoreRole({
+        name: rawName,
+        slug,
+        description: payload.description || `Store role ${rawName}`,
+      });
+
+      let permissions: string[] = [];
+      if (payload.permissions && Array.isArray(payload.permissions) && payload.permissions.length > 0) {
+        const updated = await this.updateStoreRolePermissions(
+          sellerId,
+          created.id,
+          payload.permissions,
+        );
+        permissions = updated.permissions;
+      }
+
+      return {
+        ...created,
+        permissions,
+      };
+    } catch (err: any) {
+      if (err.code === "23505") {
+        throw new AppError(`A store role with the name '${rawName}' already exists.`, 409);
+      }
+      throw err;
+    }
+  }
+
+  async updateStoreRoleStatus(roleId: number, isActive: boolean): Promise<RoleEntity> {
+    const role = await userRepository.findRoleById(roleId);
+    if (!role) {
+      throw new AppError("Role not found.", 404);
+    }
+
+    if (role.scope === "PLATFORM" || [1, 2, 3].includes(role.id)) {
+      throw new AppError("Platform system roles cannot be modified.", 403);
+    }
+
+    const updated = await userRepository.updateRoleStatus(roleId, isActive);
+
+    // Invalidate auth cache for any sub-users with this role so inactive state takes effect immediately
+    const members = await userRepository.findMembersByRoleId(roleId);
+    for (const member of members) {
+      invalidateAuthUserCache(member.id);
+    }
+
+    return updated;
+  }
+
+  async updateStoreRolePermissionsMatrix(
+    sellerId: string,
+    matrix: Array<{ roleId: number; permissions: string[] }>,
+  ): Promise<
+    Array<{
+      roleId: number;
+      roleName: string;
+      roleSlug: string;
+      description: string;
+      is_active: boolean;
+      isCustomized: boolean;
+      permissions: string[];
+    }>
+  > {
+    const storeRoles = await userRepository.findStoreRoles(true);
+    const storeRoleMap = new Map<number, RoleEntity>();
+    for (const r of storeRoles) storeRoleMap.set(r.id, r);
+
+    const catalog = await userRepository.getPermissionsCatalog();
+    const validPermNames = new Set(catalog.map((p) => p.name));
+
+    for (const item of matrix) {
+      const role = storeRoleMap.get(item.roleId);
+      if (!role) {
+        throw new AppError(`Invalid store role ID '${item.roleId}'.`, 400);
+      }
+      const invalid = item.permissions.filter((p) => !validPermNames.has(p));
+      if (invalid.length > 0) {
+        throw new AppError(
+          `Invalid permission(s) for role '${role.name}': ${invalid.join(", ")}.`,
+          400,
+        );
+      }
+    }
+
+    // Atomic database transaction
+    await userRepository.upsertSellerRolePermissionsBatch(sellerId, matrix);
+
+    return this.getStoreRolePermissions(sellerId, false);
   }
 
   async updateStoreRolePermissions(
@@ -154,7 +334,7 @@ export class UsersService {
     isCustomized: boolean;
     permissions: string[];
   }> {
-    const targetRole = await this.resolveValidStoreRole(roleOrId);
+    const targetRole = await this.resolveValidStoreRole(roleOrId, true);
 
     // Validate all permission names against the database catalog
     const catalog = await userRepository.getPermissionsCatalog();
@@ -183,8 +363,11 @@ export class UsersService {
     };
   }
 
-  private async resolveValidStoreRole(roleOrId?: string | number): Promise<RoleEntity> {
-    const roles = await userRepository.findStoreRoles();
+  private async resolveValidStoreRole(
+    roleOrId?: string | number,
+    allowInactive = false,
+  ): Promise<RoleEntity> {
+    const roles = await userRepository.findStoreRoles(allowInactive);
     if (!roleOrId && roleOrId !== 0) {
       throw new AppError("A store team role is required.", 400);
     }
@@ -216,7 +399,10 @@ export class UsersService {
     parentSellerId: string,
     data: CreateTeamMemberInput,
   ): Promise<Omit<UserEntity, "password_hash">> {
-    const targetRole = await this.resolveValidStoreRole(data.roleId ?? data.role);
+    const targetRole = await this.resolveValidStoreRole(data.roleId ?? data.role, false);
+    if (targetRole.is_active === false) {
+      throw new AppError("Cannot assign an inactive role to a store team member.", 400);
+    }
     const existing = await userRepository.findByEmail(data.email);
 
     if (existing) {
@@ -292,7 +478,10 @@ export class UsersService {
 
     let roleId: number | undefined;
     if (data.roleId !== undefined || data.role !== undefined) {
-      const targetRole = await this.resolveValidStoreRole(data.roleId ?? data.role);
+      const targetRole = await this.resolveValidStoreRole(data.roleId ?? data.role, false);
+      if (targetRole.is_active === false) {
+        throw new AppError("Cannot assign an inactive role to a store team member.", 400);
+      }
       roleId = targetRole.id;
     }
 

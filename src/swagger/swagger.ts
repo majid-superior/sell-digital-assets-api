@@ -1101,7 +1101,7 @@ swaggerAutogen({ openapi: "3.0.0" })(outputFile, routes, doc).then(async () => {
           methods.get.summary = "List seller team members";
         }
         if (methods.post) {
-          methods.post.summary = "Add sub-user team member (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)";
+          methods.post.summary = "Add sub-user team member (MANAGER, USER, ANALYST)";
         }
       } else if (normalizedPath === "/api/v1/seller/team/{id}") {
         if (methods.patch) {

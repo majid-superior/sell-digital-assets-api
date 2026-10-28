@@ -8,6 +8,9 @@ export interface RoleEntity {
   scope: string;
   description: string;
   allow_public_signup?: boolean;
+  is_active?: boolean;
+  is_system?: boolean;
+  created_at?: Date | string;
 }
 
 export interface PermissionEntity {
@@ -34,7 +37,7 @@ export interface SellerRolePermissionEntity {
 export interface UserEntity {
   id: string;
   role_id: number;
-  role: string; // Dynamic role slug ('customer', 'seller', 'admin', 'store_manager', etc.)
+  role: string; // Dynamic role slug ('customer', 'seller', 'admin', 'manager', 'user', 'analyst', etc.)
   role_name?: string;
   role_scope?: string;
   role_allow_public_signup?: boolean;
@@ -95,8 +98,10 @@ export function resolveRoleId(roleOrId?: string | number): number {
     case "BUYER":
     case "CUSTOMER":
       return 3;
+    case "MANAGER":
     case "STORE_MANAGER":
       return 4;
+    case "USER":
     case "CONTENT_UPLOADER":
       return 5;
     case "ANALYST":
@@ -316,6 +321,18 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }): Promise<string[]> {
     const roleNormalized = (user.role || "").toLowerCase().trim();
 
+    // 0. If user's assigned role is deactivated, grant zero permissions
+    if (user.role_id) {
+      const roleRes = await this.query<{ is_active: boolean }>(
+        `SELECT is_active FROM roles WHERE id = $1 LIMIT 1`,
+        [user.role_id],
+      );
+      const roleRow = roleRes.rows[0];
+      if (roleRow && roleRow.is_active === false) {
+        return [];
+      }
+    }
+
     // 1. Platform Admin has full platform and store access
     if (roleNormalized === "admin" || user.role_id === 1) {
       return ["*"];
@@ -457,14 +474,111 @@ export class UserRepository extends BaseRepository<UserEntity> {
     };
   }
 
-  async findStoreRoles(): Promise<RoleEntity[]> {
+  async findStoreRoles(includeInactive = false): Promise<RoleEntity[]> {
     const result = await this.query<RoleEntity>(
-      `SELECT id, name, slug, scope, description, allow_public_signup
+      `SELECT id, name, slug, scope, description, allow_public_signup, is_active, is_system, created_at
        FROM roles
-       WHERE scope = 'SELLER_STORE'
+       WHERE scope = 'SELLER_STORE' ${includeInactive ? "" : "AND is_active = TRUE"}
        ORDER BY id ASC`,
     );
     return result.rows;
+  }
+
+  async findRoleByNameOrSlug(name: string, slug: string): Promise<RoleEntity | null> {
+    const result = await this.query<RoleEntity>(
+      `SELECT id, name, slug, scope, description, allow_public_signup, is_active, is_system, created_at
+       FROM roles
+       WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) OR LOWER(TRIM(slug)) = LOWER(TRIM($2))
+       LIMIT 1`,
+      [name, slug],
+    );
+    return result.rows[0] || null;
+  }
+
+  async findRoleById(id: number): Promise<RoleEntity | null> {
+    const result = await this.query<RoleEntity>(
+      `SELECT id, name, slug, scope, description, allow_public_signup, is_active, is_system, created_at
+       FROM roles
+       WHERE id = $1
+       LIMIT 1`,
+      [id],
+    );
+    return result.rows[0] || null;
+  }
+
+  async createStoreRole(data: {
+    name: string;
+    slug: string;
+    description?: string;
+  }): Promise<RoleEntity> {
+    const result = await this.query<RoleEntity>(
+      `INSERT INTO roles (name, slug, scope, allow_public_signup, description, is_system, is_active)
+       VALUES ($1, $2, 'SELLER_STORE', FALSE, $3, FALSE, TRUE)
+       RETURNING id, name, slug, scope, description, allow_public_signup, is_active, is_system, created_at`,
+      [data.name, data.slug, data.description || `Store role ${data.name}`],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("Failed to create store role");
+    return row;
+  }
+
+  async updateRoleStatus(id: number, isActive: boolean): Promise<RoleEntity> {
+    const result = await this.query<RoleEntity>(
+      `UPDATE roles
+       SET is_active = $2
+       WHERE id = $1
+       RETURNING id, name, slug, scope, description, allow_public_signup, is_active, is_system, created_at`,
+      [id, isActive],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("Role not found");
+    return row;
+  }
+
+  async findMembersByRoleId(roleId: number): Promise<Array<{ id: string }>> {
+    const result = await this.query<{ id: string }>(
+      `SELECT id FROM users WHERE role_id = $1`,
+      [roleId],
+    );
+    return result.rows;
+  }
+
+  async upsertSellerRolePermissionsBatch(
+    sellerId: string,
+    matrix: Array<{ roleId: number; permissions: string[] }>,
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const item of matrix) {
+        await client.query(
+          `INSERT INTO seller_role_permissions (seller_id, role_id, permissions)
+           VALUES ($1, $2, $3::jsonb)
+           ON CONFLICT (seller_id, role_id) DO UPDATE
+             SET permissions = EXCLUDED.permissions,
+                 updated_at = CURRENT_TIMESTAMP`,
+          [sellerId, item.roleId, JSON.stringify(item.permissions)],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    // Invalidate auth cache for affected sub-users under this seller
+    const roleIds = matrix.map((m) => m.roleId);
+    if (roleIds.length > 0) {
+      const members = await this.query<{ id: string }>(
+        `SELECT id FROM users WHERE parent_seller_id = $1 AND role_id = ANY($2::int[])`,
+        [sellerId, roleIds],
+      );
+      for (const member of members.rows) {
+        invalidateAuthUserCache(member.id);
+      }
+    }
   }
 
   async updateLastSignIn(id: string): Promise<void> {

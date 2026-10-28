@@ -7,7 +7,11 @@ import {
   requireStoreManagementAccess,
   requireStoreOwnerAccess,
 } from "../../core/middleware/auth.middleware.js";
-import { validateBody, validateQuery, validateParams } from "../../core/validation/validate.middleware.js";
+import {
+  validateBody,
+  validateQuery,
+  validateParams,
+} from "../../core/validation/validate.middleware.js";
 import {
   PaginationQuerySchema,
   UuidParamSchema,
@@ -16,6 +20,9 @@ import {
   UpdateTeamMemberSchema,
   UpdateRolePermissionsSchema,
   RoleIdParamSchema,
+  CreateRoleSchema,
+  UpdateRoleStatusSchema,
+  UpdatePermissionMatrixSchema,
 } from "./users.schema.js";
 
 const router = Router();
@@ -63,11 +70,28 @@ router.delete(
 export const sellerTeamRouter = Router();
 sellerTeamRouter.use(authenticate, requireSellerAccess);
 
-// GET /roles — List available database store roles (STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
+// GET /roles — List available database store roles (MANAGER, USER, ANALYST)
 sellerTeamRouter.get(
   "/roles",
   requireStoreManagementAccess,
   usersController.getStoreRoles.bind(usersController),
+);
+
+// POST /roles — Create new store role (or reactivate inactive role)
+sellerTeamRouter.post(
+  "/roles",
+  requireStoreOwnerAccess,
+  validateBody(CreateRoleSchema),
+  usersController.createStoreRole.bind(usersController),
+);
+
+// PATCH /roles/:roleId/status — Activate / Deactivate store role
+sellerTeamRouter.patch(
+  "/roles/:roleId/status",
+  requireStoreOwnerAccess,
+  validateParams(RoleIdParamSchema),
+  validateBody(UpdateRoleStatusSchema),
+  usersController.updateStoreRoleStatus.bind(usersController),
 );
 
 // GET /permissions — List available store permissions catalog
@@ -84,7 +108,15 @@ sellerTeamRouter.get(
   usersController.getStoreRolePermissions.bind(usersController),
 );
 
-// PUT /roles/:roleId/permissions — Update permissions for a store role in this seller's store
+// PUT /roles/permissions — Batch update permissions matrix atomically across roles
+sellerTeamRouter.put(
+  "/roles/permissions",
+  requireStoreOwnerAccess,
+  validateBody(UpdatePermissionMatrixSchema),
+  usersController.updateStoreRolePermissionsMatrix.bind(usersController),
+);
+
+// PUT /roles/:roleId/permissions — Update permissions for a single store role in this seller's store
 sellerTeamRouter.put(
   "/roles/:roleId/permissions",
   requireStoreOwnerAccess,
@@ -126,4 +158,3 @@ sellerTeamRouter.delete(
 );
 
 export default router;
-

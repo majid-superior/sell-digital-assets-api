@@ -51,6 +51,7 @@ export interface RoleEntity {
   allow_public_signup?: boolean;
   description?: string | null;
   is_system?: boolean;
+  is_active?: boolean;
   created_at?: Date | string;
 }
 

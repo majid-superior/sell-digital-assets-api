@@ -97,9 +97,10 @@ export class UsersController {
     }
   }
 
-  async getStoreRoles(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getStoreRoles(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const roles = await usersService.getStoreRoles();
+      const includeInactive = req.query.includeInactive === "true" || req.query.includeInactive === "1";
+      const roles = await usersService.getStoreRoles(includeInactive);
       res.status(200).json({
         success: true,
         data: roles,
@@ -127,10 +128,61 @@ export class UsersController {
       if (!sellerId) {
         throw new AppError("Seller context is required", 401);
       }
-      const rolePermissions = await usersService.getStoreRolePermissions(sellerId);
+      const includeInactive = req.query.includeInactive === "true" || req.query.includeInactive === "1";
+      const rolePermissions = await usersService.getStoreRolePermissions(sellerId, includeInactive);
       res.status(200).json({
         success: true,
         data: rolePermissions,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createStoreRole(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sellerId = req.actingSellerId || req.user?.id;
+      if (!sellerId) {
+        throw new AppError("Seller context is required", 401);
+      }
+      const role = await usersService.createStoreRole(sellerId, req.body);
+      res.status(201).json({
+        success: true,
+        message: `Store role '${role.name}' created successfully`,
+        data: role,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateStoreRoleStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { roleId } = req.params as { roleId: string };
+      const { is_active } = req.body as { is_active: boolean };
+      const role = await usersService.updateStoreRoleStatus(Number(roleId), is_active);
+      res.status(200).json({
+        success: true,
+        message: `Store role '${role.name}' has been ${is_active ? "reactivated" : "deactivated"} successfully`,
+        data: role,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateStoreRolePermissionsMatrix(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sellerId = req.actingSellerId || req.user?.id;
+      if (!sellerId) {
+        throw new AppError("Seller context is required", 401);
+      }
+      const { matrix } = req.body as { matrix: Array<{ roleId: number; permissions: string[] }> };
+      const result = await usersService.updateStoreRolePermissionsMatrix(sellerId, matrix);
+      res.status(200).json({
+        success: true,
+        message: "Store permissions matrix updated successfully",
+        data: result,
       });
     } catch (error) {
       next(error);

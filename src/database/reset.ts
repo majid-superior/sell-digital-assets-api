@@ -151,27 +151,32 @@ EXECUTE FUNCTION update_timestamp_column();
 -- Step 5: Roles Table
 CREATE TABLE IF NOT EXISTS roles (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,           -- 'ADMIN', 'SELLER', 'BUYER', 'STORE_MANAGER', 'CONTENT_UPLOADER', 'ANALYST'
+    name VARCHAR(50) UNIQUE NOT NULL,           -- 'ADMIN', 'SELLER', 'BUYER', 'MANAGER', 'USER', 'ANALYST'
     slug VARCHAR(50) UNIQUE NOT NULL,
     scope VARCHAR(20) NOT NULL DEFAULT 'PLATFORM', -- 'PLATFORM' or 'SELLER_STORE'
     allow_public_signup BOOLEAN NOT NULL DEFAULT FALSE,
     description VARCHAR(255),
     is_system BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_normalized_name ON roles (LOWER(TRIM(name)));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roles_normalized_slug ON roles (LOWER(TRIM(slug)));
+
 -- Seed System & Scoped Roles
 INSERT INTO roles (id, name, slug, scope, allow_public_signup, description) VALUES
-    (1, 'ADMIN',            'admin',            'PLATFORM',     FALSE, 'Super administrator with unrestricted platform & system management access'),
-    (2, 'SELLER',           'seller',           'PLATFORM',     TRUE,  'Merchant account capable of listing, selling, and managing digital products'),
-    (3, 'BUYER',            'buyer',            'PLATFORM',     TRUE,  'Standard user capable of purchasing and downloading digital assets'),
-    (4, 'STORE_MANAGER',    'store_manager',    'SELLER_STORE', FALSE, 'Store manager with permissions to manage products, sales, and settings'),
-    (5, 'CONTENT_UPLOADER', 'content_uploader', 'SELLER_STORE', FALSE, 'Team member with permissions to draft and upload assets'),
-    (6, 'ANALYST',          'analyst',          'SELLER_STORE', FALSE, 'Team member with permissions to view sales and analytics')
-ON CONFLICT (name) DO UPDATE
-    SET scope = EXCLUDED.scope,
-        allow_public_signup = EXCLUDED.allow_public_signup,
+    (1, 'ADMIN',    'admin',    'PLATFORM',     FALSE, 'Super administrator with unrestricted platform & system management access'),
+    (2, 'SELLER',   'seller',   'PLATFORM',     TRUE,  'Merchant account capable of listing, selling, and managing digital products'),
+    (3, 'BUYER',    'buyer',    'PLATFORM',     TRUE,  'Standard user capable of purchasing and downloading digital assets'),
+    (4, 'MANAGER',  'manager',  'SELLER_STORE', FALSE, 'Store manager with permissions to manage products, sales, and settings'),
+    (5, 'USER',     'user',     'SELLER_STORE', FALSE, 'Team member with permissions to draft and upload assets'),
+    (6, 'ANALYST',  'analyst',  'SELLER_STORE', FALSE, 'Team member with permissions to view sales and analytics')
+ON CONFLICT (id) DO UPDATE
+    SET name = EXCLUDED.name,
         slug = EXCLUDED.slug,
+        scope = EXCLUDED.scope,
+        allow_public_signup = EXCLUDED.allow_public_signup,
         description = EXCLUDED.description;
 
 -- Synchronize sequence with highest manual ID
@@ -337,7 +342,7 @@ ON CONFLICT (name) DO UPDATE
         scope = EXCLUDED.scope;
 
 -- Seed Default Role Permissions
--- STORE_MANAGER (4)
+-- MANAGER (4)
 INSERT INTO role_default_permissions (role_id, permission_name) VALUES
     (4, 'analytics:view'), (4, 'products:view'), (4, 'products:create'), (4, 'products:edit'),
     (4, 'products:delete'), (4, 'products:publish'), (4, 'coupons:view'), (4, 'coupons:manage'),
@@ -345,7 +350,7 @@ INSERT INTO role_default_permissions (role_id, permission_name) VALUES
     (4, 'team:view'), (4, 'team:manage'), (4, 'settings:view'), (4, 'settings:edit')
 ON CONFLICT DO NOTHING;
 
--- CONTENT_UPLOADER (5)
+-- USER (5)
 INSERT INTO role_default_permissions (role_id, permission_name) VALUES
     (5, 'analytics:view'), (5, 'products:view'), (5, 'products:create'), (5, 'products:edit'),
     (5, 'products:publish')
@@ -1147,74 +1152,95 @@ async function fallbackDatabaseBackup(
   backupFilePath: string,
   requiresSsl: boolean,
 ): Promise<void> {
-  const dumpClient = new Client({
-    connectionString: databaseUrl,
-    ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
-    stream: () => createResilientSocket(),
-    lookup: resilientDnsLookup,
-  } as any);
-  await dumpClient.connect();
-  try {
-    const lines: string[] = [
-      `-- Fallback database backup generated at ${new Date().toISOString()}`,
-      "BEGIN;",
-    ];
+  const maxAttempts = 3;
 
-    const tablesRes = await dumpClient.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-      ORDER BY table_name;
-    `);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const dumpClient = new Client({
+      connectionString: databaseUrl,
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
+      stream: () => createResilientSocket(),
+      lookup: resilientDnsLookup,
+    } as any);
 
-    for (const row of tablesRes.rows) {
-      const tableName = row.table_name;
-      const colsRes = await dumpClient.query(
-        `SELECT column_name, data_type, is_nullable, column_default
-         FROM information_schema.columns
-         WHERE table_schema = 'public' AND table_name = $1
-         ORDER BY ordinal_position;`,
-        [tableName],
-      );
+    // CRITICAL: Prevent unhandled 'error' event on client from crashing Node.js process
+    dumpClient.on("error", () => {
+      // Handled cleanly by query/connect rejection
+    });
 
-      if (colsRes.rows.length > 0) {
-        const colDefs = colsRes.rows.map((c: any) => {
-          let def = `"${c.column_name}" ${c.data_type}`;
-          if (c.column_default) def += ` DEFAULT ${c.column_default}`;
-          if (c.is_nullable === "NO") def += " NOT NULL";
-          return def;
-        });
-        lines.push(`\n-- Structure for table: ${tableName}`);
-        lines.push(
-          `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${colDefs.join(",\n  ")}\n);`,
+    try {
+      await dumpClient.connect();
+
+      const lines: string[] = [
+        `-- Fallback database backup generated at ${new Date().toISOString()}`,
+        "BEGIN;",
+      ];
+
+      const tablesRes = await dumpClient.query(`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        ORDER BY table_name;
+      `);
+
+      for (const row of tablesRes.rows) {
+        const tableName = row.table_name;
+        const colsRes = await dumpClient.query(
+          `SELECT column_name, data_type, is_nullable, column_default
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = $1
+           ORDER BY ordinal_position;`,
+          [tableName],
         );
-      }
 
-      const dataRes = await dumpClient.query(`SELECT * FROM "${tableName}";`);
-      if (dataRes.rows.length > 0) {
-        lines.push(`\n-- Data for table: ${tableName}`);
-        for (const dataRow of dataRes.rows) {
-          const cols = Object.keys(dataRow);
-          const vals = cols.map((col) => {
-            const val = dataRow[col];
-            if (val === null || val === undefined) return "NULL";
-            if (typeof val === "number" || typeof val === "boolean")
-              return String(val);
-            if (typeof val === "object")
-              return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
-            return `'${String(val).replace(/'/g, "''")}'`;
+        if (colsRes.rows.length > 0) {
+          const colDefs = colsRes.rows.map((c: any) => {
+            let def = `"${c.column_name}" ${c.data_type}`;
+            if (c.column_default) def += ` DEFAULT ${c.column_default}`;
+            if (c.is_nullable === "NO") def += " NOT NULL";
+            return def;
           });
+          lines.push(`\n-- Structure for table: ${tableName}`);
           lines.push(
-            `INSERT INTO "${tableName}" ("${cols.join('", "')}") VALUES (${vals.join(", ")}) ON CONFLICT DO NOTHING;`,
+            `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${colDefs.join(",\n  ")}\n);`,
           );
         }
+
+        const dataRes = await dumpClient.query(`SELECT * FROM "${tableName}";`);
+        if (dataRes.rows.length > 0) {
+          lines.push(`\n-- Data for table: ${tableName}`);
+          for (const dataRow of dataRes.rows) {
+            const cols = Object.keys(dataRow);
+            const vals = cols.map((col) => {
+              const val = dataRow[col];
+              if (val === null || val === undefined) return "NULL";
+              if (typeof val === "number" || typeof val === "boolean")
+                return String(val);
+              if (typeof val === "object")
+                return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+              return `'${String(val).replace(/'/g, "''")}'`;
+            });
+            lines.push(
+              `INSERT INTO "${tableName}" ("${cols.join('", "')}") VALUES (${vals.join(", ")}) ON CONFLICT DO NOTHING;`,
+            );
+          }
+        }
+      }
+
+      lines.push("\nCOMMIT;");
+      fs.writeFileSync(backupFilePath, lines.join("\n"), "utf8");
+      await dumpClient.end().catch(() => {});
+      return;
+    } catch (err: any) {
+      await dumpClient.end().catch(() => {});
+      if (attempt < maxAttempts) {
+        console.warn(
+          `⚠️  Fallback backup attempt ${attempt} failed (${err.message}). Retrying in 2s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } else {
+        throw err;
       }
     }
-
-    lines.push("\nCOMMIT;");
-    fs.writeFileSync(backupFilePath, lines.join("\n"), "utf8");
-  } finally {
-    await dumpClient.end().catch(() => {});
   }
 }
 
@@ -1391,8 +1417,14 @@ async function backupDatabase(
   const username = parsed.username || "postgres";
   const password = decodeURIComponent(parsed.password || "");
 
+  const isSupabasePooler = isCloudDb && (host.includes("pooler.supabase.com") || port === "6543");
   let dumpSucceeded = false;
-  if (pgDumpPath) {
+
+  if (isSupabasePooler) {
+    console.log(
+      "ℹ️  Supabase connection pooler detected (poolers do not support pg_dump). Using resilient native table exporter...",
+    );
+  } else if (pgDumpPath) {
     try {
       const args = [
         "-h",
@@ -2329,6 +2361,7 @@ export async function resetDatabase(): Promise<void> {
         stream: () => createResilientSocket(),
         lookup: resilientDnsLookup,
       } as any);
+      maintenanceClient.on("error", () => {});
 
       try {
         await maintenanceClient.connect();
@@ -2382,6 +2415,7 @@ export async function resetDatabase(): Promise<void> {
         stream: () => createResilientSocket(),
         lookup: resilientDnsLookup,
       } as any);
+      targetClient.on("error", () => {});
 
       try {
         await targetClient.connect();

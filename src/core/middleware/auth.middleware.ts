@@ -237,7 +237,7 @@ export const requireSellerAccess = async (
     return next();
   }
 
-  // Seller Store Sub-User (e.g. STORE_MANAGER, CONTENT_UPLOADER, ANALYST)
+  // Seller Store Sub-User (e.g. MANAGER, USER, ANALYST)
   if (user.parent_seller_id) {
     const parentSeller = await resolveAuthenticatedUser(user.parent_seller_id);
     if (!parentSeller || parentSeller.status !== "active") {
