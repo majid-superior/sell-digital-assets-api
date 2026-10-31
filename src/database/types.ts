@@ -189,6 +189,10 @@ export interface AssetEntity {
   technical_specs?: Record<string, unknown>;
   view_count?: number;
   download_count?: number;
+  sales_count?: number;
+  total_revenue?: number;
+  first_sale_at?: Date | string | null;
+  last_sold_at?: Date | string | null;
   is_featured?: boolean;
   is_curated?: boolean;
   is_active?: boolean;
@@ -253,6 +257,8 @@ export interface DownloadAuditEntity {
   ip_address: string;
   user_agent?: string | null;
   signed_url_token: string;
+  bytes_transferred?: number;
+  status?: 'in_progress' | 'completed' | 'failed' | 'expired';
   expires_at: Date | string;
   downloaded_at?: Date | string | null;
   created_at?: Date | string;
@@ -315,6 +321,227 @@ export interface CouponRedemptionEntity {
   } | undefined;
 }
 
+export type OrderStatus =
+  | "pending"
+  | "paid"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "partially_refunded";
+
+export interface OrderEntity {
+  id?: string;
+  order_number: string;
+  buyer_id: string;
+  currency_code: string;
+  subtotal_amount: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  total_amount: number;
+  status?: OrderStatus;
+  payment_provider?: string;
+  payment_gateway_ref?: string | null;
+  coupon_id?: string | null;
+  customer_notes?: string | null;
+  metadata?: Record<string, unknown>;
+  paid_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  // Relations
+  buyer?: UserEntity;
+  items?: OrderItemEntity[];
+  coupon?: CouponEntity | null;
+}
+
+export type OrderItemPayoutStatus =
+  | "pending"
+  | "available"
+  | "processing"
+  | "paid"
+  | "withheld"
+  | "refunded";
+
+export interface OrderItemEntity {
+  id?: string;
+  order_id: string;
+  asset_id: string;
+  seller_id: string;
+  license_tier_type: string;
+  license_id?: string | null;
+  asset_title: string;
+  price: number;
+  discount_amount?: number;
+  net_amount: number;
+  platform_fee_rate: number;
+  platform_fee_amount: number;
+  seller_earning_amount: number;
+  payout_status?: OrderItemPayoutStatus;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  // Relations
+  asset?: AssetEntity;
+  seller?: UserEntity;
+}
+
+export type RefundReason =
+  | "broken_file"
+  | "misleading_preview"
+  | "accidental_purchase"
+  | "license_incompatibility"
+  | "unauthorized_transaction"
+  | "other";
+
+export type RefundStatus =
+  | "requested"
+  | "under_review"
+  | "approved"
+  | "rejected"
+  | "refunded"
+  | "cancelled";
+
+export interface RefundEntity {
+  id?: string;
+  refund_number: string;
+  order_id: string;
+  order_item_id?: string | null;
+  buyer_id: string;
+  amount: number;
+  currency_code: string;
+  reason: RefundReason;
+  reason_details?: string | null;
+  status?: RefundStatus;
+  gateway_refund_id?: string | null;
+  requested_by: string;
+  resolved_by?: string | null;
+  resolved_at?: Date | string | null;
+  admin_notes?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  // Relations
+  order?: OrderEntity;
+  order_item?: OrderItemEntity | null;
+  buyer?: UserEntity;
+}
+
+export type PayoutStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type PayoutMethod =
+  | "stripe_connect"
+  | "paypal"
+  | "wise"
+  | "bank_transfer"
+  | "manual";
+
+export interface PayoutEntity {
+  id?: string;
+  payout_number: string;
+  seller_id: string;
+  amount: number;
+  currency_code: string;
+  method?: PayoutMethod;
+  status?: PayoutStatus;
+  destination_details?: Record<string, unknown>;
+  gateway_payout_ref?: string | null;
+  admin_notes?: string | null;
+  processed_by?: string | null;
+  requested_at?: Date | string;
+  processed_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  // Relations
+  seller?: UserEntity;
+}
+
+export interface SearchLogEntity {
+  id?: string;
+  query_text: string;
+  normalized_query: string;
+  results_count: number;
+  category_id?: number | null;
+  user_id?: string | null;
+  session_id?: string | null;
+  clicked_asset_id?: string | null;
+  has_converted?: boolean;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at?: Date | string;
+  // Relations
+  category?: CategoryEntity;
+  user?: UserEntity;
+  clicked_asset?: AssetEntity;
+}
+
+export type StorefrontEventType =
+  | 'page_view'
+  | 'asset_view'
+  | 'add_to_cart'
+  | 'remove_from_cart'
+  | 'checkout_start'
+  | 'checkout_complete';
+
+export interface StorefrontEventEntity {
+  id?: string;
+  visitor_id: string;
+  user_id?: string | null;
+  event_type: StorefrontEventType;
+  asset_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at?: Date | string;
+  // Relations
+  user?: UserEntity;
+  asset?: AssetEntity;
+}
+
+export type MarketingCampaignType = 'hero' | 'banner' | 'curated_collection' | 'broadcast';
+
+export interface MarketingImpressionEntity {
+  id?: string;
+  campaign_type: MarketingCampaignType;
+  campaign_id: string;
+  impressions_count?: number;
+  clicks_count?: number;
+  direct_conversions?: number;
+  attributed_gmv?: number;
+  recorded_date?: Date | string;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+}
+
+export type GrowthTriggerType =
+  | 'underpriced_asset'
+  | 'creator_churn_risk'
+  | 'category_supply_deficit'
+  | 'license_friction_drop'
+  | 'high_refund_spike';
+
+export type GrowthTriggerSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface PlatformGrowthTriggerEntity {
+  id?: string;
+  trigger_type: GrowthTriggerType;
+  severity: GrowthTriggerSeverity;
+  title: string;
+  description: string;
+  recommended_action: string;
+  target_entity_type?: string | null;
+  target_entity_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  is_dismissed?: boolean;
+  dismissed_at?: Date | string | null;
+  dismissed_by?: string | null;
+  created_at?: Date | string;
+  // Relations
+  dismissed_by_user?: UserEntity;
+}
+
 export interface DatabaseSchema {
   currencies: CurrencyEntity;
   organizations: OrganizationEntity;
@@ -333,4 +560,12 @@ export interface DatabaseSchema {
   notifications: NotificationEntity;
   coupons: CouponEntity;
   coupon_redemptions: CouponRedemptionEntity;
+  orders: OrderEntity;
+  order_items: OrderItemEntity;
+  refunds: RefundEntity;
+  payouts: PayoutEntity;
+  search_logs: SearchLogEntity;
+  storefront_events: StorefrontEventEntity;
+  marketing_impressions: MarketingImpressionEntity;
+  platform_growth_triggers: PlatformGrowthTriggerEntity;
 }

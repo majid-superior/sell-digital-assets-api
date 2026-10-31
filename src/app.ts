@@ -47,6 +47,7 @@ import bannersRoutes from "./modules/banners/banners.routes.js";
 import heroRoutes from "./modules/hero/hero.routes.js";
 import logsRoutes from "./modules/logs/logs.routes.js";
 import { couponsRouter } from "./modules/coupons/coupons.routes.js";
+import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 import { sellerStorefrontRouter, publicStorefrontRouter } from "./modules/storefront/storefront.routes.js";
 import { themeController } from "./modules/theme/theme.controller.js";
 import { organization } from "./data/organizations.js";
@@ -426,6 +427,10 @@ app.use("/v1/coupons", couponsRouter);
 app.use("/api/v1/seller/coupons", couponsRouter);
 app.use("/api/seller/coupons", couponsRouter);
 app.use("/v1/seller/coupons", couponsRouter);
+
+app.use("/api/v1/analytics", analyticsRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/v1/analytics", analyticsRoutes);
 
 // ============================================================================
 // 404 Catch-All Handler

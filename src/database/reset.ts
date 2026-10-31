@@ -58,6 +58,7 @@ export const SCHEMA_SQL = `
 CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- Step 2: Shared Auto-Update Timestamp Function
 CREATE OR REPLACE FUNCTION update_timestamp_column()
@@ -611,6 +612,10 @@ CREATE TABLE IF NOT EXISTS assets (
     technical_specs JSONB NOT NULL DEFAULT '{}'::jsonb,
     view_count INT NOT NULL DEFAULT 0,
     download_count INT NOT NULL DEFAULT 0,
+    sales_count INT NOT NULL DEFAULT 0,
+    total_revenue NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    first_sale_at TIMESTAMPTZ,
+    last_sold_at TIMESTAMPTZ,
     is_featured BOOLEAN NOT NULL DEFAULT FALSE,
     is_curated BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -624,12 +629,15 @@ CREATE INDEX IF NOT EXISTS idx_assets_created_by ON assets (created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_assets_category_id ON assets (category_id);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
 CREATE INDEX IF NOT EXISTS idx_assets_slug ON assets (slug);
+CREATE INDEX IF NOT EXISTS idx_assets_sales_count ON assets (sales_count DESC);
+CREATE INDEX IF NOT EXISTS idx_assets_velocity ON assets (status, created_at, sales_count) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_preview_url ON assets (preview_url) WHERE preview_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_storage_path ON assets (storage_path) WHERE storage_path IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_active ON assets (is_active) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_curated ON assets (is_curated) WHERE is_curated = TRUE AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_featured ON assets (is_featured) WHERE is_featured = TRUE AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_assets_tags_gin ON assets USING GIN (tags);
+CREATE INDEX IF NOT EXISTS idx_assets_title_trgm ON assets USING GIN (title gin_trgm_ops);
 
 DROP TRIGGER IF EXISTS trg_assets_updated_at ON assets;
 CREATE TRIGGER trg_assets_updated_at
@@ -742,6 +750,9 @@ CREATE TABLE IF NOT EXISTS download_audits (
     ip_address VARCHAR(50) NOT NULL,
     user_agent TEXT,
     signed_url_token VARCHAR(64) NOT NULL UNIQUE,
+    bytes_transferred BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' 
+        CHECK (status IN ('in_progress', 'completed', 'failed', 'expired')),
     expires_at TIMESTAMPTZ NOT NULL,
     downloaded_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -749,6 +760,10 @@ CREATE TABLE IF NOT EXISTS download_audits (
 
 CREATE INDEX IF NOT EXISTS idx_download_audits_asset_id ON download_audits (asset_id);
 CREATE INDEX IF NOT EXISTS idx_download_audits_token ON download_audits (signed_url_token);
+CREATE INDEX IF NOT EXISTS idx_download_audits_user_id ON download_audits (user_id);
+CREATE INDEX IF NOT EXISTS idx_download_audits_created_at ON download_audits (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_download_audits_ip_created ON download_audits (ip_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_download_audits_license_key ON download_audits (license_key) WHERE license_key IS NOT NULL;
 
 -- Step 19: Notifications System
 CREATE TABLE IF NOT EXISTS notifications (
@@ -913,12 +928,83 @@ BEFORE UPDATE ON coupons
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
 
--- Coupon Redemptions Table
+-- Step 19g: Orders & Commercial Transactions Module
+CREATE TABLE IF NOT EXISTS orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number VARCHAR(32) NOT NULL UNIQUE,
+    buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    currency_code VARCHAR(3) NOT NULL REFERENCES currencies(code) ON UPDATE CASCADE,
+    subtotal_amount NUMERIC(10, 2) NOT NULL CHECK (subtotal_amount >= 0),
+    discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (discount_amount >= 0),
+    tax_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (tax_amount >= 0),
+    total_amount NUMERIC(10, 2) NOT NULL CHECK (total_amount >= 0),
+    status VARCHAR(25) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'paid', 'completed', 'failed', 'cancelled', 'refunded', 'partially_refunded')),
+    payment_provider VARCHAR(50) NOT NULL DEFAULT 'stripe',
+    payment_gateway_ref VARCHAR(150),
+    coupon_id UUID REFERENCES coupons(id) ON DELETE SET NULL,
+    customer_notes TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_order_number ON orders (order_number);
+CREATE INDEX IF NOT EXISTS idx_orders_buyer_id ON orders (buyer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_payment_ref ON orders (payment_gateway_ref) WHERE payment_gateway_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_coupon_id ON orders (coupon_id) WHERE coupon_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_analytics ON orders (status, created_at DESC);
+
+DROP TRIGGER IF EXISTS trg_orders_updated_at ON orders;
+CREATE TRIGGER trg_orders_updated_at
+BEFORE UPDATE ON orders
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19h: Order Items Module
+CREATE TABLE IF NOT EXISTS order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
+    seller_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    license_tier_type VARCHAR(20) NOT NULL REFERENCES license_tiers(tier_type) ON UPDATE CASCADE,
+    license_id UUID REFERENCES licenses(id) ON DELETE SET NULL,
+    asset_title VARCHAR(200) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (discount_amount >= 0),
+    net_amount NUMERIC(10, 2) NOT NULL CHECK (net_amount >= 0),
+    platform_fee_rate NUMERIC(5, 2) NOT NULL DEFAULT 0.00 CHECK (platform_fee_rate >= 0 AND platform_fee_rate <= 100),
+    platform_fee_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (platform_fee_amount >= 0),
+    seller_earning_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (seller_earning_amount >= 0),
+    payout_status VARCHAR(20) NOT NULL DEFAULT 'pending' 
+        CHECK (payout_status IN ('pending', 'available', 'processing', 'paid', 'withheld', 'refunded')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_asset_id ON order_items (asset_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_seller_id ON order_items (seller_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_license_tier ON order_items (license_tier_type);
+CREATE INDEX IF NOT EXISTS idx_order_items_payout_status ON order_items (payout_status);
+CREATE INDEX IF NOT EXISTS idx_order_items_seller_analytics ON order_items (seller_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_order_items_asset_analytics ON order_items (asset_id, created_at DESC);
+
+DROP TRIGGER IF EXISTS trg_order_items_updated_at ON order_items;
+CREATE TRIGGER trg_order_items_updated_at
+BEFORE UPDATE ON order_items
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19i: Coupon Redemptions Table
 CREATE TABLE IF NOT EXISTS coupon_redemptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
     buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    order_id UUID,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
     discount_amount NUMERIC(10, 2) NOT NULL CHECK (discount_amount >= 0),
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     original_subtotal NUMERIC(10, 2) NOT NULL CHECK (original_subtotal >= 0),
@@ -938,6 +1024,168 @@ CREATE TRIGGER trg_coupon_redemptions_updated_at
 BEFORE UPDATE ON coupon_redemptions
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19j: Refunds & Financial Disputes Module
+CREATE TABLE IF NOT EXISTS refunds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    refund_number VARCHAR(32) NOT NULL UNIQUE,
+    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
+    order_item_id UUID REFERENCES order_items(id) ON DELETE SET NULL,
+    buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+    currency_code VARCHAR(3) NOT NULL REFERENCES currencies(code) ON UPDATE CASCADE,
+    reason VARCHAR(50) NOT NULL 
+        CHECK (reason IN ('broken_file', 'misleading_preview', 'accidental_purchase', 'license_incompatibility', 'unauthorized_transaction', 'other')),
+    reason_details TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'requested' 
+        CHECK (status IN ('requested', 'under_review', 'approved', 'rejected', 'refunded', 'cancelled')),
+    gateway_refund_id VARCHAR(150),
+    requested_by UUID NOT NULL REFERENCES users(id),
+    resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at TIMESTAMPTZ,
+    admin_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refunds_refund_number ON refunds (refund_number);
+CREATE INDEX IF NOT EXISTS idx_refunds_order_id ON refunds (order_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_order_item_id ON refunds (order_item_id) WHERE order_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_refunds_buyer_id ON refunds (buyer_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds (status);
+CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON refunds (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_refunds_reason ON refunds (reason);
+
+DROP TRIGGER IF EXISTS trg_refunds_updated_at ON refunds;
+CREATE TRIGGER trg_refunds_updated_at
+BEFORE UPDATE ON refunds
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19k: Creator Disbursements & Payouts Module
+CREATE TABLE IF NOT EXISTS payouts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payout_number VARCHAR(32) NOT NULL UNIQUE,
+    seller_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+    currency_code VARCHAR(3) NOT NULL REFERENCES currencies(code) ON UPDATE CASCADE,
+    method VARCHAR(30) NOT NULL DEFAULT 'stripe_connect' 
+        CHECK (method IN ('stripe_connect', 'paypal', 'wise', 'bank_transfer', 'manual')),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+    destination_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    gateway_payout_ref VARCHAR(150),
+    admin_notes TEXT,
+    processed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payouts_payout_number ON payouts (payout_number);
+CREATE INDEX IF NOT EXISTS idx_payouts_seller_id ON payouts (seller_id);
+CREATE INDEX IF NOT EXISTS idx_payouts_status ON payouts (status);
+CREATE INDEX IF NOT EXISTS idx_payouts_created_at ON payouts (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payouts_requested_at ON payouts (requested_at DESC);
+
+DROP TRIGGER IF EXISTS trg_payouts_updated_at ON payouts;
+CREATE TRIGGER trg_payouts_updated_at
+BEFORE UPDATE ON payouts
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19l: Search Intelligence & Unmet Demand Module
+CREATE TABLE IF NOT EXISTS search_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    query_text VARCHAR(255) NOT NULL,
+    normalized_query VARCHAR(255) NOT NULL,
+    results_count INT NOT NULL DEFAULT 0 CHECK (results_count >= 0),
+    category_id INT REFERENCES categories(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    session_id VARCHAR(100),
+    clicked_asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
+    has_converted BOOLEAN NOT NULL DEFAULT FALSE,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_logs_normalized ON search_logs (normalized_query);
+CREATE INDEX IF NOT EXISTS idx_search_logs_zero_results ON search_logs (results_count, created_at DESC) 
+    WHERE results_count = 0;
+CREATE INDEX IF NOT EXISTS idx_search_logs_created_at ON search_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_logs_session ON search_logs (session_id) 
+    WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_search_logs_clicked_asset ON search_logs (clicked_asset_id) 
+    WHERE clicked_asset_id IS NOT NULL;
+
+-- Step 19m: Storefront Funnel & Buyer Behavior Telemetry Module
+CREATE TABLE IF NOT EXISTS storefront_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    visitor_id VARCHAR(100) NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    event_type VARCHAR(50) NOT NULL 
+        CHECK (event_type IN ('page_view', 'asset_view', 'add_to_cart', 'remove_from_cart', 'checkout_start', 'checkout_complete')),
+    asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_storefront_events_type_created ON storefront_events (event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_storefront_events_visitor ON storefront_events (visitor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_storefront_events_user ON storefront_events (user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_storefront_events_asset ON storefront_events (asset_id) WHERE asset_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_storefront_events_created ON storefront_events (created_at DESC);
+
+-- Step 19n: Marketing Campaigns & Promotional Telemetry Module
+CREATE TABLE IF NOT EXISTS marketing_impressions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_type VARCHAR(30) NOT NULL 
+        CHECK (campaign_type IN ('hero', 'banner', 'curated_collection', 'broadcast')),
+    campaign_id UUID NOT NULL,
+    impressions_count INT NOT NULL DEFAULT 1 CHECK (impressions_count >= 0),
+    clicks_count INT NOT NULL DEFAULT 0 CHECK (clicks_count >= 0),
+    direct_conversions INT NOT NULL DEFAULT 0 CHECK (direct_conversions >= 0),
+    attributed_gmv NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (attributed_gmv >= 0),
+    recorded_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_marketing_campaign_date UNIQUE (campaign_type, campaign_id, recorded_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketing_impressions_type_date ON marketing_impressions (campaign_type, recorded_date DESC);
+CREATE INDEX IF NOT EXISTS idx_marketing_impressions_campaign ON marketing_impressions (campaign_id, recorded_date DESC);
+
+DROP TRIGGER IF EXISTS trg_marketing_impressions_updated_at ON marketing_impressions;
+CREATE TRIGGER trg_marketing_impressions_updated_at
+BEFORE UPDATE ON marketing_impressions
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp_column();
+
+-- Step 19o: Automated Growth Intelligence & Platform Insights Module
+CREATE TABLE IF NOT EXISTS platform_growth_triggers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trigger_type VARCHAR(50) NOT NULL 
+        CHECK (trigger_type IN ('underpriced_asset', 'creator_churn_risk', 'category_supply_deficit', 'license_friction_drop', 'high_refund_spike')),
+    severity VARCHAR(20) NOT NULL DEFAULT 'medium' 
+        CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    recommended_action TEXT NOT NULL,
+    target_entity_type VARCHAR(50),
+    target_entity_id UUID,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_dismissed BOOLEAN NOT NULL DEFAULT FALSE,
+    dismissed_at TIMESTAMPTZ,
+    dismissed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_growth_triggers_active ON platform_growth_triggers (is_dismissed, severity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_growth_triggers_type ON platform_growth_triggers (trigger_type, created_at DESC);
 
 -- Step 20: Public Schema Permissions & Role-Adaptive Default Privileges
 DO $$
@@ -2098,7 +2346,7 @@ export function printSummaryBox(summary: {
       `  Backup Action:   PLANNED (${summary.backupPath || "skipped"})`,
     );
     console.log(
-      `  Schema DDL:      PLANNED (22 tables, functions, triggers, rules)`,
+      `  Schema DDL:      PLANNED (30 tables, functions, triggers, rules)`,
     );
     console.log(`  Tables Verified: SKIPPED (Dry-Run)`);
     console.log(
@@ -2295,7 +2543,7 @@ export async function resetDatabase(): Promise<void> {
       `  2. [SCHEMA]  Would ${isCloudDb ? "reset 'public' schema via DROP/CREATE SCHEMA public" : `drop and recreate local database '${targetDbName}'`} [NOT EXECUTED]`,
     );
     console.log(
-      "  3. [DDL]     Would execute SCHEMA_SQL (22 tables, citext, pgcrypto, uuid-ossp, timestamp triggers, truncate protections, adaptive grants) [NOT EXECUTED]",
+      "  3. [DDL]     Would execute SCHEMA_SQL (30 tables, citext, pgcrypto, uuid-ossp, timestamp triggers, truncate protections, adaptive grants) [NOT EXECUTED]",
     );
     console.log(
       "  4. [SEED]    Would seed Organizations (1), Categories (296), Hero Images (15), Banners (3) [NOT EXECUTED]",
